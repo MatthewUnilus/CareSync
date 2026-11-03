@@ -509,6 +509,25 @@ textarea:focus {
   background: var(--surface);
 }
 
+.server-settings {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.server-settings summary {
+  cursor: pointer;
+  color: var(--brand-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.server-settings[open] summary {
+  margin-bottom: 0.75rem;
+>>>>>>> ticket/16-mobile-client
+}
+
 .admin-queue {
   gap: 1rem;
 }

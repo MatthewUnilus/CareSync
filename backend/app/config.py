@@ -19,6 +19,25 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     seed_demo_users: bool = False
 
+    # Comma-separated. The native shell has its own WebView origin, so it calls
+    # the API cross-origin; these are the only origins granted credentials.
+    cors_origins: str = (
+        "http://localhost,"
+        "http://127.0.0.1,"
+        "https://localhost,"
+        "capacitor://localhost,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173"
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
+
 
 @lru_cache
 def get_settings() -> Settings:

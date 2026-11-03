@@ -17,9 +17,9 @@ build/
 .vite/
 coverage/
 
-# Native shells
-android/
-ios/
+# Native shells: the Capacitor projects are committed so the app can be built
+# from a clone. android/.gitignore and ios/.gitignore keep build products,
+# copied web assets, local SDK paths, Pods and derived data out of git.
 *.keystore
 
 # Local data and models
