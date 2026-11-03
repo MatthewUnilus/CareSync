@@ -75,7 +75,9 @@ def test_completing_intake_stores_the_machine_recommendation(
     assessment = body["assessment"]
     assert assessment["machine_recommendation"] == expected
     assert assessment["final_decision"] == expected
-    assert assessment["recognised_symptom_groups"] == []
+    # The complaint mentions a headache, so recognition now stores that group
+    # with the snapshot; the Urgency Levels above are still the stub's.
+    assert assessment["recognised_symptom_groups"] == ["headache"]
 
 
 def test_the_assessment_captures_an_immutable_snapshot_of_the_inputs(
