@@ -175,6 +175,9 @@ class AssessmentResponse(BaseModel):
     recognised_symptom_groups: list[str]
     override: OverrideRecordResponse | None = None
     snapshot: AssessmentSnapshot
+    # Set by a Re-assessment: the governing Assessment it replaced. Null on a
+    # first Assessment, so the history reconstructs the whole sequence.
+    supersedes_assessment_id: int | None = None
 
 
 class OverrideRequest(BaseModel):
@@ -218,6 +221,11 @@ class EncounterResponse(BaseModel):
     while the instant is null, departed once it is set. A departed Encounter
     is still returned in full, with its Patient, intake, Assessment and
     Override intact.
+
+    ``assessment`` is the governing (most recent) Assessment. ``assessments``
+    is the whole history oldest-first, so a Re-assessed Encounter stays
+    readable back to its first decision; the earlier rows keep their own
+    snapshots and Overrides.
     """
 
     id: int
@@ -227,6 +235,7 @@ class EncounterResponse(BaseModel):
     patient: PatientResponse
     intake: IntakePayload
     assessment: AssessmentResponse | None = None
+    assessments: list[AssessmentResponse] = Field(default_factory=list)
 
 
 class EncounterListResponse(BaseModel):

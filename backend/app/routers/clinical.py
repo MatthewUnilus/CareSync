@@ -2,17 +2,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.assessments import create_triage_assessment
 from app.departures import encounter_status, perform_departure
 from app.deps import DbSession, require_role
-from app.intake import ensure_intake_editable
+from app.intake import apply_intake, ensure_intake_editable
 from app.models import Encounter, Override, Patient, Role, TriageAssessment, User
 from app.override_reasons import OVERRIDE_REASONS
 from app.overrides import perform_override
 from app.patients import find_or_create_patient
 from app.queue import awaiting_queue
+from app.reassessments import perform_reassessment
 from app.schemas import (
     AssessmentResponse,
     AssessmentSnapshot,
@@ -94,7 +95,7 @@ def open_encounter(
         )
 
     encounter = Encounter(patient_id=patient.id)
-    _apply_intake(encounter, payload.intake)
+    apply_intake(encounter, payload.intake)
     db.add(encounter)
     db.flush()
     assessment = create_triage_assessment(db, encounter)
@@ -116,6 +117,11 @@ def list_recent_encounters(
     encounters = db.scalars(
         select(Encounter)
         .order_by(Encounter.arrived_at.desc(), Encounter.id.desc())
+        .options(
+            selectinload(Encounter.assessments).selectinload(
+                TriageAssessment.overrides
+            )
+        )
         .limit(limit)
     ).all()
     return EncounterListResponse(
@@ -218,6 +224,31 @@ def depart_encounter(
     return _encounter_response(encounter)
 
 
+@router.post(
+    "/encounters/{encounter_id}/reassessment",
+    response_model=EncounterResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def reassess_encounter(
+    encounter_id: int,
+    payload: IntakePayload,
+    db: DbSession,
+    user: ClinicalUser,
+) -> EncounterResponse:
+    """Append a fresh Triage Assessment from the intake supplied.
+
+    This is the only way a second Assessment is created, and it happens only
+    when a Clinical user asks: there is no timer, scheduled re-evaluation or
+    time-based escalation. The new Assessment records the one it superseded,
+    and its Final Decision (initially equal to its Machine Recommendation)
+    governs the Encounter's Queue position on the next read.
+    """
+    encounter = _get_encounter(db, encounter_id)
+    perform_reassessment(db, encounter, intake=payload)
+    db.commit()
+    return _encounter_response(encounter)
+
+
 @router.put("/encounters/{encounter_id}/intake", response_model=EncounterResponse)
 def correct_intake(
     encounter_id: int,
@@ -228,7 +259,7 @@ def correct_intake(
     """Replace the intake on an Encounter, while no Triage Assessment exists."""
     encounter = _get_encounter(db, encounter_id)
     ensure_intake_editable(db, encounter)
-    _apply_intake(encounter, payload)
+    apply_intake(encounter, payload)
     db.commit()
     return _encounter_response(encounter)
 
@@ -241,18 +272,6 @@ def _get_encounter(db: Session, encounter_id: int) -> Encounter:
             detail="Encounter not found",
         )
     return encounter
-
-
-def _apply_intake(encounter: Encounter, intake: IntakePayload) -> None:
-    encounter.presenting_complaint = intake.presenting_complaint
-    encounter.pain_level = intake.pain_level
-    encounter.illness_duration_hours = intake.illness_duration_hours
-    encounter.temperature_c = intake.temperature_c
-    encounter.heart_rate_bpm = intake.heart_rate_bpm
-    encounter.systolic_bp = intake.blood_pressure.systolic
-    encounter.diastolic_bp = intake.blood_pressure.diastolic
-    encounter.oxygen_saturation_percent = intake.oxygen_saturation_percent
-    encounter.notes = intake.notes
 
 
 def _encounter_response(
@@ -273,6 +292,9 @@ def _encounter_response(
         assessment=(
             _assessment_response(assessment) if assessment is not None else None
         ),
+        assessments=[
+            _assessment_response(stored) for stored in encounter.assessments
+        ],
     )
 
 
@@ -307,6 +329,7 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
         override=_override_response(
             assessment.overrides[-1] if assessment.overrides else None
         ),
+        supersedes_assessment_id=assessment.supersedes_assessment_id,
         snapshot=AssessmentSnapshot(
             presenting_complaint=assessment.presenting_complaint,
             age=assessment.patient_age,
