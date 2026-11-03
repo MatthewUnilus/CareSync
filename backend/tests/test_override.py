@@ -35,24 +35,48 @@ LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6, "presenting_complaint": "Abdominal pain"}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
 
-HIGH_INTAKE = {**LOW_INTAKE, "pain_level": 9, "presenting_complaint": "Chest pain"}
+HIGH_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 9,
+    "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.4,
+    "heart_rate_bpm": 130,
+    "blood_pressure": {"systolic": 95, "diastolic": 58},
+    "oxygen_saturation_percent": 88,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 
-def register_patient(client: TestClient, full_name: str = "Ada Lovelace") -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -101,7 +125,7 @@ def queue_entries(client: TestClient) -> list[dict[str, Any]]:
 def test_a_clinical_user_sets_a_different_final_decision(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = override(clinical_client, encounter, final_decision="Low")
@@ -115,7 +139,7 @@ def test_a_clinical_user_sets_a_different_final_decision(
 def test_the_override_records_the_reason_and_who_performed_it(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = override(
@@ -138,7 +162,7 @@ def test_every_reason_from_the_fixed_set_is_accepted(
     clinical_client: TestClient,
     reason: str,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     payload: dict[str, Any] = {"reason": reason}
     if reason == "other":
@@ -153,7 +177,7 @@ def test_every_reason_from_the_fixed_set_is_accepted(
 def test_a_reason_outside_the_fixed_set_is_refused(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = override(
@@ -174,7 +198,7 @@ def test_a_reason_outside_the_fixed_set_is_refused(
 def test_an_override_without_a_reason_is_refused(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     body = {
@@ -197,7 +221,7 @@ def test_an_override_without_a_reason_is_refused(
 def test_free_text_is_accepted_only_for_the_other_reason(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     refused = override(
@@ -225,7 +249,7 @@ def test_free_text_is_accepted_only_for_the_other_reason(
 def test_an_override_must_actually_change_the_final_decision(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = override(clinical_client, encounter, final_decision="Medium")
@@ -241,7 +265,7 @@ def test_an_override_must_actually_change_the_final_decision(
 def test_a_departed_encounter_cannot_be_overridden(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     session_factory = clinical_client.app.state.session_factory
@@ -260,7 +284,7 @@ def test_a_departed_encounter_cannot_be_overridden(
 def test_only_the_governing_assessment_can_be_overridden(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     # Simulate what ticket 10 will do through its own route: append a second
@@ -300,7 +324,7 @@ def test_only_the_governing_assessment_can_be_overridden(
 def test_the_machine_recommendation_is_byte_identical_after_an_override(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
     before = clinical_client.get(
         f"/api/clinical/encounters/{encounter['id']}"
@@ -332,7 +356,7 @@ def test_the_machine_recommendation_is_byte_identical_after_an_override(
 def test_the_override_cannot_carry_a_machine_recommendation(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
 
     response = override(
@@ -353,9 +377,16 @@ def test_the_override_cannot_carry_a_machine_recommendation(
 def test_the_queue_reorders_immediately_on_an_override(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    low = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    medium = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE),
+        MEDIUM_INTAKE,
+    )
+    low = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Ada Lovelace", LOW_AGE),
+        LOW_INTAKE,
+    )
     assert [entry["encounter_id"] for entry in queue_entries(clinical_client)] == [
         medium["id"],
         low["id"],
@@ -381,7 +412,7 @@ def test_the_queue_reorders_immediately_on_an_override(
 def test_the_card_carries_an_override_flag_when_the_decisions_differ(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     (before,) = queue_entries(clinical_client)
@@ -399,7 +430,7 @@ def test_the_card_carries_an_override_flag_when_the_decisions_differ(
 def test_the_override_flag_is_its_own_state_name(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     override(clinical_client, encounter, final_decision="Low")
 

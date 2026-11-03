@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, the live Queue board, the
-Re-assessment, Override and Departure actions, and the read-only Administrator
-dashboard. The Prioritization Engine behind the board is a documented
-deterministic stub; the trained classifier and Reports arrive in later tickets.
+Triage Assessment record, Symptom Group recognition, a trained classifier behind
+the Prioritization Engine, the live Queue board, the Re-assessment, Override and
+Departure actions, and the read-only Administrator dashboard. The safety layer,
+the fallback, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -135,8 +135,10 @@ user; the card says "None recognised" when the complaint matched nothing.
 Recognition runs once, inside `create_triage_assessment`, and the result is
 frozen into the Assessment with the rest of its inputs. No groups is stored as
 an empty string, which is distinguishable from having recognised one. The
-Machine Recommendation is unchanged: the stub engine does not consume Symptom
-Groups, and ticket 06 owns that step.
+recognised groups are dimensions of the classifier's feature vector, so
+recognition feeds the recommendation; the shipped interim artefact gives them a
+zero coefficient only because its training source records no complaints, which
+the artefact declares under `training.constant_features`.
 
 The first `uv sync` downloads spaCy and the `en_core_web_sm` wheel from GitHub
 releases, so it needs network access.
@@ -148,17 +150,38 @@ taking a `PrioritisationInputs` and returning exactly one `UrgencyLevel`, with n
 session and no database. It is called directly by
 `backend/tests/test_prioritisation.py`.
 
-This ticket ships a **documented deterministic stub** at that boundary. In one
-paragraph: High if any single severe observation is present — oxygen saturation
-below 92%, heart rate outside 50–120, systolic pressure outside 90–179,
-temperature outside 35.0–38.9 °C, or pain 8 or more; otherwise Medium if any
-moderate observation is present — oxygen saturation below 95%, heart rate above
-100, systolic pressure below 100 or 160 and above, temperature 38.0 °C or above
-or below 36.0 °C, or pain 5 or more; otherwise Low. It ignores the complaint text,
-age, illness duration, and Symptom Groups. Ticket 06 replaces it with the trained
-classifier; tickets 07 and 08 add the safety layer and the fallback behind the
-same boundary. Symptom Group recognition is already captured and shown, but the
-stub does not read it.
+Since ticket 06 the boundary is backed by a **trained supervised classifier**, a
+multinomial logistic regression over a structured feature vector. The vector is
+built by `app.features.build_feature_vector` from recognised Symptom Groups,
+pain level, illness duration, age and the four vitals; the free-text complaint
+is never a feature. One definition of the vector serves both training and
+inference, so a model can never be trained on a different vector from the one it
+is asked to score.
+
+The artefact is `backend/models/urgency-classifier-v1.0.0.json` — standardisation
+constants, one coefficient row per Urgency Level, the dataset identity, the
+vocabulary version and the cross-validated scores, all in one small, readable
+file. Inference is a softmax over six non-zero coefficients per class (age and
+the five vital numbers): deterministic, microseconds, no I/O after the first
+call (the loader is cached), so the three-second budget is met many times over.
+
+Training data is the CC0 Harvard Dataverse three-level triage dataset
+(DOI 10.7910/DVN/7SOYC7). It is an **interim development artefact**: the source
+records no pain level, illness duration or complaint, so those dimensions carry
+a zero coefficient, and 5-fold accuracy (0.42) is below the majority-class
+baseline (0.53). The credentialed primary dataset the spec names supplies
+exactly those dimensions.
+Provenance, licences, the fetch command and the known gaps are in
+`backend/evaluation/datasets/README.md`; regenerate the artefact with:
+
+```powershell
+cd backend
+uv run python -m evaluation.train_classifier
+```
+
+Tickets 07 and 08 add the red-flag safety layer and the cached fallback behind
+the same boundary. Until the safety layer exists, a red-flag presentation that
+happens to have unremarkable vitals is not raised by the engine on its own.
 
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
@@ -515,7 +538,9 @@ backend/
     schemas.py         request/response models
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
-    prioritisation.py  Seam B: the pure Prioritization Engine (stub in ticket 03)
+    prioritisation.py  Seam B: the pure Prioritization Engine
+    features.py        the structured feature vector training and inference share
+    classifier.py      loads the JSON artefact; softmax inference, no database
     symptom_groups.py  the fixed vocabulary and spaCy recognition onto it
     symptom_groups.json  versioned Symptom Group vocabulary (authored list)
     assessments.py     captures inputs, runs the engine, appends the Assessment
@@ -533,6 +558,11 @@ backend/
       meta.py          the two Roles
       clinical.py      Patient registration, intake, Assessments, Queue
       administrator.py Administrator queue read model, Reports and access surface
+  evaluation/          rubric, labeller, corpus, dataset loaders and training
+    datasets/          provenance.json: sources, licences, checksums, rejection
+    triage_datasets.py dataset-agnostic loaders into TrainingEncounter rows
+    train_classifier.py trains, cross-validates and writes the artefact
+  models/              the committed classifier artefact (small JSON)
   tests/               API-level pytest suite (SQLite) and Seam B unit tests
 frontend/
   src/

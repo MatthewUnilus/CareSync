@@ -18,14 +18,17 @@ from app.departures import REASSESSMENT_DEPARTED_DETAIL
 from app.models import Encounter, TriageAssessment
 from app.overrides import NOT_GOVERNING_DETAIL
 
+# The shipped interim classifier separates these three presentations. Age is one
+# of its inputs and comes from the Patient, so a test that needs a particular
+# level registers the Patient with the fixture's age.
 LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
@@ -33,23 +36,37 @@ MEDIUM_INTAKE = {
     **LOW_INTAKE,
     "pain_level": 6,
     "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
 }
 
 HIGH_INTAKE = {
     **LOW_INTAKE,
     "pain_level": 9,
     "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.9,
+    "heart_rate_bpm": 140,
+    "blood_pressure": {"systolic": 90, "diastolic": 55},
+    "oxygen_saturation_percent": 86,
 }
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 
 def register_patient(
-    client: TestClient, full_name: str = "Ada Lovelace"
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
 ) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -115,28 +132,28 @@ def queue_entries(client: TestClient) -> list[dict[str, Any]]:
 def test_a_clinical_user_reassesses_an_awaiting_encounter(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
     first_id = encounter["assessment"]["id"]
 
-    response = reassess(clinical_client, encounter, MEDIUM_INTAKE)
+    response = reassess(clinical_client, encounter, HIGH_INTAKE)
 
     assert response.status_code == 201, response.text
     assessment = response.json()["assessment"]
     assert assessment["id"] != first_id
-    assert assessment["machine_recommendation"] == "Medium"
-    assert assessment["final_decision"] == "Medium"
+    assert assessment["machine_recommendation"] == "High"
+    assert assessment["final_decision"] == "High"
     assert assessment["supersedes_assessment_id"] == first_id
-    assert assessment["snapshot"] == {**MEDIUM_INTAKE, "age": 36}
+    assert assessment["snapshot"] == {**HIGH_INTAKE, "age": LOW_AGE}
     # The Encounter now carries the condition the Re-assessment captured, so
     # the card's vitals agree with the Assessment that governs it.
-    assert response.json()["intake"] == MEDIUM_INTAKE
+    assert response.json()["intake"] == HIGH_INTAKE
 
 
 def test_the_first_assessment_supersedes_nothing(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
 
     assert encounter["assessment"]["supersedes_assessment_id"] is None
@@ -145,7 +162,7 @@ def test_the_first_assessment_supersedes_nothing(
 def test_each_reassessment_links_to_the_assessment_it_superseded(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
     first_id = encounter["assessment"]["id"]
 
@@ -173,7 +190,7 @@ def test_each_reassessment_links_to_the_assessment_it_superseded(
 def test_earlier_assessments_remain_readable_with_their_overrides(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
     first_id = encounter["assessment"]["id"]
 
@@ -208,9 +225,16 @@ def test_the_most_recent_assessment_governs_the_queue_position(
     The Encounter must sit where the *latest* decision puts it. The old
     Override stays on Assessment A and has no say in the order.
     """
-    patient_id = register_patient(clinical_client)
-    high = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
+    high = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Alan Turing", HIGH_AGE),
+        HIGH_INTAKE,
+    )
+    medium = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE),
+        MEDIUM_INTAKE,
+    )
     assert [entry["encounter_id"] for entry in queue_entries(clinical_client)] == [
         high["id"],
         medium["id"],
@@ -252,7 +276,7 @@ def test_the_most_recent_assessment_governs_the_queue_position(
 def test_an_override_on_a_superseded_assessment_is_refused(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     superseded_id = encounter["assessment"]["id"]
 
@@ -272,7 +296,7 @@ def test_an_override_on_a_superseded_assessment_is_refused(
 def test_a_departed_encounter_cannot_be_reassessed(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     session_factory = clinical_client.app.state.session_factory
@@ -295,7 +319,7 @@ def test_a_departed_encounter_cannot_be_reassessed(
 def test_a_reassessment_validates_the_captured_inputs(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
 
     response = reassess(clinical_client, encounter, {**HIGH_INTAKE, "pain_level": 0})
@@ -323,7 +347,7 @@ def test_an_administrator_is_refused_a_reassessment(client: TestClient) -> None:
         json={"email": "clinical@example.com", "password": "clinical-password"},
     )
     assert clinical.status_code == 200
-    patient_id = register_patient(client)
+    patient_id = register_patient(client, age=LOW_AGE)
     encounter = open_encounter(client, patient_id, LOW_INTAKE)
     assert client.post("/api/auth/logout").status_code in (200, 204)
 
@@ -355,10 +379,21 @@ def test_nothing_reorders_without_an_explicit_action(
     clinical_client: TestClient,
 ) -> None:
     """Reading the Queue is not an action: only Re-assessment or Override moves it."""
-    patient_id = register_patient(clinical_client)
-    low = open_encounter(clinical_client, patient_id, LOW_INTAKE)
-    high = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
+    low = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Ada Lovelace", LOW_AGE),
+        LOW_INTAKE,
+    )
+    high = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Alan Turing", HIGH_AGE),
+        HIGH_INTAKE,
+    )
+    medium = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE),
+        MEDIUM_INTAKE,
+    )
 
     expected = [high["id"], medium["id"], low["id"]]
     for _ in range(3):
@@ -380,7 +415,7 @@ def test_nothing_reorders_without_an_explicit_action(
 def test_the_board_card_reflects_the_latest_assessment(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
     (before,) = queue_entries(clinical_client)
     assert before["urgency_level"] == "Low"
@@ -403,7 +438,7 @@ def test_a_reassessment_always_records_a_fresh_machine_recommendation(
     clinical_client: TestClient,
     intake: dict[str, Any],
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = reassess(clinical_client, encounter, intake)
@@ -411,13 +446,13 @@ def test_a_reassessment_always_records_a_fresh_machine_recommendation(
     assert response.status_code == 201, response.text
     assessment = response.json()["assessment"]
     assert assessment["final_decision"] == assessment["machine_recommendation"]
-    assert assessment["snapshot"] == {**intake, "age": 36}
+    assert assessment["snapshot"] == {**intake, "age": MEDIUM_AGE}
 
 
 def test_the_superseded_assessment_stays_frozen(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     first_id = encounter["assessment"]["id"]
 

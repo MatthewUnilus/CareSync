@@ -28,14 +28,36 @@ LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6, "presenting_complaint": "Abdominal pain"}
-HIGH_INTAKE = {**LOW_INTAKE, "pain_level": 9, "presenting_complaint": "Chest pain"}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
+HIGH_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 9,
+    "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.9,
+    "heart_rate_bpm": 140,
+    "blood_pressure": {"systolic": 90, "diastolic": 55},
+    "oxygen_saturation_percent": 86,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 DAY = date(2026, 3, 10)
 
@@ -48,12 +70,14 @@ def at(day: date, hour: int, minute: int = 0) -> datetime:
     )
 
 
-def register_patient(client: TestClient, full_name: str = "Ada Lovelace") -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -287,11 +311,26 @@ def test_daily_queue_defaults_to_the_servers_day(
 def test_priority_distribution_counts_one_governing_level_per_encounter(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
-    open_encounter(clinical_client, patient_id, LOW_INTAKE)
-    open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    reassessed = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    low_first = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Ada Lovelace", LOW_AGE),
+        LOW_INTAKE,
+    )
+    open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Alan Turing", HIGH_AGE),
+        HIGH_INTAKE,
+    )
+    medium = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE),
+        MEDIUM_INTAKE,
+    )
+    reassessed = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Katherine Johnson", LOW_AGE),
+        LOW_INTAKE,
+    )
 
     # A second Assessment governs the Encounter: its Final Decision is the one
     # counted, and the Encounter still counts once rather than twice.
@@ -420,7 +459,7 @@ def test_performance_is_empty_without_a_departure(
 def test_reports_follow_a_change_to_the_records_and_revert_with_them(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
     place_instants(
         clinical_client,

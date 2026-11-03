@@ -35,22 +35,36 @@ LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6, "presenting_complaint": "Abdominal pain"}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
 
 
-def register_patient(client: TestClient, full_name: str = "Ada Lovelace") -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -108,7 +122,7 @@ def stored_encounter(client: TestClient, encounter_id: int) -> Encounter:
 def test_a_clinical_user_departs_an_awaiting_encounter(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     assert encounter["status"] == "awaiting"
     assert encounter["departed_at"] is None
@@ -129,7 +143,7 @@ def test_a_clinical_user_departs_an_awaiting_encounter(
 def test_the_caller_never_supplies_the_departure_instant(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
     supplied = "2000-01-01T00:00:00+00:00"
 
@@ -144,9 +158,11 @@ def test_the_caller_never_supplies_the_departure_instant(
 def test_the_departed_encounter_leaves_the_awaiting_queue(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     departing = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    staying = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    staying = open_encounter(
+        clinical_client, register_patient(clinical_client, "Grace Hopper", LOW_AGE), LOW_INTAKE
+    )
 
     assert queue_ids(clinical_client) == [departing["id"], staying["id"]]
 
@@ -169,9 +185,11 @@ def test_a_departed_encounter_leaves_the_administrator_board_too(
         ).status_code
         == 200
     )
-    patient_id = register_patient(client)
+    patient_id = register_patient(client, age=MEDIUM_AGE)
     departing = open_encounter(client, patient_id, MEDIUM_INTAKE)
-    staying = open_encounter(client, patient_id, LOW_INTAKE)
+    staying = open_encounter(
+        client, register_patient(client, "Grace Hopper", LOW_AGE), LOW_INTAKE
+    )
     assert depart(client, departing["id"]).status_code == 200
     assert client.post("/api/auth/logout").status_code in (200, 204)
 
@@ -183,7 +201,7 @@ def test_a_departed_encounter_leaves_the_administrator_board_too(
 def test_a_departed_encounter_remains_readable_with_its_record(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     overridden = clinical_client.post(
         f"/api/clinical/encounters/{encounter['id']}/override",
@@ -217,7 +235,7 @@ def test_a_departed_encounter_remains_readable_with_its_record(
 def test_a_departed_encounter_cannot_be_overridden(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     assert depart(clinical_client, encounter["id"]).status_code == 200
 
@@ -246,7 +264,7 @@ def test_the_shared_guard_refuses_a_departed_encounter_for_reassessment(
     use: an action that needs an awaiting Encounter passes its own clear
     message and gets a ``409`` once the Encounter has departed.
     """
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
     assert depart(clinical_client, encounter["id"]).status_code == 200
 
@@ -262,7 +280,7 @@ def test_the_shared_guard_refuses_a_departed_encounter_for_reassessment(
 def test_an_already_departed_encounter_cannot_be_departed_again(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
     first = depart(clinical_client, encounter["id"])
     assert first.status_code == 200
@@ -285,7 +303,7 @@ def test_an_encounter_is_never_departed_on_the_systems_own_initiative(
     Encounter that arrived three days ago is still awaiting, with no departure
     instant invented for it, after several reads of the Queue.
     """
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     session_factory = clinical_client.app.state.session_factory
@@ -306,7 +324,7 @@ def test_an_encounter_is_never_departed_on_the_systems_own_initiative(
 def test_the_two_conditions_are_awaiting_and_departed(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
 
     assert detail(clinical_client, encounter["id"])["status"] == "awaiting"
@@ -342,7 +360,7 @@ def test_an_administrator_is_refused_a_departure(client: TestClient) -> None:
         ).status_code
         == 200
     )
-    patient_id = register_patient(client)
+    patient_id = register_patient(client, age=LOW_AGE)
     encounter = open_encounter(client, patient_id, LOW_INTAKE)
     assert client.post("/api/auth/logout").status_code in (200, 204)
     assert client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS).status_code == 200

@@ -17,28 +17,56 @@ ADMINISTRATOR_CREDENTIALS = {
     "password": "administrator-password",
 }
 
+# The shipped interim classifier separates these three presentations. Age is one
+# of its inputs and comes from the Patient, so each fixture carries the age the
+# Patient is registered with. The pain levels are recorded on the Assessment but
+# do not move this artefact; see README "Prioritization Engine and the Queue".
 LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6, "presenting_complaint": "Abdominal pain"}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
 
-HIGH_INTAKE = {**LOW_INTAKE, "pain_level": 9, "presenting_complaint": "Chest pain"}
+HIGH_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 9,
+    "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.4,
+    "heart_rate_bpm": 130,
+    "blood_pressure": {"systolic": 95, "diastolic": 58},
+    "oxygen_saturation_percent": 88,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 
-def register_patient(client: TestClient, full_name: str = "Ada Lovelace") -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -70,13 +98,15 @@ def queue_entries(client: TestClient) -> list[dict[str, Any]]:
 def test_the_queue_is_ordered_by_urgency_then_arrival(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    low_patient = register_patient(clinical_client, "Ada Lovelace", LOW_AGE)
+    medium_patient = register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE)
+    high_patient = register_patient(clinical_client, "Alan Turing", HIGH_AGE)
 
-    low = open_encounter(clinical_client, patient_id, LOW_INTAKE)
-    high_first = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
+    low = open_encounter(clinical_client, low_patient, LOW_INTAKE)
+    high_first = open_encounter(clinical_client, high_patient, HIGH_INTAKE)
+    medium = open_encounter(clinical_client, medium_patient, MEDIUM_INTAKE)
     high_second = open_encounter(
-        clinical_client, patient_id, {**HIGH_INTAKE, "pain_level": 10}
+        clinical_client, high_patient, {**HIGH_INTAKE, "pain_level": 10}
     )
 
     entries = queue_entries(clinical_client)
@@ -98,7 +128,7 @@ def test_the_queue_is_ordered_by_urgency_then_arrival(
 def test_equally_urgent_encounters_are_first_in_first_out(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     arrived = [
         open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)["id"]
         for _ in range(3)
@@ -112,9 +142,13 @@ def test_equally_urgent_encounters_are_first_in_first_out(
 def test_only_awaiting_encounters_appear_in_the_queue(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, "Alan Turing", HIGH_AGE)
     departed = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    awaiting = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    awaiting = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Ada Lovelace", LOW_AGE),
+        LOW_INTAKE,
+    )
 
     session_factory = clinical_client.app.state.session_factory
     with session_factory() as session:
@@ -131,7 +165,7 @@ def test_only_awaiting_encounters_appear_in_the_queue(
 def test_each_entry_carries_the_card_fields_the_board_renders(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
 
     response = clinical_client.get("/api/clinical/queue")
@@ -151,7 +185,7 @@ def test_each_entry_carries_the_card_fields_the_board_renders(
 def test_time_waiting_is_computed_from_arrival_at_read_time(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=LOW_AGE)
     encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
 
     (entry,) = queue_entries(clinical_client)
@@ -165,7 +199,7 @@ def test_time_waiting_is_computed_from_arrival_at_read_time(
 def test_the_final_decision_governs_the_queue_order(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     high = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
     medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
@@ -194,7 +228,7 @@ def test_the_final_decision_governs_the_queue_order(
 def test_the_per_encounter_detail_carries_its_assessment(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
     encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
 
     response = clinical_client.get(f"/api/clinical/encounters/{encounter['id']}")
@@ -202,7 +236,7 @@ def test_the_per_encounter_detail_carries_its_assessment(
     assert response.status_code == 200
     body = response.json()
     assert body["assessment"]["machine_recommendation"] == "Medium"
-    assert body["assessment"]["snapshot"] == {**MEDIUM_INTAKE, "age": 36}
+    assert body["assessment"]["snapshot"] == {**MEDIUM_INTAKE, "age": MEDIUM_AGE}
     assert body["intake"] == MEDIUM_INTAKE
 
 

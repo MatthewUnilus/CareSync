@@ -17,24 +17,48 @@ LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
 
-HIGH_INTAKE = {**LOW_INTAKE, "pain_level": 9}
+HIGH_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 9,
+    "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.4,
+    "heart_rate_bpm": 130,
+    "blood_pressure": {"systolic": 95, "diastolic": 58},
+    "oxygen_saturation_percent": 88,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 
-def register_patient(client: TestClient) -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
-            "full_name": "Ada Lovelace",
-            "age": 36,
+            "full_name": full_name,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": "ada@example.com",
@@ -58,37 +82,43 @@ def open_encounter(
 
 
 @pytest.mark.parametrize(
-    ("intake", "expected"),
+    ("intake", "age", "expected", "recognised"),
     [
-        (LOW_INTAKE, "Low"),
-        (MEDIUM_INTAKE, "Medium"),
-        (HIGH_INTAKE, "High"),
+        (LOW_INTAKE, LOW_AGE, "Low", "headache"),
+        (MEDIUM_INTAKE, MEDIUM_AGE, "Medium", "abdominal pain"),
+        (HIGH_INTAKE, HIGH_AGE, "High", "chest pain"),
     ],
 )
 def test_completing_intake_stores_the_machine_recommendation(
     clinical_client: TestClient,
     intake: dict[str, Any],
+    age: int,
     expected: str,
+    recognised: str,
 ) -> None:
-    body = open_encounter(clinical_client, register_patient(clinical_client), intake)
+    body = open_encounter(
+        clinical_client, register_patient(clinical_client, age=age), intake
+    )
 
     assessment = body["assessment"]
     assert assessment["machine_recommendation"] == expected
     assert assessment["final_decision"] == expected
-    # The complaint mentions a headache, so recognition now stores that group
-    # with the snapshot; the Urgency Levels above are still the stub's.
-    assert assessment["recognised_symptom_groups"] == ["headache"]
+    # Recognition is a separate input, captured with the snapshot; the
+    # recommendation above comes from the trained classifier.
+    assert assessment["recognised_symptom_groups"] == [recognised]
 
 
 def test_the_assessment_captures_an_immutable_snapshot_of_the_inputs(
     clinical_client: TestClient,
 ) -> None:
     body = open_encounter(
-        clinical_client, register_patient(clinical_client), HIGH_INTAKE
+        clinical_client,
+        register_patient(clinical_client, age=HIGH_AGE),
+        HIGH_INTAKE,
     )
 
     snapshot = body["assessment"]["snapshot"]
-    assert snapshot == {**HIGH_INTAKE, "age": 36}
+    assert snapshot == {**HIGH_INTAKE, "age": HIGH_AGE}
 
 
 def test_intake_cannot_be_corrected_once_an_assessment_exists(
