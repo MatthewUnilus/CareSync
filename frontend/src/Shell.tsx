@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 
 import { api, ApiError } from "./api";
 import type { CurrentUser, Role } from "./api";
-import IntakeScreen from "./IntakeScreen";
+import ClinicalWorkspace from "./ClinicalWorkspace";
 
 interface ShellProps {
   user: CurrentUser;
@@ -93,7 +93,7 @@ export default function Shell({ user, onLogout }: ShellProps) {
 
       <main className="shell-main">
         {user.role === "clinical" ? (
-          <IntakeScreen />
+          <ClinicalWorkspace />
         ) : (
           <>
             <section className="card">
