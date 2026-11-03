@@ -1,9 +1,10 @@
-"""Creating the Triage Assessment that completing intake produces.
+"""Creating Triage Assessments from an Encounter's captured intake.
 
 Intake is complete as soon as an Encounter exists (ticket 02), so opening an
-Encounter creates its first Assessment in the same transaction. The
-recommendation comes from Seam B (``app.prioritisation``); this module is the
-only place that bridges a stored Encounter to those pure inputs.
+Encounter creates its first Assessment in the same transaction. A Re-assessment
+(ticket 10) reuses this factory to append a later one. The recommendation comes
+from Seam B (``app.prioritisation``); this module is the only place that bridges
+a stored Encounter to those pure inputs.
 """
 
 from sqlalchemy.orm import Session
@@ -35,9 +36,17 @@ def build_inputs(encounter: Encounter) -> PrioritisationInputs:
 
 
 def create_triage_assessment(
-    session: Session, encounter: Encounter
+    session: Session,
+    encounter: Encounter,
+    *,
+    supersedes: TriageAssessment | None = None,
 ) -> TriageAssessment:
-    """Run the engine once and append the resulting Assessment."""
+    """Run the engine once and append the resulting Assessment.
+
+    ``supersedes`` is set only by a Re-assessment: it records the Assessment
+    that was governing the Encounter until this one was created. Opening an
+    Encounter passes nothing, so a first Assessment supersedes no one.
+    """
     inputs = build_inputs(encounter)
     recommendation = recommend(inputs)
 
@@ -55,9 +64,12 @@ def create_triage_assessment(
         notes=encounter.notes,
         recognised_symptom_groups=",".join(inputs.recognised_symptom_groups),
         machine_recommendation=recommendation.value,
-        # No Override exists in this ticket, so the Final Decision starts equal
-        # to the Machine Recommendation. Ticket 09 changes only this field.
+        # No Override exists at this point, so the Final Decision starts equal
+        # to the Machine Recommendation. An Override changes only this field.
         final_decision=recommendation.value,
+        supersedes_assessment_id=(
+            supersedes.id if supersedes is not None else None
+        ),
     )
     session.add(assessment)
     return assessment

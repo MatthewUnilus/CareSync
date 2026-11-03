@@ -68,7 +68,10 @@ export interface Encounter {
   status: "awaiting" | "departed";
   patient: Patient;
   intake: Intake;
+  /** The governing (most recent) Assessment. */
   assessment: Assessment | null;
+  /** Every Assessment, oldest first. Earlier ones keep their Overrides. */
+  assessments: Assessment[];
 }
 
 export interface AssessmentSnapshot {
@@ -101,6 +104,11 @@ export interface Assessment {
   recognised_symptom_groups: string[];
   override: OverrideRecord | null;
   snapshot: AssessmentSnapshot;
+  /**
+   * Set by a Re-assessment: the governing Assessment this one replaced.
+   * Null on the first Assessment, so the sequence is reconstructable.
+   */
+  supersedes_assessment_id: number | null;
 }
 
 export interface QueueEntry {
@@ -292,6 +300,20 @@ export const api = {
     request<Encounter>(`/api/clinical/encounters/${encounterId}/departure`, {
       method: "POST",
     }),
+  /*
+   * Re-assessment captures the Encounter's current intake and appends a new
+   * Assessment. It is only ever sent from an explicit Clinical action; the
+   * queue reorders on the next read because it sorts on the latest Final
+   * Decision.
+   */
+  reassessEncounter: (encounterId: number, intake: Intake) =>
+    requestDetailed<Encounter>(
+      `/api/clinical/encounters/${encounterId}/reassessment`,
+      {
+        method: "POST",
+        body: JSON.stringify(intake),
+      },
+    ),
   administratorQueue: () =>
     request<AdministratorQueueSnapshot>("/api/administrator/queue"),
   /*

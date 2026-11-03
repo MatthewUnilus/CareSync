@@ -7,9 +7,9 @@ recommendation, leaving the final decision with clinical staff.
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
 Triage Assessment record, Symptom Group recognition, the live Queue board, the
-Override and Departure actions, and the read-only Administrator dashboard. The
-Prioritization Engine behind the board is a documented deterministic stub; the
-trained classifier, Re-assessment, and Reports arrive in later tickets.
+Re-assessment, Override and Departure actions, and the read-only Administrator
+dashboard. The Prioritization Engine behind the board is a documented
+deterministic stub; the trained classifier and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -111,7 +111,9 @@ afterwards; the Encounter itself is never updated, only its intake. Intake is
 complete as soon as the Encounter exists, so opening an Encounter also creates
 its first Triage Assessment in the same transaction. A later correction attempt
 therefore returns `409 Conflict`: the Assessment's snapshot is the durable record
-of what the recommendation was made from. See `backend/app/intake.py`.
+of what the recommendation was made from. To capture a changed condition, use a
+Re-assessment (below), which appends a new Assessment instead of rewriting an
+old one. See `backend/app/intake.py`.
 
 ## Symptom Groups
 
@@ -162,16 +164,17 @@ The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
 are first-in-first-out. The level that governs is the latest Triage Assessment's
 Final Decision, which starts equal to the Machine Recommendation and moves only
-through an Override. An Encounter is awaiting while `departed_at` is null and
-departed once its Departure instant is set; those two are the only conditions in
-scope. `waiting_seconds` is derived from `arrived_at` at read time.
+through an Override or a Re-assessment. An Encounter is awaiting while
+`departed_at` is null and departed once its Departure instant is set; those two
+are the only conditions in scope. `waiting_seconds` is derived from `arrived_at`
+at read time.
 
 The client polls `GET /api/clinical/queue` every five seconds and on window
 focus, so a change to a Final Decision or a Departure appears without a manual
 refresh. `QueueBoard.tsx` renders compact cards — urgency colour, Patient name,
 short complaint, time waiting — and expands to the full vitals, pain level,
-duration, the Symptom Groups recognised from the complaint, notes, the Override
-form, and the Depart action.
+duration, the Symptom Groups recognised from the complaint, notes, the
+Re-assessment form, the Override form, and the Depart action.
 
 ## Mobile client
 
@@ -320,9 +323,41 @@ a second column, so the condition and the instant cannot disagree. A departed
 Encounter is still readable in full — Patient, intake, Triage Assessments and
 Overrides — through `GET /api/clinical/encounters/{id}`, and it stays in the
 recency list. Clinical actions that need an awaiting Encounter are refused with
-`409`: an Override says so in its own terms, and Re-assessment (ticket 10) will
-use the same shared guard. Departing twice is refused with `409` and does not
+`409`: both an Override and a Re-assessment say so in their own terms through
+the same shared guard. Departing twice is refused with `409` and does not
 overwrite the first instant.
+
+## Re-assessment
+
+A Clinical user may ask for a fresh Triage Assessment on an awaiting Encounter:
+
+```http
+POST /api/clinical/encounters/{id}/reassessment
+{
+  "presenting_complaint": "Chest pain, worse on exertion",
+  "pain_level": 9,
+  ...
+}
+```
+
+The request carries the intake captured now — the Encounter's condition may have
+changed — and the server appends a new Assessment with its own Machine
+Recommendation. Re-assessment is manual only: there is no timer, scheduled
+re-evaluation, time-based escalation or background job, and reading the Queue
+never creates an Assessment.
+
+The new row records `supersedes_assessment_id`, the Assessment that was
+governing until it arrived, so the whole sequence is reconstructable from the
+rows. Nothing earlier is edited: every previous Assessment keeps its snapshot,
+its Machine Recommendation and its Overrides. `GET /api/clinical/encounters/{id}`
+returns `assessment` (the governing, most recent one) alongside `assessments`
+(the history, oldest first).
+
+The Queue sorts on the **latest** Assessment's Final Decision. So if Assessment A
+was Overridden to Low and a Re-assessment then recommends High, the Encounter
+sits where that new decision puts it, not where the old Override did. An Override
+on a superseded Assessment is refused with `409`, because only the governing
+Assessment can move the Encounter.
 
 ## Administrator dashboard
 
@@ -437,6 +472,7 @@ also read.
 | GET    | `/api/clinical/override-reasons`        | Clinical      |
 | POST   | `/api/clinical/encounters/{id}/override` | Clinical     |
 | POST   | `/api/clinical/encounters/{id}/departure` | Clinical    |
+| POST   | `/api/clinical/encounters/{id}/reassessment` | Clinical |
 | GET    | `/api/administrator/access`             | Administrator |
 | GET    | `/api/administrator/queue`              | Administrator |
 | GET    | `/api/administrator/reports/daily-queue` | Administrator |
@@ -486,6 +522,7 @@ backend/
     override_reasons.py  the fixed Override Reason set (one source of truth)
     overrides.py       performing an Override and its guards
     departures.py      performing a Departure and the awaiting-Encounter guard
+    reassessments.py   performing a Re-assessment and recording supersession
     queue.py           the Queue as a sort over awaiting Encounters
     reports.py         read-only Reports derived on demand from stored records
     security.py        argon2 hashing, session token hashing
