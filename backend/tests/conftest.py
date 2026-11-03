@@ -29,6 +29,17 @@ def client(settings: Settings) -> Iterator[TestClient]:
 
 
 @pytest.fixture
+def clinical_client(client: TestClient) -> TestClient:
+    """A client with an authenticated Clinical session."""
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "clinical@example.com", "password": "clinical-password"},
+    )
+    assert response.status_code == 200
+    return client
+
+
+@pytest.fixture
 def short_session_client(db_path: Path) -> Iterator[TestClient]:
     settings = Settings(
         database_url=f"sqlite:///{db_path.as_posix()}",
