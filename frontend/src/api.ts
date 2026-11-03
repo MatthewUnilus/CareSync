@@ -188,6 +188,17 @@ export interface PerformanceReport {
 
 export type AccuracyFallbackMode = "fallback-disabled" | "fallback-enabled";
 
+/** Where the run's matrix came from: stored Assessments or the offline artefact. */
+export type AccuracyRunSource = "assessments" | "harness";
+
+export interface AccuracyMajorityBaseline {
+  majority_class: UrgencyLevel;
+  accuracy: number;
+  /** Negative when the model is worse than always predicting the commonest label. */
+  model_minus_baseline: number;
+  beats_baseline: boolean;
+}
+
 export interface AccuracyGroundTruthSource {
   name: string;
   version: string;
@@ -236,6 +247,11 @@ export interface AccuracyFallbackCoverage {
 
 export interface AccuracyRun {
   run_id: string;
+  /** The producer's own mode: cross_validated, pipeline or assessment. */
+  run_mode: string;
+  source: AccuracyRunSource;
+  /** The first available run is primary; for a harness artefact it is cross-validated. */
+  primary: boolean;
   mode: AccuracyFallbackMode;
   dataset: string | null;
   engine_artefact: string | null;
@@ -246,6 +262,8 @@ export interface AccuracyRun {
   total: number;
   correct: number;
   accuracy: number | null;
+  macro_f1: number | null;
+  majority_baseline: AccuracyMajorityBaseline | null;
   false_high_priority: AccuracyPriorityErrorRate;
   false_low_priority: AccuracyPriorityErrorRate;
   fallback: AccuracyFallbackCoverage;

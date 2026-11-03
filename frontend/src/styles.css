@@ -840,6 +840,28 @@ textarea:focus {
   color: var(--administrator);
 }
 
+.accuracy-primary {
+  margin-left: 0.5rem;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.accuracy-baseline-above {
+  color: var(--success);
+}
+
+.accuracy-baseline-below {
+  color: #a63a2b;
+  font-weight: 700;
+}
+
 .accuracy-stats dd {
   font-size: 1.9rem;
 }

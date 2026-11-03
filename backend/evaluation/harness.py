@@ -71,19 +71,13 @@ from app.prioritisation import (
 from app.red_flags import apply_safety_layer
 from app.symptom_groups import recognise, vocabulary
 from evaluation import triage_datasets as datasets
+from evaluation.artefact import HARNESS_VERSION, RESULTS_PATH, SCHEMA_VERSION
 from evaluation.corpus import CORPUS_PATH, Corpus, load_corpus
 from evaluation.generator import LabelledEncounter
 from evaluation.triage_datasets import DatasetIdentity, TrainingEncounter
 from evaluation.train_classifier import DEFAULT_SEED, build_estimator
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
-RESULTS_PATH = (
-    Path(__file__).resolve().parent
-    / "results"
-    / "accuracy-evaluation-v1.0.0.json"
-)
-SCHEMA_VERSION = 1
-HARNESS_VERSION = "evaluation-harness-v1.0.0"
 PRIMARY_FOLDS = 5
 PRIMARY_SEED = DEFAULT_SEED
 

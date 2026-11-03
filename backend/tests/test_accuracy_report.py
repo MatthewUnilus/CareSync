@@ -23,6 +23,7 @@ from app import accuracy
 from app.models import Encounter, Override, Patient, TriageAssessment, User
 from app.override_reasons import OverrideReason
 from app.prioritisation import UrgencyLevel
+from evaluation.artefact import RESULTS_PATH
 
 ADMINISTRATOR_CREDENTIALS = {
     "email": "administrator@example.com",
@@ -712,3 +713,404 @@ def test_precision_is_null_when_a_level_was_never_predicted(
     assert low.precision is None
     # No case had ground truth Low either, so recall has no denominator.
     assert low.recall is None
+
+def _harness_run(
+    run_id: str,
+    *,
+    run_mode: str = "pipeline",
+    fallback: str = "disabled",
+    total: int,
+    rows: list[list[int]],
+    per_class: dict[str, dict[str, float | int]],
+    accuracy: float,
+    macro_f1: float,
+    baseline_class: str,
+    baseline_accuracy: float,
+    model_minus_baseline: float,
+    beats_baseline: bool,
+    false_high: dict[str, Any],
+    false_low: dict[str, Any],
+    coverage: dict[str, Any] | None = None,
+    predictions: list[dict[str, Any]] | None = None,
+    dataset_kind: str = "rubric_labelled_synthetic_corpus",
+) -> dict[str, Any]:
+    if dataset_kind == "published_triage_dataset":
+        dataset: dict[str, Any] = {
+            "kind": dataset_kind,
+            "encounter_count": total,
+            "source_ids": ["hoseini-2022-triage-levels"],
+            "sources": [
+                {
+                    "source_id": "hoseini-2022-triage-levels",
+                    "citation": "Hoseini (2022), Harvard Dataverse.",
+                }
+            ],
+        }
+        ground_truth: dict[str, Any] = {
+            "kind": "published_triage_level",
+            "label_source": "the published source's own triage category",
+        }
+    else:
+        dataset = {
+            "kind": dataset_kind,
+            "path": "evaluation/corpus/esi-v4-rubric-v1.0.0.json",
+            "rubric_version": "esi-v4-rubric-v1.0.0",
+            "encounter_count": total,
+        }
+        ground_truth = {
+            "kind": "esi_v4_rubric",
+            "rubric_version": "esi-v4-rubric-v1.0.0",
+            "rubric_citation": "Gilboy et al., ESI v4 Implementation Handbook, AHRQ 12-0014.",
+            "rubric_document": "evaluation/RUBRIC.md",
+        }
+
+    run: dict[str, Any] = {
+        "id": run_id,
+        "mode": run_mode,
+        "fallback": fallback,
+        "dataset": dataset,
+        "ground_truth": ground_truth,
+        "engine_artefact": {"artefact_version": "urgency-classifier-v1.0.0"},
+        "metrics": {
+            "encounter_count": total,
+            "accuracy": accuracy,
+            "macro_f1": macro_f1,
+            "majority_baseline": {
+                "class": baseline_class,
+                "accuracy": baseline_accuracy,
+                "model_minus_baseline": model_minus_baseline,
+                "beats_baseline": beats_baseline,
+            },
+            "confusion_matrix": {
+                "labels": ["High", "Medium", "Low"],
+                "rows": rows,
+            },
+            "per_class": per_class,
+            "false_high_priority": false_high,
+            "false_low_priority": false_low,
+        },
+    }
+    if coverage is not None:
+        run["coverage"] = coverage
+    if predictions is not None:
+        run["predictions"] = predictions
+    return run
+
+
+def _three_run_fixture() -> dict[str, Any]:
+    return {
+        "schema_version": accuracy.MANIFEST_SCHEMA_VERSION,
+        "harness_version": "evaluation-harness-v1.0.0",
+        "class_order": ["High", "Medium", "Low"],
+        "runs": [
+            _harness_run(
+                "cross_validated",
+                run_mode="cross_validated",
+                total=3,
+                rows=[[2, 0, 0], [1, 0, 0], [0, 0, 0]],
+                per_class={
+                    "High": {"precision": 2 / 3, "recall": 1.0, "f1": 0.8, "support": 2},
+                    "Medium": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 1},
+                    "Low": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0},
+                },
+                accuracy=2 / 3,
+                macro_f1=0.5,
+                baseline_class="High",
+                baseline_accuracy=2 / 3,
+                model_minus_baseline=0.0,
+                beats_baseline=False,
+                false_high={"count": 0, "denominator": 1, "rate": 0.0},
+                false_low={"count": 0, "denominator": 2, "rate": 0.0},
+                dataset_kind="published_triage_dataset",
+            ),
+            _harness_run(
+                "pipeline",
+                total=2,
+                rows=[[1, 1, 0], [0, 0, 0], [0, 0, 0]],
+                per_class={
+                    "High": {"precision": 0.5, "recall": 0.5, "f1": 0.5, "support": 2},
+                    "Medium": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0},
+                    "Low": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0},
+                },
+                accuracy=0.5,
+                macro_f1=1 / 6,
+                baseline_class="High",
+                baseline_accuracy=1.0,
+                model_minus_baseline=-0.5,
+                beats_baseline=False,
+                false_high={"count": 0, "denominator": 0, "rate": 0.0},
+                false_low={"count": 1, "denominator": 2, "rate": 0.5},
+                predictions=[
+                    {"encounter_id": "syn-001", "fallback_used": False, "unclassified": False},
+                    {"encounter_id": "syn-002", "fallback_used": False, "unclassified": False},
+                ],
+            ),
+            _harness_run(
+                "pipeline_fallback_enabled",
+                fallback="enabled",
+                total=2,
+                rows=[[1, 0, 0], [0, 0, 0], [0, 0, 1]],
+                per_class={
+                    "High": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 1},
+                    "Medium": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0},
+                    "Low": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 1},
+                },
+                accuracy=1.0,
+                macro_f1=2 / 3,
+                baseline_class="High",
+                baseline_accuracy=0.5,
+                model_minus_baseline=0.5,
+                beats_baseline=True,
+                false_high={"count": 0, "denominator": 1, "rate": 0.0},
+                false_low={"count": 0, "denominator": 1, "rate": 0.0},
+                coverage={
+                    "encounters": 2,
+                    "fallback_used": 1,
+                    "rate": 0.5,
+                    "unclassified": 1,
+                    "unclassified_rate": 0.5,
+                },
+                predictions=[
+                    {"encounter_id": "syn-001", "fallback_used": True, "unclassified": True},
+                    {"encounter_id": "syn-002", "fallback_used": False, "unclassified": False},
+                ],
+            ),
+        ],
+    }
+
+
+def test_a_fixture_artefact_with_all_three_runs_parses_into_the_expected_payload(
+    client: TestClient, run_path: Path
+) -> None:
+    write_manifest(run_path, _three_run_fixture())
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is True
+    assert [run["run_id"] for run in payload["runs"]] == [
+        "cross_validated",
+        "pipeline",
+        "pipeline_fallback_enabled",
+    ]
+    assert [run["primary"] for run in payload["runs"]] == [True, False, False]
+    assert {run["source"] for run in payload["runs"]} == {"harness"}
+    assert [run["run_mode"] for run in payload["runs"]] == [
+        "cross_validated",
+        "pipeline",
+        "pipeline",
+    ]
+    assert [run["mode"] for run in payload["runs"]] == [
+        "fallback-disabled",
+        "fallback-disabled",
+        "fallback-enabled",
+    ]
+
+    cross = payload["runs"][0]
+    assert cross["total"] == 3
+    assert cross["accuracy"] == pytest.approx(2 / 3)
+    assert cross["majority_baseline"]["majority_class"] == "High"
+    assert cross["majority_baseline"]["beats_baseline"] is False
+    assert cross["fallback"]["coverage"] is None
+
+    pipeline = payload["runs"][1]
+    assert pipeline["total"] == 2
+    assert pipeline["sample"]["labelled_cases"] == 2
+    assert pipeline["sample"]["resolved_assessments"] == 2
+    assert {
+        (cell["machine_recommendation"], cell["ground_truth"]): cell["assessments"]
+        for cell in pipeline["confusion_matrix"]
+    } == {
+        ("High", "High"): 1,
+        ("High", "Medium"): 0,
+        ("High", "Low"): 0,
+        ("Medium", "High"): 1,
+        ("Medium", "Medium"): 0,
+        ("Medium", "Low"): 0,
+        ("Low", "High"): 0,
+        ("Low", "Medium"): 0,
+        ("Low", "Low"): 0,
+    }
+
+    fallback = payload["runs"][2]
+    assert fallback["fallback"]["enabled"] is True
+    assert fallback["fallback"]["fallback_used"] == 1
+    assert fallback["fallback"]["unclassified"] == 1
+    assert fallback["fallback"]["coverage"] == pytest.approx(0.5)
+    assert fallback["fallback"]["unclassified_rate"] == pytest.approx(0.5)
+
+
+def test_the_committed_harness_artefact_is_consumed_as_is(client: TestClient) -> None:
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is True
+    assert [run["run_id"] for run in payload["runs"]] == [
+        "cross_validated",
+        "pipeline",
+        "pipeline_fallback_enabled",
+    ]
+    cross, pipeline, fallback = payload["runs"]
+
+    assert cross["primary"] is True
+    assert cross["source"] == "harness"
+    assert cross["total"] == 2205
+    assert cross["accuracy"] == pytest.approx(0.422222222222)
+    assert cross["macro_f1"] == pytest.approx(0.358416574537)
+    assert cross["majority_baseline"]["accuracy"] == pytest.approx(0.533333333333)
+    assert cross["majority_baseline"]["model_minus_baseline"] == pytest.approx(-0.111111111111)
+    assert cross["majority_baseline"]["beats_baseline"] is False
+
+    assert pipeline["total"] == 27
+    assert pipeline["sample"]["labelled_cases"] == 27
+    assert pipeline["sample"]["resolved_assessments"] == 27
+    assert pipeline["accuracy"] == pytest.approx(0.592592592593)
+    assert pipeline["fallback"]["coverage"] is None
+
+    assert fallback["total"] == 27
+    assert fallback["accuracy"] == pytest.approx(0.481481481481)
+    assert fallback["majority_baseline"]["model_minus_baseline"] == pytest.approx(-0.074074074074)
+    assert fallback["majority_baseline"]["beats_baseline"] is False
+    assert fallback["fallback"]["coverage"] == pytest.approx(0.37037037037)
+    assert fallback["fallback"]["fallback_used"] == 10
+    assert fallback["fallback"]["unclassified"] == 10
+    assert fallback["fallback"]["unclassified_rate"] == pytest.approx(0.37037037037)
+
+
+def test_the_harness_schema_contract_is_pinned() -> None:
+    raw = json.loads(RESULTS_PATH.read_text(encoding="utf-8"))
+
+    known_run_fields = accuracy.HARNESS_RUN_FIELDS | accuracy.HARNESS_OPTIONAL_RUN_FIELDS
+    for run in raw["runs"]:
+        assert accuracy.HARNESS_RUN_FIELDS <= set(run)
+        assert set(run) <= known_run_fields, (
+            "the harness added a run field the consumer does not read: "
+            f"{sorted(set(run) - known_run_fields)}"
+        )
+        assert set(run["metrics"]) == accuracy.HARNESS_METRIC_FIELDS
+
+    # The consumer's parser must accept the committed document unchanged.
+    assert accuracy.load_run_bundle(RESULTS_PATH) is not None
+
+
+def test_a_malformed_harness_artefact_is_an_explicit_refusal(
+    client: TestClient, run_path: Path
+) -> None:
+    run_path.write_text("{ this is not json", encoding="utf-8")
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is False
+    assert payload["runs"] == []
+    assert "could not be read" in payload["empty_reason"]
+
+
+def test_a_harness_schema_version_mismatch_is_an_explicit_refusal(
+    client: TestClient, run_path: Path
+) -> None:
+    document = _three_run_fixture()
+    document["schema_version"] = 99
+    write_manifest(run_path, document)
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is False
+    assert payload["runs"] == []
+    assert "schema_version must be 1" in payload["empty_reason"]
+
+
+def test_a_harness_run_missing_a_metric_is_an_explicit_refusal(
+    client: TestClient, run_path: Path
+) -> None:
+    document = _three_run_fixture()
+    del document["runs"][0]["metrics"]["per_class"]
+    write_manifest(run_path, document)
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is False
+    assert payload["runs"] == []
+    assert "per_class" in payload["empty_reason"]
+
+
+def test_a_missing_artefact_is_an_explicit_empty_state(
+    client: TestClient, run_path: Path
+) -> None:
+    # run_path is deliberately never written.
+    login_as_administrator(client)
+
+    payload = fetch_report(client)
+
+    assert payload["available"] is False
+    assert payload["runs"] == []
+    assert "No evaluation run" in payload["empty_reason"]
+
+
+def test_harness_metrics_do_not_move_while_overrides_still_come_from_stored_rows(
+    client: TestClient, session, run_path: Path
+) -> None:
+    write_manifest(run_path, _three_run_fixture())
+    first = seed_assessment(session, machine_recommendation="High")
+    second = seed_assessment(session, machine_recommendation="Medium")
+    seed_assessment(session, machine_recommendation="Low")
+    seed_override(session, first, OverrideReason.clinical_gestalt)
+    session.commit()
+
+    login_as_administrator(client)
+    before = fetch_report(client)
+
+    # The harness runs are database-free: their matrix is exactly the fixture's.
+    assert before["runs"][1]["total"] == 2
+    assert [cell["assessments"] for cell in before["runs"][1]["confusion_matrix"]] == [
+        1, 0, 0,
+        1, 0, 0,
+        0, 0, 0,
+    ]
+    assert before["overrides"]["assessments"] == 3
+    assert before["overrides"]["overridden_assessments"] == 1
+    assert before["overrides"]["rate"] == pytest.approx(1 / 3)
+
+    # A real Override changes the stored rows and the Override figures. It must
+    # not change the reproducible harness matrix by a single cell.
+    second.final_decision = "High"
+    seed_override(session, second, OverrideReason.other)
+    session.commit()
+
+    after = fetch_report(client)
+
+    assert after["runs"][1]["confusion_matrix"] == before["runs"][1]["confusion_matrix"]
+    assert after["overrides"]["assessments"] == 3
+    assert after["overrides"]["overridden_assessments"] == 2
+    assert after["overrides"]["overrides"] == 2
+    assert after["overrides"]["rate"] == pytest.approx(2 / 3)
+    assert next(
+        item for item in after["overrides"]["reasons"]
+        if item["reason"] == OverrideReason.other.value
+    )["overrides"] == 1
+
+def test_the_legacy_manifest_takes_precedence_but_an_explicit_path_wins(
+    monkeypatch, tmp_path: Path
+) -> None:
+    legacy_path = tmp_path / "accuracy-evaluation.json"
+    harness_path = tmp_path / "accuracy-evaluation-v1.0.0.json"
+    write_manifest(
+        legacy_path,
+        manifest(make_run([case_for_missing(1, "High")])),
+    )
+    write_manifest(harness_path, _three_run_fixture())
+    monkeypatch.setattr(accuracy, "LEGACY_MANIFEST_PATH", legacy_path)
+    monkeypatch.setattr(accuracy, "RESULTS_PATH", harness_path)
+
+    default = accuracy.load_configured_bundle(None)
+    assert default is not None
+    assert isinstance(default.runs[0], accuracy.EvaluationRun)
+    assert default.runs[0].run_id == "run"
+
+    explicit = accuracy.load_configured_bundle(harness_path)
+    assert explicit is not None
+    assert isinstance(explicit.runs[0], accuracy.HarnessRun)
+    assert explicit.runs[0].run_id == "cross_validated"
