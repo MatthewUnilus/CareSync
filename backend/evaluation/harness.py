@@ -72,6 +72,7 @@ from app.red_flags import apply_safety_layer
 from app.symptom_groups import recognise, vocabulary
 from evaluation import triage_datasets as datasets
 from evaluation.corpus import CORPUS_PATH, Corpus, load_corpus
+from evaluation.generator import LabelledEncounter
 from evaluation.triage_datasets import DatasetIdentity, TrainingEncounter
 from evaluation.train_classifier import DEFAULT_SEED, build_estimator
 
@@ -92,13 +93,6 @@ CLASS_ORDER: tuple[str, ...] = (
     UrgencyLevel.medium.value,
     UrgencyLevel.low.value,
 )
-
-#: The published source's three-level triage category, as its adapter reads it.
-PUBLISHED_LABEL_MAPPING: dict[str, str] = {
-    "1": UrgencyLevel.high.value,
-    "2": UrgencyLevel.medium.value,
-    "3": UrgencyLevel.low.value,
-}
 
 METRIC_DEFINITIONS: dict[str, str] = {
     "accuracy": "correct Machine Recommendations divided by scored Encounters",
@@ -342,7 +336,7 @@ def prioritisation_inputs_from_features(
     )
 
 
-def pipeline_inputs(encounter) -> PrioritisationInputs:
+def pipeline_inputs(encounter: LabelledEncounter) -> PrioritisationInputs:
     """Build exactly the intake inputs the product would pass to the engine."""
     intake = encounter.intake
     return PrioritisationInputs(
@@ -509,7 +503,19 @@ def _published_dataset_identity(
     }
 
 
-def _published_ground_truth() -> dict[str, object]:
+def _published_ground_truth(
+    sources: Sequence[DatasetIdentity],
+) -> dict[str, object]:
+    wanted = {source.source_id for source in sources}
+    mapping: dict[str, str] = {}
+    for source in datasets.provenance()["sources"]:
+        if source["source_id"] in wanted and source.get("label_mapping"):
+            mapping.update(
+                {
+                    str(key): str(value)
+                    for key, value in source["label_mapping"].items()
+                }
+            )
     return {
         "kind": "published_triage_level",
         "rubric_version": None,
@@ -517,7 +523,7 @@ def _published_ground_truth() -> dict[str, object]:
         "label_source": (
             "the published source's own three-level triage category"
         ),
-        "mapping": dict(PUBLISHED_LABEL_MAPPING),
+        "mapping": mapping,
         "note": (
             "the ESI rubric is not applicable to this run: the published "
             "dataset does not supply the presentation fields the rubric needs"
@@ -629,7 +635,7 @@ def build_evidence(
         ),
         "fallback": "disabled",
         "dataset": _published_dataset_identity(records, sources),
-        "ground_truth": _published_ground_truth(),
+        "ground_truth": _published_ground_truth(sources),
         "procedure": _published_procedure(folds, seed),
         "engine_artefact": _run_engine_identity(
             engine,
