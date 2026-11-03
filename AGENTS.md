@@ -1,0 +1,11 @@
+# AGENTS
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the root plus `docs/adr/`. See `docs/agents/domain.md`.

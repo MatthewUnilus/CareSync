@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# Native shells
+android/
+ios/
+*.keystore
+
+# Local data and models
+*.db
+*.sqlite3
+data/
+models/artifacts/
+.env
+.env.*
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:physionet.org)",
+      "WebFetch(domain:duckduckgo.com)",
+      "Bash(pip show:*)",
+      "Read(//c/Users/matth/**)",
+      "WebFetch(domain:html.duckduckgo.com)",
+      "Bash(curl -sL https://www.kaggle.com/api/v1/datasets/list?search=triage+ESi+emergency)",
+      "Bash(curl -sL https://www.kaggle.com/api/v1/datasets/list?search=emergency+department+triage+acuity)"
+    ]
+  }
+}
