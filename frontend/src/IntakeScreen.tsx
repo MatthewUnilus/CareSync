@@ -446,8 +446,9 @@ export default function IntakeScreen() {
       <section className="card">
         <h2>Recent Encounters</h2>
         <p className="muted">
-          Intake can be corrected until a Triage Assessment has run. This list
-          is by arrival, not the Queue.
+          Intake is locked once the Encounter's Triage Assessment exists, which
+          is as soon as the Encounter opens. This list is by arrival, not the
+          Queue.
         </p>
         {recent.length === 0 ? (
           <p className="muted">No Encounters yet.</p>
