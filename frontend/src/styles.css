@@ -439,6 +439,10 @@ textarea:focus {
 
 .queue-complaint {
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .urgency-badge {
