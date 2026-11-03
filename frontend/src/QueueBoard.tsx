@@ -1,7 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
 import { api, ApiError } from "./api";
-import type { QueueEntry, QueueSnapshot } from "./api";
+import type {
+  OverrideReason,
+  QueueEntry,
+  QueueSnapshot,
+  UrgencyLevel,
+} from "./api";
 import { formatArrival, formatWaiting, urgencyClass } from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
@@ -13,7 +19,164 @@ import { usePolling } from "./usePolling";
  */
 const POLL_INTERVAL_MS = 5_000;
 
-function ExpandedDetail({ entry }: { entry: QueueEntry }) {
+const URGENCY_LEVELS: UrgencyLevel[] = ["High", "Medium", "Low"];
+
+/*
+ * The Override form reads the fixed reason list from the API rather than
+ * embedding a second copy here. Free text is shown only for "other", matching
+ * the server-side rule; the server rejects it for every other reason.
+ */
+function OverrideAction({
+  entry,
+  onOverridden,
+}: {
+  entry: QueueEntry;
+  onOverridden: () => void;
+}) {
+  const [reasons, setReasons] = useState<OverrideReason[]>([]);
+  const [finalDecision, setFinalDecision] = useState<UrgencyLevel>(
+    entry.urgency_level,
+  );
+  const [reason, setReason] = useState("");
+  const [freeText, setFreeText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .overrideReasons()
+      .then((response) => {
+        if (active) {
+          setReasons(response.reasons);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setError("Unable to load the Override reasons.");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const machineRecommendation = entry.assessment.machine_recommendation;
+  const unchanged = finalDecision === machineRecommendation;
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await api.overrideFinalDecision(entry.encounter_id, {
+        assessment_id: entry.assessment.id,
+        final_decision: finalDecision,
+        reason,
+        free_text: reason === "other" ? freeText : null,
+      });
+      onOverridden();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Unable to reach the server.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="queue-override">
+      <p className="queue-detail-label">Override</p>
+      <p className="muted">
+        Machine Recommendation: <strong>{machineRecommendation}</strong>. An
+        Override changes the Final Decision and keeps the recommendation on
+        record.
+      </p>
+      {entry.assessment.override ? (
+        <p className="muted">
+          Final Decision set by{" "}
+          {entry.assessment.override.performed_by.display_name} —{" "}
+          {entry.assessment.override.reason}
+          {entry.assessment.override.free_text
+            ? `: ${entry.assessment.override.free_text}`
+            : "."}
+        </p>
+      ) : null}
+      <form className="queue-override-form" onSubmit={submit}>
+        <label>
+          Final Decision
+          <select
+            value={finalDecision}
+            onChange={(event) =>
+              setFinalDecision(event.target.value as UrgencyLevel)
+            }
+          >
+            {URGENCY_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Reason
+          <select
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          >
+            <option value="">Select a reason</option>
+            {reasons.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+        {reason === "other" ? (
+          <label>
+            Other reason
+            <textarea
+              value={freeText}
+              onChange={(event) => setFreeText(event.target.value)}
+              rows={3}
+              maxLength={2000}
+            />
+          </label>
+        ) : null}
+        {unchanged ? (
+          <p className="muted">
+            Choose a decision different from the Machine Recommendation.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="notice notice-error" role="status">
+            {error}
+          </p>
+        ) : null}
+        <div className="row">
+          <button
+            type="submit"
+            disabled={saving || reason === "" || unchanged}
+          >
+            {saving ? "Saving…" : "Override"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ExpandedDetail({
+  entry,
+  onOverridden,
+}: {
+  entry: QueueEntry;
+  onOverridden: () => void;
+}) {
   const { intake } = entry;
   const symptomGroups = entry.assessment.recognised_symptom_groups;
 
@@ -80,7 +243,7 @@ function ExpandedDetail({ entry }: { entry: QueueEntry }) {
 
       <div>
         <p className="queue-detail-label">Actions</p>
-        <p className="muted">No actions are available for this Encounter yet.</p>
+        <OverrideAction entry={entry} onOverridden={onOverridden} />
       </div>
     </div>
   );
@@ -167,6 +330,14 @@ export default function QueueBoard() {
                     >
                       {entry.urgency_level}
                     </span>
+                    {entry.override_flag ? (
+                      <span
+                        className="queue-flag queue-flag-override"
+                        title={`Final Decision ${entry.assessment.final_decision} differs from Machine Recommendation ${entry.assessment.machine_recommendation}`}
+                      >
+                        Override
+                      </span>
+                    ) : null}
                     <span className="queue-name">{entry.patient.full_name}</span>
                     <span
                       className="queue-waiting"
@@ -189,7 +360,14 @@ export default function QueueBoard() {
                 >
                   {expanded ? "Hide details" : "Show details"}
                 </button>
-                {expanded ? <ExpandedDetail entry={entry} /> : null}
+                {expanded ? (
+                  <ExpandedDetail
+                    entry={entry}
+                    onOverridden={() => {
+                      void load();
+                    }}
+                  />
+                ) : null}
               </li>
             );
           })}

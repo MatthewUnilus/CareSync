@@ -27,6 +27,18 @@ class QueueEntry:
     assessment: TriageAssessment
     waiting_seconds: int
 
+    @property
+    def override_flag(self) -> bool:
+        """True when a human set a Final Decision different from the machine's.
+
+        Its own state name, deliberately not a generic "flagged": ticket 08
+        adds the unclassified flag as a separate signal, and tickets 10 and 14
+        consume Override records rather than this derived boolean.
+        """
+        return UrgencyLevel(
+            self.assessment.final_decision
+        ) != UrgencyLevel(self.assessment.machine_recommendation)
+
 
 @dataclass(frozen=True)
 class AdministratorQueueRow:
@@ -56,7 +68,11 @@ def awaiting_queue(session: Session, now: datetime) -> list[QueueEntry]:
     encounters = session.scalars(
         select(Encounter)
         .where(Encounter.departed_at.is_(None))
-        .options(selectinload(Encounter.assessments))
+        .options(
+            selectinload(Encounter.assessments).selectinload(
+                TriageAssessment.overrides
+            )
+        )
     ).all()
 
     entries: list[QueueEntry] = []

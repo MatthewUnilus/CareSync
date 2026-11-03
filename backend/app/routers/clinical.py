@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.assessments import create_triage_assessment
 from app.deps import DbSession, require_role
 from app.intake import ensure_intake_editable
-from app.models import Encounter, Patient, Role, TriageAssessment, User
+from app.models import Encounter, Override, Patient, Role, TriageAssessment, User
+from app.override_reasons import OVERRIDE_REASONS
+from app.overrides import perform_override
 from app.patients import find_or_create_patient
 from app.queue import awaiting_queue
 from app.schemas import (
@@ -17,6 +19,10 @@ from app.schemas import (
     EncounterListResponse,
     EncounterResponse,
     IntakePayload,
+    OverrideActorResponse,
+    OverrideRecordResponse,
+    OverrideReasonsResponse,
+    OverrideRequest,
     PatientRegistrationRequest,
     PatientResponse,
     QueueEntryResponse,
@@ -136,10 +142,17 @@ def get_queue(db: DbSession, user: ClinicalUser) -> QueueResponse:
                 patient=PatientResponse.model_validate(entry.encounter.patient),
                 intake=_intake_payload(entry.encounter),
                 assessment=_assessment_response(entry.assessment),
+                override_flag=entry.override_flag,
             )
             for entry in entries
         ],
     )
+
+
+@router.get("/override-reasons", response_model=OverrideReasonsResponse)
+def get_override_reasons(user: ClinicalUser) -> OverrideReasonsResponse:
+    """The fixed Override Reason set, for the card's Override form."""
+    return OverrideReasonsResponse(reasons=list(OVERRIDE_REASONS))
 
 
 @router.get("/encounters/{encounter_id}", response_model=EncounterResponse)
@@ -149,6 +162,36 @@ def get_encounter(
     user: ClinicalUser,
 ) -> EncounterResponse:
     return _encounter_response(_get_encounter(db, encounter_id))
+
+
+@router.post(
+    "/encounters/{encounter_id}/override",
+    response_model=EncounterResponse,
+)
+def override_final_decision(
+    encounter_id: int,
+    payload: OverrideRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> EncounterResponse:
+    """Set a different Final Decision on the governing Triage Assessment.
+
+    The Machine Recommendation is not writable through this route; the
+    Override records the actor and reason, and the Queue reorders on the next
+    read because it sorts on Final Decision.
+    """
+    encounter = _get_encounter(db, encounter_id)
+    perform_override(
+        db,
+        encounter,
+        assessment_id=payload.assessment_id,
+        final_decision=payload.final_decision,
+        reason=payload.reason,
+        free_text=payload.free_text,
+        actor=user,
+    )
+    db.commit()
+    return _encounter_response(encounter)
 
 
 @router.put("/encounters/{encounter_id}/intake", response_model=EncounterResponse)
@@ -235,6 +278,9 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
         machine_recommendation=assessment.machine_recommendation,
         final_decision=assessment.final_decision,
         recognised_symptom_groups=groups,
+        override=_override_response(
+            assessment.overrides[-1] if assessment.overrides else None
+        ),
         snapshot=AssessmentSnapshot(
             presenting_complaint=assessment.presenting_complaint,
             age=assessment.patient_age,
@@ -248,5 +294,19 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
             },
             oxygen_saturation_percent=assessment.oxygen_saturation_percent,
             notes=assessment.notes,
+        ),
+    )
+
+
+def _override_response(override: Override | None) -> OverrideRecordResponse | None:
+    if override is None:
+        return None
+    return OverrideRecordResponse(
+        reason=override.reason,
+        free_text=override.free_text,
+        performed_at=override.performed_at,
+        performed_by=OverrideActorResponse(
+            id=override.actor.id,
+            display_name=override.actor.display_name,
         ),
     )

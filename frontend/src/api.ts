@@ -7,6 +7,14 @@ export type Sex = "female" | "male" | "other" | "unspecified";
 
 export type UrgencyLevel = "High" | "Medium" | "Low";
 
+/**
+ * The fixed Override Reason set lives on the server
+ * (`backend/app/override_reasons.py`) and is fetched from
+ * `GET /api/clinical/override-reasons`, so the client never duplicates it.
+ */
+export type OverrideReason = string;
+
+
 export interface CurrentUser {
   id: number;
   email: string;
@@ -73,12 +81,23 @@ export interface AssessmentSnapshot {
   notes: string | null;
 }
 
+export interface OverrideRecord {
+  reason: OverrideReason;
+  free_text: string | null;
+  performed_at: string;
+  performed_by: {
+    id: number;
+    display_name: string;
+  };
+}
+
 export interface Assessment {
   id: number;
   assessed_at: string;
   machine_recommendation: UrgencyLevel;
   final_decision: UrgencyLevel;
   recognised_symptom_groups: string[];
+  override: OverrideRecord | null;
   snapshot: AssessmentSnapshot;
 }
 
@@ -90,6 +109,7 @@ export interface QueueEntry {
   patient: Patient;
   intake: Intake;
   assessment: Assessment;
+  override_flag: boolean;
 }
 
 export interface QueueSnapshot {
@@ -211,6 +231,21 @@ export const api = {
       `/api/clinical/encounters?limit=${limit}`,
     ),
   queue: () => request<QueueSnapshot>("/api/clinical/queue"),
+  overrideReasons: () =>
+    request<{ reasons: OverrideReason[] }>("/api/clinical/override-reasons"),
+  overrideFinalDecision: (
+    encounterId: number,
+    body: {
+      assessment_id: number;
+      final_decision: UrgencyLevel;
+      reason: OverrideReason;
+      free_text: string | null;
+    },
+  ) =>
+    request<Encounter>(`/api/clinical/encounters/${encounterId}/override`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   administratorQueue: () =>
     request<AdministratorQueueSnapshot>("/api/administrator/queue"),
 };

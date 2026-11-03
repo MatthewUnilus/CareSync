@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, the live Queue board, and
-the read-only Administrator dashboard. The Prioritization Engine behind the
-board is a documented deterministic stub; the trained classifier, Override,
-Re-assessment, Departure, and Reports arrive in later tickets.
+Triage Assessment record, Symptom Group recognition, the live Queue board, the
+Override action, and the read-only Administrator dashboard. The Prioritization
+Engine behind the board is a documented deterministic stub; the trained
+classifier, Re-assessment, Departure, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -161,8 +161,8 @@ stub does not read it.
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
 are first-in-first-out. The level that governs is the latest Triage Assessment's
-Final Decision, which currently equals the Machine Recommendation because no
-Override exists yet. An Encounter is awaiting while `departed_at` is null; ticket
+Final Decision, which starts equal to the Machine Recommendation and moves only
+through an Override. An Encounter is awaiting while `departed_at` is null; ticket
 11 adds the Departure action. `waiting_seconds` is derived from `arrived_at` at
 read time.
 
@@ -170,8 +170,7 @@ The client polls `GET /api/clinical/queue` every five seconds and on window
 focus, so a change to a Final Decision appears without a manual refresh.
 `QueueBoard.tsx` renders compact cards — urgency colour, Patient name, short
 complaint, time waiting — and expands to the full vitals, pain level, duration,
-the Symptom Groups recognised from the complaint, notes, and the actions that
-exist (none for the Queue yet).
+the Symptom Groups recognised from the complaint, notes, and the Override form.
 
 ## Mobile client
 
@@ -260,6 +259,42 @@ built without regenerating them. Their own `.gitignore` files exclude copied web
 assets (`*/assets/public`), Gradle/Xcode build output, `local.properties`, Pods,
 derived data and keystores. `npm run mobile:sync` repopulates the ignored assets
 after every client change.
+## Override
+
+A Clinical user may disagree with a Machine Recommendation and set a different
+Final Decision on the governing Triage Assessment of an awaiting Encounter:
+
+```http
+POST /api/clinical/encounters/{id}/override
+{
+  "assessment_id": 12,
+  "final_decision": "High",
+  "reason": "patient deteriorating",
+  "free_text": null
+}
+```
+
+The Override is refused (`409`) when the Encounter has departed, when the named
+Assessment is not the governing one, or when the Final Decision would equal the
+Machine Recommendation. A reason is mandatory (`422` when absent), and it must
+come from the fixed set — *vitals inconsistent with recommendation, symptom not
+captured, clinical gestalt, patient deteriorating, duplicate entry, other*.
+Free text is accepted only for `other`; supplying it with any other reason is
+refused. The acting user is recorded from the session.
+
+The fixed list lives once, in `backend/app/override_reasons.py`, and is exposed
+to the client at `GET /api/clinical/override-reasons`. Each Override appends an
+`overrides` row linked to the Assessment, the actor, the reason, and any free
+text. The Machine Recommendation itself is never written by this path: a
+`before_update` guard freezes it, and the request model refuses unknown fields.
+Both values survive, so accuracy can still be measured.
+
+A card shows an **Override** flag whenever the Final Decision differs from the
+Machine Recommendation (`override_flag` on each queue entry). That flag is its
+own state, separate from the unclassified flag ticket 08 will add. The
+Administrator's dense table shows the same fact as "Differs" and needs no change,
+because it already compares the two stored values. The Queue reorders on the
+next poll, since it sorts on Final Decision.
 
 ## Administrator dashboard
 
@@ -341,6 +376,8 @@ also read.
 | GET    | `/api/clinical/queue`                   | Clinical      |
 | GET    | `/api/clinical/encounters/{id}`         | Clinical      |
 | PUT    | `/api/clinical/encounters/{id}/intake`  | Clinical      |
+| GET    | `/api/clinical/override-reasons`        | Clinical      |
+| POST   | `/api/clinical/encounters/{id}/override` | Clinical     |
 | GET    | `/api/administrator/access`             | Administrator |
 | GET    | `/api/administrator/queue`              | Administrator |
 
@@ -376,7 +413,7 @@ backend/
     config.py          Settings (TRIAGEASSIST_* env vars)
     db.py              engine and session factory
     models.py          User, UserSession, Role, Patient, Encounter,
-                       TriageAssessment, Sex
+                       TriageAssessment, Override, Sex
     schemas.py         request/response models
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
@@ -384,6 +421,8 @@ backend/
     symptom_groups.py  the fixed vocabulary and spaCy recognition onto it
     symptom_groups.json  versioned Symptom Group vocabulary (authored list)
     assessments.py     captures inputs, runs the engine, appends the Assessment
+    override_reasons.py  the fixed Override Reason set (one source of truth)
+    overrides.py       performing an Override and its guards
     queue.py           the Queue as a sort over awaiting Encounters
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
@@ -400,7 +439,7 @@ frontend/
     LoginScreen.tsx    login form; native Server setting
     routing.ts         Role landing paths and path routing
     ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
-    QueueBoard.tsx     live Queue cards, expansion, five-second polling
+    QueueBoard.tsx     live Queue cards, expansion, Override form, polling
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
     usePolling.ts      shared poll-on-interval and poll-on-focus hook
     queueDisplay.ts    shared waiting-time and urgency formatting

@@ -15,7 +15,13 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.override_reasons import OverrideReason
 from app.timeutils import utc_now
+
+
+_OVERRIDE_REASON_VALUES = ", ".join(
+    f"'{reason.value}'" for reason in OverrideReason
+)
 
 
 class Role(str, Enum):
@@ -243,6 +249,10 @@ class TriageAssessment(Base):
     )
 
     encounter: Mapped[Encounter] = relationship(back_populates="assessments")
+    overrides: Mapped[list["Override"]] = relationship(
+        back_populates="assessment",
+        order_by="Override.id",
+    )
 
 
 # Fields that must never change after the row is written. ``final_decision`` is
@@ -281,6 +291,46 @@ def _refuse_rewriting_an_assessment(_mapper, _connection, target) -> None:
             "A Triage Assessment's captured inputs and Machine Recommendation "
             f"are immutable; refused to change {', '.join(changed)}"
         )
+
+
+class Override(Base):
+    """One human act of disagreeing with a Machine Recommendation.
+
+    The Override records *who* performed it and *why*, alongside the Assessment
+    it applies to. It never carries a decision of its own: the decision lives
+    in ``TriageAssessment.final_decision``, which this act changes while the
+    Machine Recommendation stays untouched.
+
+    Reasons are stored as validated strings (ADR 0001), constrained to the
+    fixed set in ``app.override_reasons``. Free text is only ever present for
+    the ``other`` reason, enforced at the request boundary.
+    """
+
+    __tablename__ = "overrides"
+    __table_args__ = (
+        CheckConstraint(
+            f"reason IN ({_OVERRIDE_REASON_VALUES})",
+            name="ck_overrides_reason",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("triage_assessments.id"), index=True
+    )
+    actor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    reason: Mapped[str] = mapped_column(String(64))
+    free_text: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    performed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    assessment: Mapped[TriageAssessment] = relationship(
+        back_populates="overrides"
+    )
+    actor: Mapped[User] = relationship(lazy="joined")
 
 
 class UserSession(Base):
