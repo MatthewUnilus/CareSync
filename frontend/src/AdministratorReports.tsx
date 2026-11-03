@@ -2,29 +2,379 @@ import { useCallback, useState } from "react";
 
 import { api, ApiError } from "./api";
 import type {
+  AccuracyConfusionCell,
+  AccuracyEvaluationReport,
+  AccuracyOverrideMetrics,
+  AccuracyPriorityErrorRate,
+  AccuracyRun,
   DailyQueueReport,
   PerformanceReport,
   PriorityDistributionReport,
+  UrgencyLevel,
 } from "./api";
 import { formatWaiting, urgencyClass } from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
 const REPORT_POLL_INTERVAL_MS = 30_000;
 
+const LEVELS: UrgencyLevel[] = ["High", "Medium", "Low"];
+
 interface ReportSet {
   dailyQueue: DailyQueueReport;
   priorityDistribution: PriorityDistributionReport;
   performance: PerformanceReport;
+  accuracyEvaluation: AccuracyEvaluationReport;
 }
 
 function seconds(value: number): string {
   return formatWaiting(Math.round(value));
 }
 
+function percent(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  return `${Math.round(value * 1000) / 10}%`;
+}
+
+function matrixCell(
+  run: AccuracyRun,
+  machine: UrgencyLevel,
+  truth: UrgencyLevel,
+): number {
+  return (
+    run.confusion_matrix.find(
+      (cell: AccuracyConfusionCell) =>
+        cell.machine_recommendation === machine && cell.ground_truth === truth,
+    )?.assessments ?? 0
+  );
+}
+
+function matrixTotal(
+  run: AccuracyRun,
+  field: "machine_recommendation" | "ground_truth",
+  level: UrgencyLevel,
+): number {
+  return run.confusion_matrix
+    .filter((cell) => cell[field] === level)
+    .reduce((sum, cell) => sum + cell.assessments, 0);
+}
+
+function modeLabel(run: AccuracyRun): string {
+  return run.fallback.enabled ? "Fallback enabled" : "Fallback disabled";
+}
+
+function RateFigure({
+  label,
+  note,
+  error,
+}: {
+  label: string;
+  note: string;
+  error: AccuracyPriorityErrorRate;
+}) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{percent(error.rate)}</dd>
+      <span className="muted">
+        {error.count} of {error.denominator} · {note}
+      </span>
+    </div>
+  );
+}
+
+function AccuracyRunView({ run }: { run: AccuracyRun }) {
+  return (
+    <article className="accuracy-run">
+      <div className="accuracy-run-header">
+        <div>
+          <h4>{run.run_id}</h4>
+          <p className="muted">
+            {run.sample.resolved_assessments} of {run.sample.labelled_cases}{" "}
+            labelled cases resolved against stored Assessments
+          </p>
+        </div>
+        <span
+          className={`accuracy-mode ${
+            run.fallback.enabled
+              ? "accuracy-mode-enabled"
+              : "accuracy-mode-disabled"
+          }`}
+        >
+          {modeLabel(run)}
+        </span>
+      </div>
+
+      <dl className="report-stats accuracy-stats">
+        <div>
+          <dt>Accuracy</dt>
+          <dd>{percent(run.accuracy)}</dd>
+          <span className="muted">
+            {run.correct} of {run.total} correct
+          </span>
+        </div>
+        <RateFigure
+          label="False High-Priority"
+          note="non-High cases called High"
+          error={run.false_high_priority}
+        />
+        <RateFigure
+          label="False Low-Priority"
+          note="non-Low cases called Low; missed urgency"
+          error={run.false_low_priority}
+        />
+        <div>
+          <dt>Fallback coverage</dt>
+          <dd>
+            {run.fallback.enabled ? percent(run.fallback.coverage) : "—"}
+          </dd>
+          <span className="muted">
+            {run.fallback.enabled
+              ? `${run.fallback.fallback_used} of ${run.total} cases took the fallback path`
+              : "not exercised in this run"}
+          </span>
+        </div>
+      </dl>
+
+      <div className="admin-table-wrap">
+        <table className="admin-queue-table report-table accuracy-matrix">
+          <caption className="admin-table-caption">
+            Rows are the Machine Recommendation; columns are the ground-truth
+            Urgency Level. The diagonal is correct. Counted per Assessment, so a
+            Re-assessment adds a row of its own.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Machine Recommendation</th>
+              {LEVELS.map((truth) => (
+                <th scope="col" key={truth}>
+                  Truth: {truth}
+                </th>
+              ))}
+              <th scope="col">Predicted</th>
+            </tr>
+          </thead>
+          <tbody>
+            {LEVELS.map((machine) => (
+              <tr key={machine}>
+                <th scope="row">
+                  <span className={`urgency-badge ${urgencyClass(machine)}`}>
+                    {machine}
+                  </span>
+                </th>
+                {LEVELS.map((truth) => (
+                  <td
+                    key={truth}
+                    className={
+                      machine === truth
+                        ? "accuracy-matrix-correct"
+                        : "accuracy-matrix-miss"
+                    }
+                  >
+                    {matrixCell(run, machine, truth)}
+                  </td>
+                ))}
+                <td className="accuracy-matrix-total">
+                  {matrixTotal(run, "machine_recommendation", machine)}
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row" className="accuracy-matrix-total">
+                Actually
+              </th>
+              {LEVELS.map((truth) => (
+                <td key={truth} className="accuracy-matrix-total">
+                  {matrixTotal(run, "ground_truth", truth)}
+                </td>
+              ))}
+              <td className="accuracy-matrix-total">{run.total}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-queue-table report-table">
+          <caption className="admin-table-caption">
+            Precision and recall for each Urgency Level separately. A dash means
+            the level had no denominator in this run.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Urgency Level</th>
+              <th scope="col">Precision</th>
+              <th scope="col">Recall</th>
+              <th scope="col">Correct</th>
+              <th scope="col">Ground truth</th>
+              <th scope="col">Predicted</th>
+            </tr>
+          </thead>
+          <tbody>
+            {run.levels.map((level) => (
+              <tr key={level.urgency_level}>
+                <th scope="row">
+                  <span
+                    className={`urgency-badge ${urgencyClass(level.urgency_level)}`}
+                  >
+                    {level.urgency_level}
+                  </span>
+                </th>
+                <td className="accuracy-matrix-total">
+                  {percent(level.precision)}
+                </td>
+                <td className="accuracy-matrix-total">
+                  {percent(level.recall)}
+                </td>
+                <td className="accuracy-matrix-total">{level.correct}</td>
+                <td className="accuracy-matrix-total">
+                  {level.ground_truth_count}
+                </td>
+                <td className="accuracy-matrix-total">
+                  {level.predicted_count}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="muted report-note accuracy-provenance">
+        Ground truth: <strong>{run.ground_truth.name}</strong> (
+        {run.ground_truth.version}) · {run.ground_truth.citation}
+        {run.dataset ? ` · Dataset: ${run.dataset}` : null}
+        {run.engine_artefact ? ` · Engine: ${run.engine_artefact}` : null}
+        {run.fallback.enabled && run.fallback.unclassified > 0
+          ? ` · Unclassified by the fallback: ${percent(
+              run.fallback.unclassified_rate,
+            )}`
+          : null}
+      </p>
+
+      {run.sample.missing_assessments.length > 0 ? (
+        <p className="notice notice-warning">
+          {run.sample.missing_assessments.length} labelled case(s) reference an
+          Assessment that is not stored and are excluded:{" "}
+          {run.sample.missing_assessments.join(", ")}.
+        </p>
+      ) : null}
+
+      {run.sample.inconsistent_recommendations.length > 0 ? (
+        <p className="notice notice-warning">
+          {run.sample.inconsistent_recommendations.length} case(s) record a
+          recommendation that differs from the stored Assessment. The stored,
+          immutable recommendation was used:{" "}
+          {run.sample.inconsistent_recommendations.join(", ")}.
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+function OverrideFigures({ overrides }: { overrides: AccuracyOverrideMetrics }) {
+  return (
+    <div className="accuracy-overrides">
+      <div className="report-header">
+        <h4>Overrides</h4>
+        <p className="muted">
+          Across all {overrides.assessments} stored Assessments · where staff
+          disagreed with the engine
+        </p>
+      </div>
+      <dl className="report-stats accuracy-stats">
+        <div>
+          <dt>Override rate</dt>
+          <dd>{percent(overrides.rate)}</dd>
+          <span className="muted">
+            {overrides.overridden_assessments} of {overrides.assessments}{" "}
+            Assessments carry an Override
+          </span>
+        </div>
+        <div>
+          <dt>Override records</dt>
+          <dd>{overrides.overrides}</dd>
+          <span className="muted">one row per human act</span>
+        </div>
+      </dl>
+      <div className="admin-table-wrap">
+        <table className="admin-queue-table report-table">
+          <caption className="admin-table-caption">
+            Every Override Reason in the fixed glossary set, including reasons
+            with no occurrences in this period.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Override Reason</th>
+              <th scope="col">Overrides</th>
+              <th scope="col">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overrides.reasons.map((reason) => (
+              <tr key={reason.reason}>
+                <th scope="row">{reason.reason}</th>
+                <td className="accuracy-matrix-total">{reason.overrides}</td>
+                <td className="accuracy-matrix-total">
+                  {percent(reason.share)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AccuracyEvaluation({
+  report,
+}: {
+  report: AccuracyEvaluationReport;
+}) {
+  return (
+    <section
+      className="report-block report-block-featured"
+      aria-labelledby="accuracy-evaluation-report"
+    >
+      <div className="report-header">
+        <h3 id="accuracy-evaluation-report">Accuracy Evaluation</h3>
+        <p className="muted">
+          Machine Recommendation against independent ground truth · the
+          project's central evidence
+        </p>
+      </div>
+
+      {report.available ? (
+        report.runs.map((run) => <AccuracyRunView key={run.run_id} run={run} />)
+      ) : (
+        <div className="accuracy-empty">
+          <p className="notice notice-warning">
+            {report.empty_reason ??
+              "No labelled evaluation run is available."}
+          </p>
+          <p className="muted report-note">
+            Accuracy is shown only when a run supplies independent ground-truth
+            Urgency Levels. Zero would be a claim, not a measurement, so no
+            score is displayed.
+          </p>
+        </div>
+      )}
+
+      <OverrideFigures overrides={report.overrides} />
+    </section>
+  );
+}
+
 /**
- * The three Activity Reports. Every figure is returned by the server, which
- * derives it on demand from stored records; this component only renders it,
- * so there is nothing to invalidate and no client-side aggregate to drift.
+ * The Reports. Every figure is returned by the server, which derives it on
+ * demand from stored records; this component only renders it, so there is
+ * nothing to invalidate and no client-side aggregate to drift.
+ *
+ * The Accuracy Evaluation is first and visually featured because it is the
+ * project's central evidence. It is never flattered: the raw figures are shown
+ * with the ground-truth source named, and an unlabelled database shows an
+ * explicit empty state.
  */
 export default function AdministratorReports() {
   const [reports, setReports] = useState<ReportSet | null>(null);
@@ -33,12 +383,23 @@ export default function AdministratorReports() {
 
   const load = useCallback(async () => {
     try {
-      const [dailyQueue, priorityDistribution, performance] = await Promise.all([
+      const [
+        dailyQueue,
+        priorityDistribution,
+        performance,
+        accuracyEvaluation,
+      ] = await Promise.all([
         api.dailyQueueReport(),
         api.priorityDistributionReport(),
         api.performanceReport(),
+        api.accuracyEvaluationReport(),
       ]);
-      setReports({ dailyQueue, priorityDistribution, performance });
+      setReports({
+        dailyQueue,
+        priorityDistribution,
+        performance,
+        accuracyEvaluation,
+      });
       setError(null);
     } catch (caught) {
       setError(
@@ -83,6 +444,8 @@ export default function AdministratorReports() {
 
       {reports === null ? null : (
         <>
+          <AccuracyEvaluation report={reports.accuracyEvaluation} />
+
           <section
             className="report-block"
             aria-labelledby="daily-queue-report"

@@ -186,6 +186,93 @@ export interface PerformanceReport {
   entries: PerformanceEntry[];
 }
 
+export type AccuracyFallbackMode = "fallback-disabled" | "fallback-enabled";
+
+export interface AccuracyGroundTruthSource {
+  name: string;
+  version: string;
+  citation: string;
+  document: string | null;
+}
+
+export interface AccuracyConfusionCell {
+  machine_recommendation: UrgencyLevel;
+  ground_truth: UrgencyLevel;
+  assessments: number;
+}
+
+export interface AccuracyLevelMetrics {
+  urgency_level: UrgencyLevel;
+  ground_truth_count: number;
+  predicted_count: number;
+  correct: number;
+  /** Null when the engine never predicted this level. */
+  precision: number | null;
+  /** Null when no case had this ground truth. */
+  recall: number | null;
+}
+
+export interface AccuracyPriorityErrorRate {
+  count: number;
+  denominator: number;
+  rate: number | null;
+}
+
+export interface AccuracyRunSample {
+  labelled_cases: number;
+  resolved_assessments: number;
+  missing_assessments: number[];
+  inconsistent_recommendations: number[];
+}
+
+export interface AccuracyFallbackCoverage {
+  enabled: boolean;
+  fallback_used: number;
+  unclassified: number;
+  /** Null for a fallback-disabled run: coverage is not exercised. */
+  coverage: number | null;
+  unclassified_rate: number | null;
+}
+
+export interface AccuracyRun {
+  run_id: string;
+  mode: AccuracyFallbackMode;
+  dataset: string | null;
+  engine_artefact: string | null;
+  ground_truth: AccuracyGroundTruthSource;
+  sample: AccuracyRunSample;
+  confusion_matrix: AccuracyConfusionCell[];
+  levels: AccuracyLevelMetrics[];
+  total: number;
+  correct: number;
+  accuracy: number | null;
+  false_high_priority: AccuracyPriorityErrorRate;
+  false_low_priority: AccuracyPriorityErrorRate;
+  fallback: AccuracyFallbackCoverage;
+}
+
+export interface AccuracyOverrideReasonCount {
+  reason: OverrideReason;
+  overrides: number;
+  share: number | null;
+}
+
+export interface AccuracyOverrideMetrics {
+  assessments: number;
+  overridden_assessments: number;
+  overrides: number;
+  rate: number | null;
+  reasons: AccuracyOverrideReasonCount[];
+}
+
+export interface AccuracyEvaluationReport {
+  available: boolean;
+  /** Why no accuracy figure can be shown. Null when a run is available. */
+  empty_reason: string | null;
+  runs: AccuracyRun[];
+  overrides: AccuracyOverrideMetrics;
+}
+
 interface ApiResult<T> {
   body: T;
   status: number;
@@ -335,4 +422,13 @@ export const api = {
     ),
   performanceReport: () =>
     request<PerformanceReport>("/api/administrator/reports/performance"),
+  /*
+   * The flagship report. Its accuracy figures come from stored immutable
+   * Assessments joined to a labelled evaluation run; when no such run exists
+   * the response says so explicitly instead of returning a zero score.
+   */
+  accuracyEvaluationReport: () =>
+    request<AccuracyEvaluationReport>(
+      "/api/administrator/reports/accuracy-evaluation",
+    ),
 };

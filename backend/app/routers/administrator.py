@@ -1,13 +1,24 @@
 from datetime import date
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
-from app import reports
+from app import accuracy, reports
 from app.deps import DbSession, require_role
 from app.models import Role, User
 from app.queue import administrator_queue
 from app.schemas import (
+    AccuracyConfusionCellResponse,
+    AccuracyEvaluationReportResponse,
+    AccuracyFallbackCoverageResponse,
+    AccuracyGroundTruthSourceResponse,
+    AccuracyLevelMetricsResponse,
+    AccuracyOverrideMetricsResponse,
+    AccuracyOverrideReasonCountResponse,
+    AccuracyPriorityErrorRateResponse,
+    AccuracyRunResponse,
+    AccuracyRunSampleResponse,
     AdministratorQueueEntryResponse,
     AdministratorQueueResponse,
     DailyQueueReportResponse,
@@ -137,4 +148,113 @@ def get_performance_report(
             )
             for entry in report.entries
         ],
+    )
+
+
+@router.get(
+    "/reports/accuracy-evaluation",
+    response_model=AccuracyEvaluationReportResponse,
+)
+def get_accuracy_evaluation_report(
+    db: DbSession,
+    user: AdministratorUser,
+    request: Request,
+) -> AccuracyEvaluationReportResponse:
+    """Machine Recommendations against independent ground-truth labels.
+
+    The labelled run is read from the offline harness's manifest, whose path is
+    configuration. The Machine Recommendation itself always comes from the
+    stored Triage Assessment row, so an Override can never move a matrix cell.
+    No run, or no stored Assessment behind its cases, is an explicit empty
+    state rather than a zero score.
+    """
+    bundle = accuracy.load_run_bundle(
+        Path(request.app.state.settings.accuracy_run_path)
+    )
+    report = accuracy.build_report(db, bundle)
+    return _accuracy_report_response(report)
+
+
+def _accuracy_report_response(
+    report: accuracy.AccuracyEvaluationReport,
+) -> AccuracyEvaluationReportResponse:
+    return AccuracyEvaluationReportResponse(
+        available=report.available,
+        empty_reason=report.empty_reason,
+        runs=[
+            AccuracyRunResponse(
+                run_id=run.run_id,
+                mode=run.mode,
+                dataset=run.dataset,
+                engine_artefact=run.engine_artefact,
+                ground_truth=AccuracyGroundTruthSourceResponse(
+                    name=run.ground_truth.name,
+                    version=run.ground_truth.version,
+                    citation=run.ground_truth.citation,
+                    document=run.ground_truth.document,
+                ),
+                sample=AccuracyRunSampleResponse(
+                    labelled_cases=run.sample.labelled_cases,
+                    resolved_assessments=run.sample.resolved_assessments,
+                    missing_assessments=list(run.sample.missing_assessments),
+                    inconsistent_recommendations=list(
+                        run.sample.inconsistent_recommendations
+                    ),
+                ),
+                confusion_matrix=[
+                    AccuracyConfusionCellResponse(
+                        machine_recommendation=cell.machine_recommendation,
+                        ground_truth=cell.ground_truth,
+                        assessments=cell.assessments,
+                    )
+                    for cell in run.confusion_matrix
+                ],
+                levels=[
+                    AccuracyLevelMetricsResponse(
+                        urgency_level=level.urgency_level,
+                        ground_truth_count=level.ground_truth_count,
+                        predicted_count=level.predicted_count,
+                        correct=level.correct,
+                        precision=level.precision,
+                        recall=level.recall,
+                    )
+                    for level in run.levels
+                ],
+                total=run.total,
+                correct=run.correct,
+                accuracy=run.accuracy,
+                false_high_priority=AccuracyPriorityErrorRateResponse(
+                    count=run.false_high_priority.count,
+                    denominator=run.false_high_priority.denominator,
+                    rate=run.false_high_priority.rate,
+                ),
+                false_low_priority=AccuracyPriorityErrorRateResponse(
+                    count=run.false_low_priority.count,
+                    denominator=run.false_low_priority.denominator,
+                    rate=run.false_low_priority.rate,
+                ),
+                fallback=AccuracyFallbackCoverageResponse(
+                    enabled=run.fallback.enabled,
+                    fallback_used=run.fallback.fallback_used,
+                    unclassified=run.fallback.unclassified,
+                    coverage=run.fallback.coverage,
+                    unclassified_rate=run.fallback.unclassified_rate,
+                ),
+            )
+            for run in report.runs
+        ],
+        overrides=AccuracyOverrideMetricsResponse(
+            assessments=report.overrides.assessments,
+            overridden_assessments=report.overrides.overridden_assessments,
+            overrides=report.overrides.overrides,
+            rate=report.overrides.rate,
+            reasons=[
+                AccuracyOverrideReasonCountResponse(
+                    reason=item.reason,
+                    overrides=item.overrides,
+                    share=item.share,
+                )
+                for item in report.overrides.reasons
+            ],
+        ),
     )

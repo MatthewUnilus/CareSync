@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.accuracy import FallbackMode
 from app.departures import EncounterStatus
 from app.models import Role, Sex
 from app.override_reasons import OverrideReason, allows_free_text
@@ -321,3 +322,86 @@ class PerformanceReportResponse(BaseModel):
     average_waiting_seconds: float
     average_processing_seconds: float
     entries: list[PerformanceEntryResponse]
+
+
+class AccuracyGroundTruthSourceResponse(BaseModel):
+    """Where the labels came from. Shown in the UI so the standard is named."""
+
+    name: str
+    version: str
+    citation: str
+    document: str | None
+
+
+class AccuracyConfusionCellResponse(BaseModel):
+    machine_recommendation: UrgencyLevel
+    ground_truth: UrgencyLevel
+    assessments: int
+
+
+class AccuracyLevelMetricsResponse(BaseModel):
+    urgency_level: UrgencyLevel
+    ground_truth_count: int
+    predicted_count: int
+    correct: int
+    precision: float | None
+    recall: float | None
+
+
+class AccuracyPriorityErrorRateResponse(BaseModel):
+    count: int
+    denominator: int
+    rate: float | None
+
+
+class AccuracyRunSampleResponse(BaseModel):
+    labelled_cases: int
+    resolved_assessments: int
+    missing_assessments: list[int]
+    inconsistent_recommendations: list[int]
+
+
+class AccuracyFallbackCoverageResponse(BaseModel):
+    enabled: bool
+    fallback_used: int
+    unclassified: int
+    coverage: float | None
+    unclassified_rate: float | None
+
+
+class AccuracyRunResponse(BaseModel):
+    run_id: str
+    mode: FallbackMode
+    dataset: str | None
+    engine_artefact: str | None
+    ground_truth: AccuracyGroundTruthSourceResponse
+    sample: AccuracyRunSampleResponse
+    confusion_matrix: list[AccuracyConfusionCellResponse]
+    levels: list[AccuracyLevelMetricsResponse]
+    total: int
+    correct: int
+    accuracy: float | None
+    false_high_priority: AccuracyPriorityErrorRateResponse
+    false_low_priority: AccuracyPriorityErrorRateResponse
+    fallback: AccuracyFallbackCoverageResponse
+
+
+class AccuracyOverrideReasonCountResponse(BaseModel):
+    reason: OverrideReason
+    overrides: int
+    share: float | None
+
+
+class AccuracyOverrideMetricsResponse(BaseModel):
+    assessments: int
+    overridden_assessments: int
+    overrides: int
+    rate: float | None
+    reasons: list[AccuracyOverrideReasonCountResponse]
+
+
+class AccuracyEvaluationReportResponse(BaseModel):
+    available: bool
+    empty_reason: str | None
+    runs: list[AccuracyRunResponse]
+    overrides: AccuracyOverrideMetricsResponse
