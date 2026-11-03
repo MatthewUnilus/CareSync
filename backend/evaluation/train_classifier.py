@@ -86,10 +86,10 @@ def build_artefact(
             )
 
     splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
-    estimator = _estimator(seed)
+    estimator = build_estimator(seed)
     predictions = cross_val_predict(estimator, matrix, labels, cv=splitter)
 
-    fitted = _estimator(seed).fit(matrix, labels)
+    fitted = build_estimator(seed).fit(matrix, labels)
     scaler: StandardScaler = fitted.named_steps["standardscaler"]
     regression: LogisticRegression = fitted.named_steps["logisticregression"]
     order = [list(regression.classes_).index(name) for name in CLASS_ORDER]
@@ -154,7 +154,12 @@ def write_artefact(
     return path
 
 
-def _estimator(seed: int):
+def build_estimator(seed: int):
+    """The one estimator configuration training and cross-validation share.
+
+    Public so the evaluation harness can reproduce the artefact's recorded
+    cross-validated scores without duplicating the pipeline definition.
+    """
     return make_pipeline(
         StandardScaler(),
         LogisticRegression(
