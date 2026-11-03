@@ -66,7 +66,7 @@ def constructed_records() -> list[datasets.TrainingEncounter]:
 def test_the_artefact_carries_the_shape_the_engine_needs() -> None:
     artefact = build_artefact(
         constructed_records(),
-        datasets=(SOURCE,),
+        sources=(SOURCE,),
         folds=3,
         seed=20261103,
     )
@@ -83,7 +83,7 @@ def test_the_artefact_carries_the_shape_the_engine_needs() -> None:
 def test_the_artefact_records_cross_validated_evidence() -> None:
     artefact = build_artefact(
         constructed_records(),
-        datasets=(SOURCE,),
+        sources=(SOURCE,),
         folds=3,
         seed=20261103,
     )
@@ -103,7 +103,7 @@ def test_the_artefact_records_cross_validated_evidence() -> None:
 def test_the_artefact_records_the_dataset_identity_and_vocabulary_version() -> None:
     artefact = build_artefact(
         constructed_records(),
-        datasets=(SOURCE,),
+        sources=(SOURCE,),
         folds=3,
         seed=20261103,
     )
@@ -117,10 +117,10 @@ def test_the_artefact_records_the_dataset_identity_and_vocabulary_version() -> N
 
 def test_training_the_same_records_twice_is_byte_identical(tmp_path: Path) -> None:
     first = build_artefact(
-        constructed_records(), datasets=(SOURCE,), folds=3, seed=20261103
+        constructed_records(), sources=(SOURCE,), folds=3, seed=20261103
     )
     second = build_artefact(
-        constructed_records(), datasets=(SOURCE,), folds=3, seed=20261103
+        constructed_records(), sources=(SOURCE,), folds=3, seed=20261103
     )
 
     first_path = write_artefact(first, tmp_path / "first.json")
@@ -133,7 +133,7 @@ def test_a_written_artefact_can_be_loaded_and_used_by_the_engine(
     tmp_path: Path,
 ) -> None:
     artefact = build_artefact(
-        constructed_records(), datasets=(SOURCE,), folds=3, seed=20261103
+        constructed_records(), sources=(SOURCE,), folds=3, seed=20261103
     )
     path = write_artefact(artefact, tmp_path / "artefact.json")
 
@@ -156,7 +156,7 @@ def test_the_committed_artefact_matches_the_shipped_training_code() -> None:
     provenance = datasets.dataset_identities()
     regenerated = build_artefact(
         records,
-        datasets=provenance,
+        sources=provenance,
         folds=5,
         seed=20261103,
     )

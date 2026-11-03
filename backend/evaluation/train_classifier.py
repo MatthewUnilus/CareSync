@@ -58,7 +58,7 @@ DEFAULT_SEED = 20261103
 def build_artefact(
     records: Sequence[TrainingEncounter],
     *,
-    datasets: Sequence[DatasetIdentity],
+    sources: Sequence[DatasetIdentity],
     folds: int = DEFAULT_FOLDS,
     seed: int = DEFAULT_SEED,
 ) -> dict[str, Any]:
@@ -72,7 +72,9 @@ def build_artefact(
     labels = np.array(
         [record.urgency_level.value for record in records], dtype=object
     )
-    sources = np.array([record.source_id for record in records], dtype=object)
+    source_ids = np.array(
+        [record.source_id for record in records], dtype=object
+    )
 
     present = set(labels)
     if len(present) < 2:
@@ -84,16 +86,16 @@ def build_artefact(
             )
 
     splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
-    estimator = _estimator()
+    estimator = _estimator(seed)
     predictions = cross_val_predict(estimator, matrix, labels, cv=splitter)
 
-    fitted = _estimator().fit(matrix, labels)
+    fitted = _estimator(seed).fit(matrix, labels)
     scaler: StandardScaler = fitted.named_steps["standardscaler"]
     regression: LogisticRegression = fitted.named_steps["logisticregression"]
     order = [list(regression.classes_).index(name) for name in CLASS_ORDER]
 
     counts = Counter(labels.tolist())
-    source_counts = Counter(sources.tolist())
+    source_counts = Counter(source_ids.tolist())
     constant_features = [
         name
         for name, deviation in zip(FEATURE_NAMES, np.std(matrix, axis=0))
@@ -119,7 +121,7 @@ def build_artefact(
             _round(regression.intercept_[index]) for index in order
         ],
         "training": {
-            "datasets": [identity.as_dict() for identity in datasets],
+            "datasets": [identity.as_dict() for identity in sources],
             "encounter_count": len(records),
             "label_counts": {
                 name: counts.get(name, 0) for name in CLASS_ORDER
@@ -131,10 +133,10 @@ def build_artefact(
             "folds": folds,
             "seed": seed,
             "constant_features": constant_features,
-            "limitations": datasets_limitations(),
+            "limitations": provenance_limitations(),
         },
         "cross_validation": _scores(
-            labels, predictions, sources, folds=folds
+            labels, predictions, source_ids, folds=folds
         ),
     }
 
@@ -152,14 +154,14 @@ def write_artefact(
     return path
 
 
-def _estimator():
+def _estimator(seed: int):
     return make_pipeline(
         StandardScaler(),
         LogisticRegression(
             max_iter=5000,
             class_weight="balanced",
             solver="lbfgs",
-            random_state=DEFAULT_SEED,
+            random_state=seed,
         ),
     )
 
@@ -210,7 +212,7 @@ def _scores(
     }
 
 
-def datasets_limitations() -> list[str]:
+def provenance_limitations() -> list[str]:
     return [str(note) for note in datasets.provenance().get("limitations", [])]
 
 
@@ -248,7 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     records = datasets.load_training_records(args.data_dir)
     artefact = build_artefact(
         records,
-        datasets=datasets.dataset_identities(),
+        sources=datasets.dataset_identities(),
         folds=args.folds,
         seed=args.seed,
     )

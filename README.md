@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, the live Queue board, the
-Override and Departure actions, and the read-only Administrator dashboard. The
-Prioritization Engine behind the board is a documented deterministic stub; the
-trained classifier, Re-assessment, and Reports arrive in later tickets.
+Triage Assessment record, Symptom Group recognition, a trained classifier behind
+the Prioritization Engine, the live Queue board, the Override and Departure
+actions, and the read-only Administrator dashboard. The safety layer, the
+fallback, Re-assessment, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -133,8 +133,10 @@ user; the card says "None recognised" when the complaint matched nothing.
 Recognition runs once, inside `create_triage_assessment`, and the result is
 frozen into the Assessment with the rest of its inputs. No groups is stored as
 an empty string, which is distinguishable from having recognised one. The
-Machine Recommendation is unchanged: the stub engine does not consume Symptom
-Groups, and ticket 06 owns that step.
+recognised groups are dimensions of the classifier's feature vector, so
+recognition feeds the recommendation; the shipped interim artefact gives them a
+zero coefficient only because its training source records no complaints, which
+the artefact declares under `training.constant_features`.
 
 The first `uv sync` downloads spaCy and the `en_core_web_sm` wheel from GitHub
 releases, so it needs network access.
