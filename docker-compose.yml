@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: triageassist
+      POSTGRES_USER: triageassist
+      POSTGRES_PASSWORD: triageassist
+    ports:
+      - "5432:5432"
+    volumes:
+      - triageassist_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triageassist -d triageassist"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  triageassist_pgdata:
