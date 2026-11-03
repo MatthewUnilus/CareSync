@@ -9,6 +9,7 @@ from dataclasses import fields, replace
 
 import pytest
 
+from app.prioritisation import PrioritisationInputs
 from evaluation.rubric import (
     EsiResource,
     HighRiskFlag,
@@ -255,20 +256,19 @@ def test_every_rule_cites_the_published_esi_source() -> None:
 
 
 def test_rubric_inputs_are_strictly_broader_than_the_engine_feature_set() -> None:
-    # The engine's documented feature representation (spec: "Feature
-    # representation") is Symptom Group, pain level, illness duration, age and
-    # the four vitals. A Symptom Group is a recognised form of the complaint,
-    # so the complaint stands in for it here.
+    # The engine's captured inputs are its published feature boundary. The
+    # engine receives recognised Symptom Groups rather than the raw complaint,
+    # and calls age "age"; map those two names to the rubric's equivalent
+    # descriptions before comparing.
     engine_features = {
-        "age_years",
-        "presenting_complaint",
-        "pain_level",
-        "illness_duration_hours",
-        "temperature_c",
-        "heart_rate_bpm",
-        "systolic_bp",
-        "diastolic_bp",
-        "oxygen_saturation_percent",
+        (
+            "age_years"
+            if name == "age"
+            else "presenting_complaint"
+            if name == "recognised_symptom_groups"
+            else name
+        )
+        for name in (field.name for field in fields(PrioritisationInputs))
     }
 
     rubric_features = {field.name for field in fields(Presentation)}
@@ -285,7 +285,7 @@ def test_rubric_inputs_are_strictly_broader_than_the_engine_feature_set() -> Non
         "medical_history",
         "high_risk_flags",
         "expected_resources",
-    } <= rubric_features
+    } <= rubric_features - engine_features
 
 
 def test_invalid_presentation_is_rejected_rather_than_guessed() -> None:
