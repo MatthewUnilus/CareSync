@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { api, ApiError } from "./api";
-import type { Encounter, Intake, Sex } from "./api";
+import type { Encounter, Sex } from "./api";
+import { buildIntake, intakeFormValues } from "./intakeForm";
+import type { IntakeFormValues } from "./intakeForm";
 
 const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: "female", label: "Female" },
@@ -11,21 +13,12 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: "unspecified", label: "Unspecified" },
 ];
 
-interface FormState {
+interface FormState extends IntakeFormValues {
   fullName: string;
   age: string;
   sex: Sex | "";
   phone: string;
   email: string;
-  complaint: string;
-  painLevel: string;
-  durationHours: string;
-  temperatureC: string;
-  heartRate: string;
-  systolic: string;
-  diastolic: string;
-  oxygenSaturation: string;
-  notes: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -48,36 +41,6 @@ const EMPTY_FORM: FormState = {
 interface Notice {
   kind: "success" | "error";
   text: string;
-}
-
-function buildIntake(form: FormState): Intake {
-  return {
-    presenting_complaint: form.complaint.trim(),
-    pain_level: Number(form.painLevel),
-    illness_duration_hours: Number(form.durationHours),
-    temperature_c: Number(form.temperatureC),
-    heart_rate_bpm: Number(form.heartRate),
-    blood_pressure: {
-      systolic: Number(form.systolic),
-      diastolic: Number(form.diastolic),
-    },
-    oxygen_saturation_percent: Number(form.oxygenSaturation),
-    notes: form.notes.trim() ? form.notes.trim() : null,
-  };
-}
-
-function intakeFields(intake: Intake): Partial<FormState> {
-  return {
-    complaint: intake.presenting_complaint,
-    painLevel: String(intake.pain_level),
-    durationHours: String(intake.illness_duration_hours),
-    temperatureC: String(intake.temperature_c),
-    heartRate: String(intake.heart_rate_bpm),
-    systolic: String(intake.blood_pressure.systolic),
-    diastolic: String(intake.blood_pressure.diastolic),
-    oxygenSaturation: String(intake.oxygen_saturation_percent),
-    notes: intake.notes ?? "",
-  };
 }
 
 function sexLabel(sex: Sex): string {
@@ -124,7 +87,10 @@ export default function IntakeScreen() {
     setTarget(encounter);
     setSavedEncounter(null);
     setNotice(null);
-    setForm((current) => ({ ...current, ...intakeFields(encounter.intake) }));
+    setForm((current) => ({
+      ...current,
+      ...intakeFormValues(encounter.intake),
+    }));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
