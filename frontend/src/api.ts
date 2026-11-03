@@ -64,6 +64,8 @@ export interface Intake {
 export interface Encounter {
   id: number;
   arrived_at: string;
+  departed_at: string | null;
+  status: "awaiting" | "departed";
   patient: Patient;
   intake: Intake;
   assessment: Assessment | null;
@@ -245,6 +247,15 @@ export const api = {
     request<Encounter>(`/api/clinical/encounters/${encounterId}/override`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  /*
+   * Departure takes no body: the departure instant is the server's, recorded
+   * at the moment of the action. The Encounter then leaves the awaiting
+   * Queue on the next read.
+   */
+  departEncounter: (encounterId: number) =>
+    request<Encounter>(`/api/clinical/encounters/${encounterId}/departure`, {
+      method: "POST",
     }),
   administratorQueue: () =>
     request<AdministratorQueueSnapshot>("/api/administrator/queue"),

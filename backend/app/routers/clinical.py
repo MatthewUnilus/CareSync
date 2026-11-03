@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.assessments import create_triage_assessment
+from app.departures import encounter_status, perform_departure
 from app.deps import DbSession, require_role
 from app.intake import ensure_intake_editable
 from app.models import Encounter, Override, Patient, Role, TriageAssessment, User
@@ -194,6 +195,29 @@ def override_final_decision(
     return _encounter_response(encounter)
 
 
+@router.post(
+    "/encounters/{encounter_id}/departure",
+    response_model=EncounterResponse,
+)
+def depart_encounter(
+    encounter_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> EncounterResponse:
+    """Depart an awaiting Encounter, recording the departure instant now.
+
+    The action takes no input: the instant is the server's clock at the moment
+    of the request, never a value the caller supplies. The Queue is a read
+    that filters on ``departed_at``, so the Encounter leaves the board on the
+    very next poll with no extra refresh mechanism. Departure is manual only;
+    nothing schedules it.
+    """
+    encounter = _get_encounter(db, encounter_id)
+    perform_departure(db, encounter)
+    db.commit()
+    return _encounter_response(encounter)
+
+
 @router.put("/encounters/{encounter_id}/intake", response_model=EncounterResponse)
 def correct_intake(
     encounter_id: int,
@@ -242,6 +266,8 @@ def _encounter_response(
     return EncounterResponse(
         id=encounter.id,
         arrived_at=encounter.arrived_at,
+        departed_at=encounter.departed_at,
+        status=encounter_status(encounter),
         patient=PatientResponse.model_validate(encounter.patient),
         intake=_intake_payload(encounter),
         assessment=(

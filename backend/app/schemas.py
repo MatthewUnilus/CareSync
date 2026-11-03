@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.departures import EncounterStatus
 from app.models import Role, Sex
 from app.override_reasons import OverrideReason, allows_free_text
 from app.prioritisation import UrgencyLevel
@@ -211,8 +212,18 @@ class OverrideReasonsResponse(BaseModel):
 
 
 class EncounterResponse(BaseModel):
+    """One Encounter, awaiting or departed.
+
+    ``status`` is derived from ``departed_at`` rather than stored: awaiting
+    while the instant is null, departed once it is set. A departed Encounter
+    is still returned in full, with its Patient, intake, Assessment and
+    Override intact.
+    """
+
     id: int
     arrived_at: UtcDatetime
+    departed_at: UtcDatetime | None = None
+    status: EncounterStatus
     patient: PatientResponse
     intake: IntakePayload
     assessment: AssessmentResponse | None = None

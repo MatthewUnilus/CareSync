@@ -6,8 +6,8 @@ Urgency Level is the **latest** Triage Assessment's Final Decision: ticket 03
 creates exactly one Assessment per Encounter, and ticket 10's Re-assessment
 appends another whose Final Decision wins.
 
-An Encounter is awaiting while ``departed_at`` is null. Ticket 11 records
-departures; until then every Encounter is awaiting.
+An Encounter is awaiting while ``departed_at`` is null, and departed once the
+Departure action records the instant. Only awaiting Encounters are read here.
 """
 
 from dataclasses import dataclass
