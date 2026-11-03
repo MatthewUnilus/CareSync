@@ -8,9 +8,11 @@ The engine is layered (``spec.md``, "Prioritization Engine composition"):
 (1) a trained supervised classifier over a structured feature vector; (2) a
 deterministic red-flag safety layer that can raise — never lower — the output
 (ticket 07); (3) a cached fallback for complaints matching no Symptom Group
-(ticket 08). This ticket replaces the earlier stub with layer (1) alone, so the
-Queue, the Assessment record and the board now see a recommendation produced by
-the model behind an unchanged boundary.
+(ticket 08). Ticket 06 replaced the stub with layer (1). Ticket 07 adds layer
+(2) in :mod:`app.red_flags`: it runs after the classifier, can only raise the
+result to High, and leaves a presentation with no firing rule untouched. The
+Queue, the Assessment record and the board see the composed result behind an
+unchanged boundary.
 
 The classifier is a multinomial logistic regression trained on published,
 openly downloadable triage data (see ``evaluation/datasets/provenance.json``
@@ -21,7 +23,8 @@ level, illness duration, age and the four vitals. The free-text complaint is
 never a feature.
 
 The model is loaded once per process and cached, so the first call reads a small
-JSON file and later calls do no I/O. Inference is a few microseconds, well
+JSON file and later calls do no I/O. The safety layer is twenty deterministic
+predicates over the same inputs, so it adds microseconds. Inference is far
 inside the three-second budget. Same inputs, same output, always.
 """
 
@@ -29,6 +32,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from app.features import build_feature_vector
+from app.red_flags import apply_safety_layer
 
 
 class UrgencyLevel(str, Enum):
@@ -74,4 +78,5 @@ def recommend(inputs: PrioritisationInputs) -> UrgencyLevel:
     # one without a circular import at module load.
     from app.classifier import load_default_model
 
-    return load_default_model().predict(build_feature_vector(inputs))
+    classifier_level = load_default_model().predict(build_feature_vector(inputs))
+    return apply_safety_layer(inputs, classifier_level)
