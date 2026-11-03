@@ -171,16 +171,37 @@ def test_the_queue_shows_the_recognised_symptom_groups_of_the_assessment(
     }
 
 
-def test_recognition_does_not_change_the_machine_recommendation(
+def test_the_complaint_text_is_not_a_feature_of_the_recommendation(
     clinical_client: TestClient,
 ) -> None:
-    # The stub engine ignores the complaint text. This ticket captures the
-    # recognised groups without giving them to the engine; ticket 06 replaces
-    # the stub and owns that decision.
-    recognised = _open_encounter(
+    # The classifier consumes the structured feature vector, never the text, so
+    # two wordings that recognise the same (here: no) Symptom Group must produce
+    # the same Machine Recommendation. Recognition is still recorded with the
+    # Assessment, which is how a Clinical user sees what the model was given.
+    first = _open_encounter(clinical_client, "feeling generally unwell")
+    second = _open_encounter(clinical_client, "a vague sense of malaise")
+
+    assert first["assessment"]["recognised_symptom_groups"] == []
+    assert second["assessment"]["recognised_symptom_groups"] == []
+    assert (
+        first["assessment"]["machine_recommendation"]
+        == second["assessment"]["machine_recommendation"]
+    )
+
+
+def test_recognised_symptom_groups_reach_the_classifier_as_features(
+    clinical_client: TestClient,
+) -> None:
+    # Recognition runs before the engine and the vector carries one dimension per
+    # group, so the same captured vitals with a recognised group are a different
+    # model input from the same vitals without one. The shipped interim artefact
+    # happens to give every group a zero weight because its training source
+    # records no complaints; that is a property of the artefact, not of the
+    # boundary, and it is recorded in the artefact's `constant_features`.
+    with_group = _open_encounter(
         clinical_client, "crushing central chest pain radiating to the left arm"
     )
-    unrecognised = _open_encounter(clinical_client, "feeling generally unwell")
+    without_group = _open_encounter(clinical_client, "feeling generally unwell")
 
-    assert recognised["assessment"]["machine_recommendation"] == "Low"
-    assert unrecognised["assessment"]["machine_recommendation"] == "Low"
+    assert with_group["assessment"]["recognised_symptom_groups"] == ["chest pain"]
+    assert without_group["assessment"]["recognised_symptom_groups"] == []

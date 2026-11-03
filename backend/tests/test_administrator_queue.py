@@ -17,24 +17,48 @@ LOW_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
     "pain_level": 2,
     "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
+    "temperature_c": 36.6,
+    "heart_rate_bpm": 70,
+    "blood_pressure": {"systolic": 116, "diastolic": 72},
+    "oxygen_saturation_percent": 99,
     "notes": None,
 }
 
-MEDIUM_INTAKE = {**LOW_INTAKE, "pain_level": 6, "presenting_complaint": "Abdominal pain"}
+MEDIUM_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 6,
+    "presenting_complaint": "Abdominal pain",
+    "illness_duration_hours": 12,
+    "temperature_c": 36.8,
+    "heart_rate_bpm": 80,
+    "blood_pressure": {"systolic": 110, "diastolic": 70},
+    "oxygen_saturation_percent": 94,
+}
 
-HIGH_INTAKE = {**LOW_INTAKE, "pain_level": 9, "presenting_complaint": "Chest pain"}
+HIGH_INTAKE = {
+    **LOW_INTAKE,
+    "pain_level": 9,
+    "presenting_complaint": "Chest pain",
+    "illness_duration_hours": 2,
+    "temperature_c": 38.4,
+    "heart_rate_bpm": 130,
+    "blood_pressure": {"systolic": 95, "diastolic": 58},
+    "oxygen_saturation_percent": 88,
+}
+
+LOW_AGE = 24
+MEDIUM_AGE = 80
+HIGH_AGE = 78
 
 
-def register_patient(client: TestClient, full_name: str = "Ada Lovelace") -> int:
+def register_patient(
+    client: TestClient, full_name: str = "Ada Lovelace", age: int = 36
+) -> int:
     response = client.post(
         "/api/clinical/patients",
         json={
             "full_name": full_name,
-            "age": 36,
+            "age": age,
             "sex": "female",
             "contact_phone": "07700 900123",
             "contact_email": None,
@@ -77,10 +101,19 @@ def administrator_entries(client: TestClient) -> list[dict[str, Any]]:
 def test_the_administrator_sees_the_awaiting_queue_in_queue_order(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
-    low = open_encounter(clinical_client, patient_id, LOW_INTAKE)
-    high = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    medium = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
+    low = open_encounter(
+        clinical_client, register_patient(clinical_client, "Ada Lovelace", LOW_AGE), LOW_INTAKE
+    )
+    high = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Alan Turing", HIGH_AGE),
+        HIGH_INTAKE,
+    )
+    medium = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Grace Hopper", MEDIUM_AGE),
+        MEDIUM_INTAKE,
+    )
 
     login_as_administrator(clinical_client)
     response = clinical_client.get("/api/administrator/queue")
@@ -103,7 +136,7 @@ def test_the_administrator_sees_the_awaiting_queue_in_queue_order(
 def test_each_administrator_row_carries_the_dense_table_fields(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
 
     login_as_administrator(clinical_client)
@@ -123,7 +156,7 @@ def test_each_administrator_row_carries_the_dense_table_fields(
 def test_the_administrator_row_reflects_an_override_on_the_next_read(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     encounter = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
 
     session_factory = clinical_client.app.state.session_factory
@@ -148,9 +181,13 @@ def test_the_administrator_row_reflects_an_override_on_the_next_read(
 def test_the_administrator_row_disappears_after_a_departure(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client)
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
     departed = open_encounter(clinical_client, patient_id, HIGH_INTAKE)
-    awaiting = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    awaiting = open_encounter(
+        clinical_client,
+        register_patient(clinical_client, "Ada Lovelace", LOW_AGE),
+        LOW_INTAKE,
+    )
 
     session_factory = clinical_client.app.state.session_factory
     with session_factory() as session:

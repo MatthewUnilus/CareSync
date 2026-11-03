@@ -4,31 +4,31 @@ The engine is a pure function: given the inputs captured for a Triage
 Assessment it returns exactly one Urgency Level. It takes no session, touches no
 database, and is called directly from unit tests with constructed inputs.
 
-The real engine is layered (classifier, red-flag safety layer, cached fallback)
-and is built by later tickets. This ticket ships a **deliberately simple
-deterministic stub** so that the Queue, the Assessment record and the board can
-be built and tested against a stable boundary. The stub is replaced by the
-trained classifier in ticket 06; tickets 05, 07 and 08 add recognition, the
-safety layer and the fallback behind the same boundary.
+The engine is layered (``spec.md``, "Prioritization Engine composition"):
+(1) a trained supervised classifier over a structured feature vector; (2) a
+deterministic red-flag safety layer that can raise — never lower — the output
+(ticket 07); (3) a cached fallback for complaints matching no Symptom Group
+(ticket 08). This ticket replaces the earlier stub with layer (1) alone, so the
+Queue, the Assessment record and the board now see a recommendation produced by
+the model behind an unchanged boundary.
 
-The stub rule, in one paragraph: **High** if any single severe observation is
-present — oxygen saturation below 92%, heart rate outside 50–120, systolic
-pressure outside 90–179, temperature outside 35.0–38.9 °C, or pain 8 or more;
-otherwise **Medium** if any moderate observation is present — oxygen saturation
-below 95%, heart rate above 100, systolic pressure below 100 or 160 and above,
-temperature 38.0 °C or above or below 36.0 °C, or pain 5 or more; otherwise
-**Low**. It ignores the complaint text, age, illness duration and recognised
-Symptom Groups; that is deliberate, and it is why the answer is easy to explain
-but clinically shallow. It has no I/O, so the three-second budget is trivially
-met; a later implementation may do work inside the same signature without the
-callers changing.
+The classifier is a multinomial logistic regression trained on published,
+openly downloadable triage data (see ``evaluation/datasets/provenance.json``
+for the exact sources and licences, and ``models/`` for the artefact and its
+cross-validated scores). It consumes the vector built by
+:func:`app.features.build_feature_vector` — recognised Symptom Groups, pain
+level, illness duration, age and the four vitals. The free-text complaint is
+never a feature.
 
-`PrioritisationInputs.recognised_symptom_groups` is part of the captured inputs
-so ticket 05 can fill it without changing the boundary. The stub ignores it.
+The model is loaded once per process and cached, so the first call reads a small
+JSON file and later calls do no I/O. Inference is a few microseconds, well
+inside the three-second budget. Same inputs, same output, always.
 """
 
 from dataclasses import dataclass
 from enum import Enum
+
+from app.features import build_feature_vector
 
 
 class UrgencyLevel(str, Enum):
@@ -51,8 +51,9 @@ URGENCY_RANK: dict[UrgencyLevel, int] = {
 class PrioritisationInputs:
     """The inputs a Triage Assessment captures, as the engine sees them.
 
-    The free-text complaint and the Patient's age are captured because a later
-    engine uses them, even though the current stub does not.
+    The free-text complaint is captured and stored with the Assessment, but it
+    is not a feature: only the Symptom Groups recognised from it reach the
+    classifier.
     """
 
     presenting_complaint: str
@@ -67,53 +68,10 @@ class PrioritisationInputs:
     recognised_symptom_groups: tuple[str, ...] = ()
 
 
-# Stub thresholds. Ticket 06 replaces this function; keep the names local so it
-# is obvious what has to disappear with the stub.
-_SEVERE_OXYGEN_SATURATION = 92
-_SEVERE_HEART_RATE_LOW = 50
-_SEVERE_HEART_RATE_HIGH = 120
-_SEVERE_SYSTOLIC_LOW = 90
-_SEVERE_SYSTOLIC_HIGH = 180
-_SEVERE_TEMPERATURE_LOW = 35.0
-_SEVERE_TEMPERATURE_HIGH = 38.9
-_SEVERE_PAIN = 8
-
-_MODERATE_OXYGEN_SATURATION = 95
-_MODERATE_HEART_RATE_HIGH = 100
-_MODERATE_SYSTOLIC_LOW = 100
-_MODERATE_SYSTOLIC_HIGH = 160
-_MODERATE_TEMPERATURE_LOW = 36.0
-_MODERATE_TEMPERATURE_HIGH = 38.0
-_MODERATE_PAIN = 5
-
-
 def recommend(inputs: PrioritisationInputs) -> UrgencyLevel:
-    """Return the Machine Recommendation for these captured inputs.
+    """Return the Machine Recommendation for these captured inputs."""
+    # Imported here so the classifier module may import UrgencyLevel from this
+    # one without a circular import at module load.
+    from app.classifier import load_default_model
 
-    **Stub — replaced by the trained classifier in ticket 06.** See the module
-    docstring for the rule in full.
-    """
-    if (
-        inputs.oxygen_saturation_percent < _SEVERE_OXYGEN_SATURATION
-        or inputs.heart_rate_bpm < _SEVERE_HEART_RATE_LOW
-        or inputs.heart_rate_bpm > _SEVERE_HEART_RATE_HIGH
-        or inputs.systolic_bp < _SEVERE_SYSTOLIC_LOW
-        or inputs.systolic_bp >= _SEVERE_SYSTOLIC_HIGH
-        or inputs.temperature_c < _SEVERE_TEMPERATURE_LOW
-        or inputs.temperature_c > _SEVERE_TEMPERATURE_HIGH
-        or inputs.pain_level >= _SEVERE_PAIN
-    ):
-        return UrgencyLevel.high
-
-    if (
-        inputs.oxygen_saturation_percent < _MODERATE_OXYGEN_SATURATION
-        or inputs.heart_rate_bpm > _MODERATE_HEART_RATE_HIGH
-        or inputs.systolic_bp < _MODERATE_SYSTOLIC_LOW
-        or inputs.systolic_bp >= _MODERATE_SYSTOLIC_HIGH
-        or inputs.temperature_c < _MODERATE_TEMPERATURE_LOW
-        or inputs.temperature_c >= _MODERATE_TEMPERATURE_HIGH
-        or inputs.pain_level >= _MODERATE_PAIN
-    ):
-        return UrgencyLevel.medium
-
-    return UrgencyLevel.low
+    return load_default_model().predict(build_feature_vector(inputs))
