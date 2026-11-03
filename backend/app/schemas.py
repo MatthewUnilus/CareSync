@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from app.models import Role, Sex
+from app.override_reasons import OverrideReason, allows_free_text
 from app.prioritisation import UrgencyLevel
 from app.timeutils import as_utc
 
@@ -151,13 +152,62 @@ class AssessmentSnapshot(BaseModel):
     notes: str | None
 
 
+class OverrideActorResponse(BaseModel):
+    id: int
+    display_name: str
+
+
+class OverrideRecordResponse(BaseModel):
+    """The human act behind a Final Decision that differs from the machine's."""
+
+    reason: OverrideReason
+    free_text: str | None
+    performed_at: UtcDatetime
+    performed_by: OverrideActorResponse
+
+
 class AssessmentResponse(BaseModel):
     id: int
     assessed_at: UtcDatetime
     machine_recommendation: UrgencyLevel
     final_decision: UrgencyLevel
     recognised_symptom_groups: list[str]
+    override: OverrideRecordResponse | None = None
     snapshot: AssessmentSnapshot
+
+
+class OverrideRequest(BaseModel):
+    """Set a Final Decision different from the Machine Recommendation.
+
+    ``machine_recommendation`` is deliberately not a field, and unknown fields
+    are refused, so this path cannot be used to write the engine's output.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    assessment_id: int = Field(gt=0)
+    final_decision: UrgencyLevel
+    reason: OverrideReason
+    free_text: _OPTIONAL_TEXT | None = None
+
+    @field_validator("free_text")
+    @classmethod
+    def _blank_free_text_is_absent(cls, value: str | None) -> str | None:
+        return value or None
+
+    @model_validator(mode="after")
+    def _free_text_only_for_other(self) -> "OverrideRequest":
+        if not allows_free_text(self.reason) and self.free_text is not None:
+            raise ValueError(
+                "free_text is accepted only when reason is 'other'"
+            )
+        return self
+
+
+class OverrideReasonsResponse(BaseModel):
+    """The fixed Override Reason set, in glossary order."""
+
+    reasons: list[OverrideReason]
 
 
 class EncounterResponse(BaseModel):
@@ -182,6 +232,7 @@ class QueueEntryResponse(BaseModel):
     patient: PatientResponse
     intake: IntakePayload
     assessment: AssessmentResponse
+    override_flag: bool
 
 
 class QueueResponse(BaseModel):

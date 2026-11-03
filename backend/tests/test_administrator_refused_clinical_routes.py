@@ -60,6 +60,17 @@ CLINICAL_ROUTE_CASES: list[tuple[str, str, str, dict[str, Any] | None]] = [
         "/api/clinical/encounters/1/intake",
         LOW_INTAKE,
     ),
+    (
+        "POST",
+        "/api/clinical/encounters/{encounter_id}/override",
+        "/api/clinical/encounters/1/override",
+        {
+            "assessment_id": 1,
+            "final_decision": "High",
+            "reason": "clinical gestalt",
+        },
+    ),
+    ("GET", "/api/clinical/override-reasons", "/api/clinical/override-reasons", None),
 ]
 
 
