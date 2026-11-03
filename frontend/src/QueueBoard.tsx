@@ -489,6 +489,13 @@ function ExpandedDetail({
         ) : (
           <p className="muted">None recognised from the complaint text.</p>
         )}
+        {entry.assessment.unclassified ? (
+          <p className="notice notice-warning">
+            This complaint matched no Symptom Group and the fallback provider
+            was unavailable or timed out. The recommendation came from the
+            safety layer&rsquo;s default level. Review it before relying on it.
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -595,6 +602,14 @@ export default function QueueBoard() {
                         title={`Final Decision ${entry.assessment.final_decision} differs from Machine Recommendation ${entry.assessment.machine_recommendation}`}
                       >
                         Override
+                      </span>
+                    ) : null}
+                    {entry.unclassified_flag ? (
+                      <span
+                        className="queue-flag queue-flag-unclassified"
+                        title="No Symptom Group matched and the fallback provider was unavailable or timed out; this recommendation came from the safety layer's default and needs review."
+                      >
+                        Unclassified
                       </span>
                     ) : null}
                     <span className="queue-name">{entry.patient.full_name}</span>

@@ -201,6 +201,11 @@ textarea:focus {
   color: var(--success);
 }
 
+.notice-warning {
+  background: #f0ecfb;
+  color: #43308f;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -494,6 +499,16 @@ textarea:focus {
 .queue-flag-override {
   background: #fdf0e3;
   color: var(--administrator);
+}
+
+/*
+ * Unclassified is deliberately a different colour and word from Override.
+ * Override means a human disagreed; Unclassified means the fallback could not
+ * classify and the safety-layer default needs review.
+ */
+.queue-flag-unclassified {
+  background: #f0ecfb;
+  color: #43308f;
 }
 
 .queue-override {

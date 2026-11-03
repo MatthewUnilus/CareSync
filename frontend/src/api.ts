@@ -102,6 +102,11 @@ export interface Assessment {
   machine_recommendation: UrgencyLevel;
   final_decision: UrgencyLevel;
   recognised_symptom_groups: string[];
+  /**
+   * True when the complaint matched no Symptom Group and the fallback
+   * provider was unavailable or timed out. Distinct from an Override.
+   */
+  unclassified: boolean;
   override: OverrideRecord | null;
   snapshot: AssessmentSnapshot;
   /**
@@ -120,6 +125,8 @@ export interface QueueEntry {
   intake: Intake;
   assessment: Assessment;
   override_flag: boolean;
+  /** Its own state, separate from override_flag. */
+  unclassified_flag: boolean;
 }
 
 export interface QueueSnapshot {
