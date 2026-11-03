@@ -4,18 +4,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.assessments import create_triage_assessment
 from app.deps import DbSession, require_role
 from app.intake import ensure_intake_editable
-from app.models import Encounter, Patient, Role, User
+from app.models import Encounter, Patient, Role, TriageAssessment, User
 from app.patients import find_or_create_patient
+from app.queue import awaiting_queue
 from app.schemas import (
+    AssessmentResponse,
+    AssessmentSnapshot,
     EncounterCreateRequest,
     EncounterListResponse,
     EncounterResponse,
     IntakePayload,
     PatientRegistrationRequest,
     PatientResponse,
+    QueueEntryResponse,
+    QueueResponse,
 )
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
@@ -82,8 +89,10 @@ def open_encounter(
     encounter = Encounter(patient_id=patient.id)
     _apply_intake(encounter, payload.intake)
     db.add(encounter)
+    db.flush()
+    assessment = create_triage_assessment(db, encounter)
     db.commit()
-    return _encounter_response(encounter)
+    return _encounter_response(encounter, assessment)
 
 
 @router.get("/encounters", response_model=EncounterListResponse)
@@ -92,7 +101,7 @@ def list_recent_encounters(
     user: ClinicalUser,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> EncounterListResponse:
-    """Encounters most recently opened first, for correcting a saved intake.
+    """Encounters most recently opened first, for reviewing a saved intake.
 
     This is a recency list, not the Queue: it is not ordered by Urgency Level
     and does not filter on awaiting versus departed.
@@ -104,6 +113,32 @@ def list_recent_encounters(
     ).all()
     return EncounterListResponse(
         encounters=[_encounter_response(encounter) for encounter in encounters]
+    )
+
+
+@router.get("/queue", response_model=QueueResponse)
+def get_queue(db: DbSession, user: ClinicalUser) -> QueueResponse:
+    """The Queue: awaiting Encounters by Urgency Level, then arrival time.
+
+    Time waiting is computed from ``arrived_at`` at the instant of the read, so
+    the same stored row reports a different wait on the next poll.
+    """
+    now = utc_now()
+    entries = awaiting_queue(db, now)
+    return QueueResponse(
+        as_of=now,
+        entries=[
+            QueueEntryResponse(
+                encounter_id=entry.encounter.id,
+                arrived_at=entry.encounter.arrived_at,
+                waiting_seconds=entry.waiting_seconds,
+                urgency_level=entry.assessment.final_decision,
+                patient=PatientResponse.model_validate(entry.encounter.patient),
+                intake=_intake_payload(entry.encounter),
+                assessment=_assessment_response(entry.assessment),
+            )
+            for entry in entries
+        ],
     )
 
 
@@ -153,22 +188,65 @@ def _apply_intake(encounter: Encounter, intake: IntakePayload) -> None:
     encounter.notes = intake.notes
 
 
-def _encounter_response(encounter: Encounter) -> EncounterResponse:
+def _encounter_response(
+    encounter: Encounter,
+    assessment: TriageAssessment | None = None,
+) -> EncounterResponse:
+    if assessment is None:
+        assessment = (
+            encounter.assessments[-1] if encounter.assessments else None
+        )
     return EncounterResponse(
         id=encounter.id,
         arrived_at=encounter.arrived_at,
         patient=PatientResponse.model_validate(encounter.patient),
-        intake=IntakePayload(
-            presenting_complaint=encounter.presenting_complaint,
-            pain_level=encounter.pain_level,
-            illness_duration_hours=encounter.illness_duration_hours,
-            temperature_c=encounter.temperature_c,
-            heart_rate_bpm=encounter.heart_rate_bpm,
+        intake=_intake_payload(encounter),
+        assessment=(
+            _assessment_response(assessment) if assessment is not None else None
+        ),
+    )
+
+
+def _intake_payload(encounter: Encounter) -> IntakePayload:
+    return IntakePayload(
+        presenting_complaint=encounter.presenting_complaint,
+        pain_level=encounter.pain_level,
+        illness_duration_hours=encounter.illness_duration_hours,
+        temperature_c=encounter.temperature_c,
+        heart_rate_bpm=encounter.heart_rate_bpm,
+        blood_pressure={
+            "systolic": encounter.systolic_bp,
+            "diastolic": encounter.diastolic_bp,
+        },
+        oxygen_saturation_percent=encounter.oxygen_saturation_percent,
+        notes=encounter.notes,
+    )
+
+
+def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
+    groups = [
+        group
+        for group in assessment.recognised_symptom_groups.split(",")
+        if group
+    ]
+    return AssessmentResponse(
+        id=assessment.id,
+        assessed_at=assessment.assessed_at,
+        machine_recommendation=assessment.machine_recommendation,
+        final_decision=assessment.final_decision,
+        recognised_symptom_groups=groups,
+        snapshot=AssessmentSnapshot(
+            presenting_complaint=assessment.presenting_complaint,
+            age=assessment.patient_age,
+            pain_level=assessment.pain_level,
+            illness_duration_hours=assessment.illness_duration_hours,
+            temperature_c=assessment.temperature_c,
+            heart_rate_bpm=assessment.heart_rate_bpm,
             blood_pressure={
-                "systolic": encounter.systolic_bp,
-                "diastolic": encounter.diastolic_bp,
+                "systolic": assessment.systolic_bp,
+                "diastolic": assessment.diastolic_bp,
             },
-            oxygen_saturation_percent=encounter.oxygen_saturation_percent,
-            notes=encounter.notes,
+            oxygen_saturation_percent=assessment.oxygen_saturation_percent,
+            notes=assessment.notes,
         ),
     )

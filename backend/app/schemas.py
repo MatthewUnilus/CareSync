@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from app.models import Role, Sex
+from app.prioritisation import UrgencyLevel
 from app.timeutils import as_utc
 
 _NAME = Annotated[
@@ -136,12 +137,53 @@ class EncounterCreateRequest(BaseModel):
     intake: IntakePayload
 
 
+class AssessmentSnapshot(BaseModel):
+    """The immutable inputs captured when the Assessment ran."""
+
+    presenting_complaint: str
+    age: int
+    pain_level: int
+    illness_duration_hours: float
+    temperature_c: float
+    heart_rate_bpm: int
+    blood_pressure: BloodPressure
+    oxygen_saturation_percent: int
+    notes: str | None
+
+
+class AssessmentResponse(BaseModel):
+    id: int
+    assessed_at: UtcDatetime
+    machine_recommendation: UrgencyLevel
+    final_decision: UrgencyLevel
+    recognised_symptom_groups: list[str]
+    snapshot: AssessmentSnapshot
+
+
 class EncounterResponse(BaseModel):
     id: int
     arrived_at: UtcDatetime
     patient: PatientResponse
     intake: IntakePayload
+    assessment: AssessmentResponse | None = None
 
 
 class EncounterListResponse(BaseModel):
     encounters: list[EncounterResponse]
+
+
+class QueueEntryResponse(BaseModel):
+    """One compact card's worth of data, plus everything the expansion shows."""
+
+    encounter_id: int
+    arrived_at: UtcDatetime
+    waiting_seconds: int
+    urgency_level: UrgencyLevel
+    patient: PatientResponse
+    intake: IntakePayload
+    assessment: AssessmentResponse
+
+
+class QueueResponse(BaseModel):
+    as_of: UtcDatetime
+    entries: list[QueueEntryResponse]

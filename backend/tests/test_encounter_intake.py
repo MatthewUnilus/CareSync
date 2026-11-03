@@ -87,7 +87,7 @@ def test_arrival_instant_is_recorded_at_creation_and_never_editable(
         f"/api/clinical/encounters/{created.json()['id']}/intake",
         json={**INTAKE, "pain_level": 6, "arrived_at": "1999-01-01T00:00:00Z"},
     )
-    assert corrected.status_code == 200
+    assert corrected.status_code == 409
 
     fetched = clinical_client.get(f"/api/clinical/encounters/{created.json()['id']}")
     assert datetime.fromisoformat(fetched.json()["arrived_at"]) == arrived_at
@@ -108,7 +108,7 @@ def test_arrival_instant_is_recorded_at_creation_and_never_editable(
     )
 
 
-def test_intake_can_be_corrected_before_an_assessment_runs(
+def test_intake_correction_is_refused_once_an_assessment_exists(
     clinical_client: TestClient,
 ) -> None:
     patient_id = register_patient(clinical_client)
@@ -131,11 +131,10 @@ def test_intake_can_be_corrected_before_an_assessment_runs(
         json=corrected_intake,
     )
 
-    assert response.status_code == 200
-    assert response.json()["intake"] == corrected_intake
+    assert response.status_code == 409
 
     fetched = clinical_client.get(f"/api/clinical/encounters/{encounter_id}")
-    assert fetched.json()["intake"] == corrected_intake
+    assert fetched.json()["intake"] == INTAKE
     assert fetched.json()["patient"]["id"] == patient_id
 
 
