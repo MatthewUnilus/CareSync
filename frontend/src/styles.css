@@ -1,0 +1,288 @@
+:root {
+  --ink: #14262b;
+  --muted: #5d7078;
+  --line: #d8e2e2;
+  --surface: #ffffff;
+  --canvas: #eef4f3;
+  --brand: #0d6f68;
+  --brand-strong: #09554f;
+  --clinical: #0d6f68;
+  --administrator: #8a5b00;
+  --danger: #a52a2a;
+  --success: #1f6b3d;
+  font-family:
+    "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 0.55rem;
+  background: var(--brand);
+  color: #ffffff;
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  transition:
+    background 120ms ease,
+    opacity 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--brand-strong);
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--brand);
+  color: var(--brand-strong);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: rgba(13, 111, 104, 0.08);
+}
+
+button.link-button {
+  background: transparent;
+  color: var(--brand-strong);
+  padding: 0.35rem 0.5rem;
+  text-decoration: underline;
+}
+
+input {
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  background: #ffffff;
+  color: var(--ink);
+  width: 100%;
+}
+
+input:focus {
+  outline: 2px solid rgba(13, 111, 104, 0.35);
+  outline-offset: 1px;
+  border-color: var(--brand);
+}
+
+.centered {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.login-card,
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  box-shadow: 0 18px 40px -32px rgba(20, 38, 43, 0.55);
+}
+
+.login-card {
+  width: min(24rem, 100%);
+  padding: 2rem;
+  display: grid;
+  gap: 1.6rem;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-block h1 {
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.8rem;
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.stack label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.notice {
+  border-radius: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.notice-error {
+  background: #fbeaea;
+  color: var(--danger);
+}
+
+.notice-success {
+  background: #e7f5ec;
+  color: var(--success);
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.topbar .muted {
+  font-size: 0.78rem;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.identity-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.role-badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.role-clinical {
+  background: var(--clinical);
+}
+
+.role-administrator {
+  background: var(--administrator);
+}
+
+.shell-main {
+  width: min(58rem, 100%);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.card {
+  padding: 1.5rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.card h2 {
+  font-size: 1.1rem;
+}
+
+.lead {
+  font-size: 1rem;
+}
+
+.facts {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.facts dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.facts dd {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+@media (max-width: 540px) {
+  .login-card {
+    padding: 1.5rem;
+  }
+
+  .shell-main {
+    padding: 1.25rem 1rem 2rem;
+  }
+
+  .card {
+    padding: 1.15rem;
+  }
+}

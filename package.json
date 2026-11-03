@@ -1,0 +1,20 @@
+{
+  "name": "triageassist",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "predev": "npm run seed",
+    "dev": "concurrently -k --names api,web --prefix-colors blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "uv run --directory backend uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:web": "npm run dev --workspace @triageassist/web",
+    "seed": "uv run --directory backend python -m app.seed",
+    "test": "uv run --directory backend pytest",
+    "build:web": "npm run build --workspace @triageassist/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
