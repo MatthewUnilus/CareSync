@@ -161,15 +161,16 @@ is asked to score.
 The artefact is `backend/models/urgency-classifier-v1.0.0.json` — standardisation
 constants, one coefficient row per Urgency Level, the dataset identity, the
 vocabulary version and the cross-validated scores, all in one small, readable
-file. Inference is a softmax over six-ish non-zero coefficients: deterministic,
-microseconds, no I/O after the first call (the loader is cached), so the
-three-second budget is met many times over.
+file. Inference is a softmax over six non-zero coefficients per class (age and
+the five vital numbers): deterministic, microseconds, no I/O after the first
+call (the loader is cached), so the three-second budget is met many times over.
 
 Training data is the CC0 Harvard Dataverse three-level triage dataset
 (DOI 10.7910/DVN/7SOYC7). It is an **interim development artefact**: the source
 records no pain level, illness duration or complaint, so those dimensions carry
-a zero coefficient, and 5-fold accuracy is at the majority-class baseline. The
-credentialed primary dataset the spec names supplies exactly those dimensions.
+a zero coefficient, and 5-fold accuracy (0.42) is below the majority-class
+baseline (0.53). The credentialed primary dataset the spec names supplies
+exactly those dimensions.
 Provenance, licences, the fetch command and the known gaps are in
 `backend/evaluation/datasets/README.md`; regenerate the artefact with:
 
