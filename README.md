@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, the live Queue board, and the read-only Administrator
-dashboard. The Prioritization Engine behind the board is a documented
-deterministic stub; the trained classifier, Override, Re-assessment, Departure,
-and Reports arrive in later tickets.
+Triage Assessment record, Symptom Group recognition, the live Queue board, and
+the read-only Administrator dashboard. The Prioritization Engine behind the
+board is a documented deterministic stub; the trained classifier, Override,
+Re-assessment, Departure, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -112,6 +112,32 @@ its first Triage Assessment in the same transaction. A later correction attempt
 therefore returns `409 Conflict`: the Assessment's snapshot is the durable record
 of what the recommendation was made from. See `backend/app/intake.py`.
 
+## Symptom Groups
+
+The free-text presenting complaint is mapped onto the finite Symptom Group
+vocabulary in `backend/app/symptom_groups.json`, versioned there as
+`1.0.0`. Each entry records whether it was anchored on an ESI v4 red flag or
+added as a common presentation. The list is data, not code: recognition is
+spaCy entity extraction with the vocabulary installed as an `EntityRuler` over
+`en_core_web_sm` (`backend/app/symptom_groups.py`), so a group is recognised
+only when its exact canonical phrase occurs in the complaint.
+
+There is no synonym table, no lemmatisation, no stemming and no inference.
+"Heart attack" is not *chest pain*; "no chest pain" is still *chest pain*; and
+the longer phrase wins an overlap, so "vomiting blood" does not also report
+"vomiting". Negation is not interpreted. The recognised groups are shown on the
+expanded card precisely so a misreading of the text is visible to the Clinical
+user; the card says "None recognised" when the complaint matched nothing.
+
+Recognition runs once, inside `create_triage_assessment`, and the result is
+frozen into the Assessment with the rest of its inputs. No groups is stored as
+an empty string, which is distinguishable from having recognised one. The
+Machine Recommendation is unchanged: the stub engine does not consume Symptom
+Groups, and ticket 06 owns that step.
+
+The first `uv sync` downloads spaCy and the `en_core_web_sm` wheel from GitHub
+releases, so it needs network access.
+
 ## Prioritization Engine and the Queue
 
 The engine boundary (Seam B) is `app.prioritisation.recommend`: a pure function
@@ -127,8 +153,9 @@ moderate observation is present — oxygen saturation below 95%, heart rate abov
 100, systolic pressure below 100 or 160 and above, temperature 38.0 °C or above
 or below 36.0 °C, or pain 5 or more; otherwise Low. It ignores the complaint text,
 age, illness duration, and Symptom Groups. Ticket 06 replaces it with the trained
-classifier; tickets 05, 07, and 08 add recognition, the safety layer, and the
-fallback behind the same boundary.
+classifier; tickets 07 and 08 add the safety layer and the fallback behind the
+same boundary. Symptom Group recognition is already captured and shown, but the
+stub does not read it.
 
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
@@ -142,7 +169,8 @@ The client polls `GET /api/clinical/queue` every five seconds and on window
 focus, so a change to a Final Decision appears without a manual refresh.
 `QueueBoard.tsx` renders compact cards — urgency colour, Patient name, short
 complaint, time waiting — and expands to the full vitals, pain level, duration,
-notes, and the actions that exist (none for the Queue yet).
+the Symptom Groups recognised from the complaint, notes, and the actions that
+exist (none for the Queue yet).
 
 ## Administrator dashboard
 
@@ -258,6 +286,8 @@ backend/
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
     prioritisation.py  Seam B: the pure Prioritization Engine (stub in ticket 03)
+    symptom_groups.py  the fixed vocabulary and spaCy recognition onto it
+    symptom_groups.json  versioned Symptom Group vocabulary (authored list)
     assessments.py     captures inputs, runs the engine, appends the Assessment
     queue.py           the Queue as a sort over awaiting Encounters
     security.py        argon2 hashing, session token hashing

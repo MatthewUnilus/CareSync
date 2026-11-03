@@ -15,6 +15,7 @@ const POLL_INTERVAL_MS = 5_000;
 
 function ExpandedDetail({ entry }: { entry: QueueEntry }) {
   const { intake } = entry;
+  const symptomGroups = entry.assessment.recognised_symptom_groups;
 
   return (
     <div className="queue-detail">
@@ -54,6 +55,21 @@ function ExpandedDetail({ entry }: { entry: QueueEntry }) {
           <dd>#{entry.encounter_id}</dd>
         </div>
       </dl>
+
+      <div>
+        <p className="queue-detail-label">Symptom Groups</p>
+        {symptomGroups.length > 0 ? (
+          <ul className="symptom-groups">
+            {symptomGroups.map((group) => (
+              <li key={group} className="symptom-group">
+                {group}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">None recognised from the complaint text.</p>
+        )}
+      </div>
 
       <div>
         <p className="queue-detail-label">Notes</p>

@@ -10,10 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.models import Encounter, TriageAssessment
 from app.prioritisation import PrioritisationInputs, recommend
+from app.symptom_groups import recognise
 
 
 def build_inputs(encounter: Encounter) -> PrioritisationInputs:
-    """Capture the engine inputs from the Encounter and its Patient."""
+    """Capture the engine inputs from the Encounter and its Patient.
+
+    Recognition runs here, as part of producing the Assessment, so the groups
+    are frozen into the same snapshot as the rest of the inputs. This ticket
+    only records them: ``recommend`` still decides exactly as it did before.
+    """
     return PrioritisationInputs(
         presenting_complaint=encounter.presenting_complaint,
         age=encounter.patient.age,
@@ -24,6 +30,7 @@ def build_inputs(encounter: Encounter) -> PrioritisationInputs:
         systolic_bp=encounter.systolic_bp,
         diastolic_bp=encounter.diastolic_bp,
         oxygen_saturation_percent=encounter.oxygen_saturation_percent,
+        recognised_symptom_groups=recognise(encounter.presenting_complaint),
     )
 
 
