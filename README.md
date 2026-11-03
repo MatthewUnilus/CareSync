@@ -180,7 +180,7 @@ uv run python -m evaluation.train_classifier
 ```
 
 Tickets 07 and 08 add the red-flag safety layer and the cached fallback behind
-the same boundary. The safety layer is now in place; the fallback is not yet.
+the same boundary. Both are now in place.
 
 ### Red-flag safety layer
 
@@ -207,6 +207,26 @@ The layer is pure and deterministic like the classifier, and iterating twenty
 predicates is microseconds, so the three-second budget holds. The composed
 result is the Machine Recommendation stored on the Assessment and the level the
 Queue orders by; no client change was needed.
+
+### Cached fallback for unrecognised complaints
+
+A complaint that recognises no Symptom Group still receives a Machine
+Recommendation through a pluggable fallback provider (`app.fallback`). A
+matched complaint never takes this path. The provider's answer is cached in the
+`fallback_cache` table by a SHA-256 of the complaint text, so identical wording
+returns an identical result and a cache hit survives a restart; the safety layer
+still runs over the cached answer, because the same words can belong to a
+patient with different vitals.
+
+No provider URL is configured by default. That is the unavailable path, not a
+crash: a failure or a timeout resolves to the safety layer over **Medium** and
+the Assessment is marked `unclassified`. The normal runtime provider is an
+HTTP service configured by `TRIAGEASSIST_FALLBACK_PROVIDER_URL` (optional
+`..._API_KEY`, `..._TIMEOUT_SECONDS`); the build and test suite need no key,
+network or paid service. The unclassified state is rendered as its own
+violet **Unclassified** badge, separate from the orange **Override** badge.
+Details, the timeout policy and the evaluation notes are in
+[`docs/cached-fallback.md`](docs/cached-fallback.md).
 
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
@@ -343,7 +363,7 @@ Both values survive, so accuracy can still be measured.
 
 A card shows an **Override** flag whenever the Final Decision differs from the
 Machine Recommendation (`override_flag` on each queue entry). That flag is its
-own state, separate from the unclassified flag ticket 08 will add. The
+own state, separate from the unclassified flag that ticket 08 added beside it. The
 Administrator's dense table shows the same fact as "Differs" and needs no change,
 because it already compares the two stored values. The Queue reorders on the
 next poll, since it sorts on Final Decision.

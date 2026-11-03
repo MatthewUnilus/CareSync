@@ -8,11 +8,13 @@ The engine is layered (``spec.md``, "Prioritization Engine composition"):
 (1) a trained supervised classifier over a structured feature vector; (2) a
 deterministic red-flag safety layer that can raise — never lower — the output
 (ticket 07); (3) a cached fallback for complaints matching no Symptom Group
-(ticket 08). Ticket 06 replaced the stub with layer (1). Ticket 07 adds layer
-(2) in :mod:`app.red_flags`: it runs after the classifier, can only raise the
-result to High, and leaves a presentation with no firing rule untouched. The
-Queue, the Assessment record and the board see the composed result behind an
-unchanged boundary.
+(ticket 08, :mod:`app.fallback`). Ticket 06 replaced the stub with layer (1).
+Ticket 07 added layer (2). Ticket 08 adds layer (3) behind an injected resolver:
+the fallback is only reached when recognition matched nothing, its provider is
+replaceable, and its result is cached by the complaint text. The Queue, the
+Assessment record and the board see the composed result behind an unchanged
+boundary; passing no resolver is the fallback-disabled configuration used by the
+evaluation harness.
 
 The classifier is a multinomial logistic regression trained on published,
 openly downloadable triage data (see ``evaluation/datasets/provenance.json``
@@ -31,6 +33,7 @@ inside the three-second budget. Same inputs, same output, always.
 from dataclasses import dataclass
 from enum import Enum
 
+from app.fallback import FallbackResolver
 from app.features import build_feature_vector
 from app.red_flags import apply_safety_layer
 
@@ -72,11 +75,61 @@ class PrioritisationInputs:
     recognised_symptom_groups: tuple[str, ...] = ()
 
 
-def recommend(inputs: PrioritisationInputs) -> UrgencyLevel:
-    """Return the Machine Recommendation for these captured inputs."""
+@dataclass(frozen=True)
+class Recommendation:
+    """The Machine Recommendation and what the engine can say about it.
+
+    ``fallback_used`` is true when the complaint recognised no Symptom Group and
+    the fallback layer therefore decided the level. ``unclassified`` is true when
+    the external provider was unavailable or timed out, so the level came from
+    the safety layer's default and a Clinical user should review it. A matched
+    complaint is never either.
+    """
+
+    level: UrgencyLevel
+    fallback_used: bool = False
+    unclassified: bool = False
+
+
+def assess(
+    inputs: PrioritisationInputs,
+    *,
+    fallback: FallbackResolver | None = None,
+) -> Recommendation:
+    """Return the composed Machine Recommendation for these captured inputs.
+
+    The classifier and safety layer always run. The fallback resolver is reached
+    only when recognition matched no Symptom Group *and* one was supplied.
+    Passing ``None`` is the "fallback disabled" configuration used by the
+    reproducible evaluation run (ticket 15); it is not the runtime default.
+    """
     # Imported here so the classifier module may import UrgencyLevel from this
     # one without a circular import at module load.
     from app.classifier import load_default_model
 
     classifier_level = load_default_model().predict(build_feature_vector(inputs))
-    return apply_safety_layer(inputs, classifier_level)
+
+    if fallback is None or inputs.recognised_symptom_groups:
+        return Recommendation(level=apply_safety_layer(inputs, classifier_level))
+
+    outcome = fallback.resolve(inputs)
+    return Recommendation(
+        level=outcome.level,
+        fallback_used=True,
+        unclassified=outcome.unclassified,
+    )
+
+
+def recommend(
+    inputs: PrioritisationInputs,
+    *,
+    fallback: FallbackResolver | None = None,
+) -> UrgencyLevel:
+    """Return the Machine Recommendation for these captured inputs.
+
+    This is the unchanged Seam B boundary. Callers that need the fallback
+    provenance (the Assessment factory, the evaluation harness) use
+    :func:`assess`; everything that only orders or compares levels keeps using
+    this function.
+    """
+    return assess(inputs, fallback=fallback).level

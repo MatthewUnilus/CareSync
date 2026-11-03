@@ -5,14 +5,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.db import Base, build_engine, build_session_factory
+from app.fallback import FallbackProvider, build_fallback_provider
 from app.routers import administrator, auth, clinical, meta
 from app.seed import seed_demo_users
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    fallback_provider: FallbackProvider | None = None,
+) -> FastAPI:
     settings = settings or Settings()
     engine = build_engine(settings.database_url)
     session_factory = build_session_factory(engine)
+    provider = fallback_provider or build_fallback_provider(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -32,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.fallback_provider = provider
 
     # The browser uses the Vite proxy and never needs CORS. The native shell is
     # a separate origin, so it must be granted credentialed access explicitly.

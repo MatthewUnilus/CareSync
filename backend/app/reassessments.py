@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.assessments import create_triage_assessment
 from app.departures import REASSESSMENT_DEPARTED_DETAIL, ensure_awaiting
+from app.fallback import FallbackResolver
 from app.intake import apply_intake
 from app.models import Encounter, TriageAssessment
 from app.schemas import IntakePayload
@@ -31,6 +32,7 @@ def perform_reassessment(
     encounter: Encounter,
     *,
     intake: IntakePayload,
+    fallback: FallbackResolver | None = None,
 ) -> TriageAssessment:
     """Append a new Assessment for the intake supplied, without committing.
 
@@ -41,4 +43,6 @@ def perform_reassessment(
     apply_intake(encounter, intake)
 
     superseded = encounter.assessments[-1] if encounter.assessments else None
-    return create_triage_assessment(session, encounter, supersedes=superseded)
+    return create_triage_assessment(
+        session, encounter, supersedes=superseded, fallback=fallback
+    )

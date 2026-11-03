@@ -5,6 +5,8 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.fallback import FallbackResolver
+from app.fallback_cache import DatabaseFallbackCache
 from app.models import Role, User, UserSession
 from app.security import hash_session_token
 from app.timeutils import as_utc, utc_now
@@ -17,6 +19,23 @@ def get_db(request: Request) -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def get_fallback(request: Request, db: DbSession) -> FallbackResolver:
+    """The runtime fallback resolver for this request.
+
+    It shares the request's database session, so a provider answer is cached in
+    the same transaction as the Assessment. The provider itself is app state and
+    can be replaced in tests without touching the engine.
+    """
+    return FallbackResolver(
+        request.app.state.fallback_provider,
+        cache=DatabaseFallbackCache(db),
+        timeout_seconds=request.app.state.settings.fallback_timeout_seconds,
+    )
+
+
+Fallback = Annotated[FallbackResolver, Depends(get_fallback)]
 
 
 def _unauthorised() -> HTTPException:
