@@ -28,6 +28,29 @@ class QueueEntry:
     waiting_seconds: int
 
 
+@dataclass(frozen=True)
+class AdministratorQueueRow:
+    """One row of the Administrator's dense Queue table.
+
+    This is a read-only projection of the same awaiting Queue the Clinical
+    board shows. It deliberately carries only the columns the table renders,
+    so the Administrator surface has no intake or Assessment detail to act on.
+    """
+
+    encounter_id: int
+    arrived_at: datetime
+    waiting_seconds: int
+    urgency_level: UrgencyLevel
+    patient_name: str
+    presenting_complaint: str
+    machine_recommendation: UrgencyLevel
+    final_decision: UrgencyLevel
+
+    @property
+    def final_decision_differs(self) -> bool:
+        return self.final_decision != self.machine_recommendation
+
+
 def awaiting_queue(session: Session, now: datetime) -> list[QueueEntry]:
     """Every awaiting Encounter that has an Assessment, in Queue order."""
     encounters = session.scalars(
@@ -59,6 +82,32 @@ def awaiting_queue(session: Session, now: datetime) -> list[QueueEntry]:
         )
     )
     return entries
+
+
+def administrator_queue(
+    session: Session, now: datetime
+) -> list[AdministratorQueueRow]:
+    """The same awaiting Queue, projected for the Administrator dashboard.
+
+    Reading this does not change the Queue and exposes no clinical action.
+    Because it is derived on every call, a later Override (which changes the
+    governing Final Decision) or a Departure is visible on the next poll.
+    """
+    return [
+        AdministratorQueueRow(
+            encounter_id=entry.encounter.id,
+            arrived_at=entry.encounter.arrived_at,
+            waiting_seconds=entry.waiting_seconds,
+            urgency_level=UrgencyLevel(entry.assessment.final_decision),
+            patient_name=entry.encounter.patient.full_name,
+            presenting_complaint=entry.encounter.presenting_complaint,
+            machine_recommendation=UrgencyLevel(
+                entry.assessment.machine_recommendation
+            ),
+            final_decision=UrgencyLevel(entry.assessment.final_decision),
+        )
+        for entry in awaiting_queue(session, now)
+    ]
 
 
 def _waiting_seconds(encounter: Encounter, now: datetime) -> int:
