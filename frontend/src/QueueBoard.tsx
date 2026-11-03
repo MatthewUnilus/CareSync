@@ -1,39 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { api, ApiError } from "./api";
 import type { QueueEntry, QueueSnapshot } from "./api";
+import { formatArrival, formatWaiting, urgencyClass } from "./queueDisplay";
+import { usePolling } from "./usePolling";
 
 /*
  * Refresh mechanism: polling. The board re-reads the Queue every five seconds
  * and whenever the window regains focus, so a change to an Encounter's Final
- * Decision appears without a manual refresh. Server-Sent Events or a WebSocket
- * would be lower-latency, but polling is adequate for this stage and keeps the
- * API a plain request/response surface.
+ * Decision appears without a manual refresh. The same hook drives the
+ * Administrator dashboard.
  */
 const POLL_INTERVAL_MS = 5_000;
-
-function formatWaiting(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ${seconds % 60}s`;
-  }
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
-function urgencyClass(level: QueueEntry["urgency_level"]): string {
-  return `urgency-${level.toLowerCase()}`;
-}
-
-function formatArrival(value: string): string {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function ExpandedDetail({ entry }: { entry: QueueEntry }) {
   const { intake } = entry;
@@ -130,20 +108,7 @@ export default function QueueBoard() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => {
-      void load();
-    }, POLL_INTERVAL_MS);
-    const onFocus = () => {
-      void load();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [load]);
+  usePolling(load, POLL_INTERVAL_MS);
 
   const entries = snapshot?.entries ?? [];
 

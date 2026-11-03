@@ -94,6 +94,23 @@ export interface QueueSnapshot {
   entries: QueueEntry[];
 }
 
+export interface AdministratorQueueEntry {
+  encounter_id: number;
+  arrived_at: string;
+  waiting_seconds: number;
+  urgency_level: UrgencyLevel;
+  patient_name: string;
+  presenting_complaint: string;
+  machine_recommendation: UrgencyLevel;
+  final_decision: UrgencyLevel;
+  final_decision_differs: boolean;
+}
+
+export interface AdministratorQueueSnapshot {
+  as_of: string;
+  entries: AdministratorQueueEntry[];
+}
+
 interface ApiResult<T> {
   body: T;
   status: number;
@@ -182,4 +199,6 @@ export const api = {
       `/api/clinical/encounters?limit=${limit}`,
     ),
   queue: () => request<QueueSnapshot>("/api/clinical/queue"),
+  administratorQueue: () =>
+    request<AdministratorQueueSnapshot>("/api/administrator/queue"),
 };

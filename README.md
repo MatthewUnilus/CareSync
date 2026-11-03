@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, and the live Queue board.
-The Prioritization Engine behind the board is a documented deterministic stub;
-the trained classifier, Override, Re-assessment, Departure, and Reports arrive
-in later tickets.
+Triage Assessment record, Symptom Group recognition, the live Queue board, and
+the read-only Administrator dashboard. The Prioritization Engine behind the
+board is a documented deterministic stub; the trained classifier, Override,
+Re-assessment, Departure, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -172,6 +172,27 @@ complaint, time waiting — and expands to the full vitals, pain level, duration
 the Symptom Groups recognised from the complaint, notes, and the actions that
 exist (none for the Queue yet).
 
+## Administrator dashboard
+
+The same client serves both Roles from one codebase and one build. Signing in
+sends a Clinical user to `/clinical` and an Administrator to `/administrator`;
+any other path is replaced with the Role's own landing route.
+
+The Administrator dashboard is the dense-tabular view over the same awaiting
+Queue. Each row shows Urgency Level, Patient name, the short complaint, time
+waiting, and whether the Final Decision differs from the Machine Recommendation
+(a neutral "Same" until Override exists). It polls
+`GET /api/administrator/queue` every five seconds and on window focus through
+the same `usePolling` hook as the Clinical board, so an Override or a Departure
+appears without a manual refresh.
+
+There are no clinical actions anywhere in the Administrator surface — no
+registration, intake, Override, Re-assessment, or Departure. That is enforced by
+the API, not by hiding buttons: every `/api/clinical/*` route refuses an
+Administrator with `403`, and the Administrator queue route refuses a Clinical
+user in the same way. The dashboard ends with a Reports section that tickets 13
+and 14 fill; it is read-only and currently explains what will mount there.
+
 ## Run the tests
 
 ```powershell
@@ -229,6 +250,7 @@ also read.
 | GET    | `/api/clinical/encounters/{id}`         | Clinical      |
 | PUT    | `/api/clinical/encounters/{id}/intake`  | Clinical      |
 | GET    | `/api/administrator/access`             | Administrator |
+| GET    | `/api/administrator/queue`              | Administrator |
 
 The `/access` routes are the role-gated surfaces from ticket 01; they exist to
 demonstrate that authorisation is enforced at the API boundary. A wrong Role
@@ -275,14 +297,18 @@ backend/
       auth.py          login, me, logout, change-own-password
       meta.py          the two Roles
       clinical.py      Patient registration, intake, Assessments, Queue
-      administrator.py Administrator-gated surface
+      administrator.py Administrator queue read model and access surface
   tests/               API-level pytest suite (SQLite) and Seam B unit tests
 frontend/
   src/
-    App.tsx            session check and screen switch
+    App.tsx            session check, Role landing route, surface switch
     LoginScreen.tsx    login form
+    routing.ts         Role landing paths and path routing
     ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
     QueueBoard.tsx     live Queue cards, expansion, five-second polling
+    AdministratorDashboard.tsx  dense Queue table, Reports mount point
+    usePolling.ts      shared poll-on-interval and poll-on-focus hook
+    queueDisplay.ts    shared waiting-time and urgency formatting
     IntakeScreen.tsx   Clinical intake and recent Encounters
     Shell.tsx          post-login shell, role badge, password change
     api.ts             typed fetch wrapper
