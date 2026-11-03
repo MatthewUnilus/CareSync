@@ -1,5 +1,4 @@
 from datetime import date
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -14,6 +13,7 @@ from app.schemas import (
     AccuracyFallbackCoverageResponse,
     AccuracyGroundTruthSourceResponse,
     AccuracyLevelMetricsResponse,
+    AccuracyMajorityBaselineResponse,
     AccuracyOverrideMetricsResponse,
     AccuracyOverrideReasonCountResponse,
     AccuracyPriorityErrorRateResponse,
@@ -162,15 +162,23 @@ def get_accuracy_evaluation_report(
 ) -> AccuracyEvaluationReportResponse:
     """Machine Recommendations against independent ground-truth labels.
 
-    The labelled run is read from the offline harness's manifest, whose path is
-    configuration. The Machine Recommendation itself always comes from the
-    stored Triage Assessment row, so an Override can never move a matrix cell.
-    No run, or no stored Assessment behind its cases, is an explicit empty
-    state rather than a zero score.
+    The run source follows ``accuracy.load_configured_bundle``'s precedence: an
+    explicit override, then a legacy per-case manifest, then the offline
+    harness's versioned artefact. Harness figures are copied from the artefact
+    and never recomputed from the database. For a legacy run the Machine
+    Recommendation comes from the stored Triage Assessment row, so an Override
+    can never move a matrix cell. No run, no stored Assessment behind its
+    cases, or a malformed artefact is an explicit empty or refused state rather
+    than a zero score or a server error.
     """
-    bundle = accuracy.load_run_bundle(
-        Path(request.app.state.settings.accuracy_run_path)
-    )
+    try:
+        bundle = accuracy.load_configured_bundle(
+            request.app.state.settings.accuracy_run_path
+        )
+    except accuracy.AccuracyRunError as error:
+        # A malformed artefact is an explicit refusal, never a 500 and never a
+        # silent zero. The Override figures still come from stored rows.
+        return _accuracy_report_response(accuracy.refused_report(db, str(error)))
     report = accuracy.build_report(db, bundle)
     return _accuracy_report_response(report)
 
@@ -184,6 +192,9 @@ def _accuracy_report_response(
         runs=[
             AccuracyRunResponse(
                 run_id=run.run_id,
+                run_mode=run.run_mode,
+                source=run.source,
+                primary=run.primary,
                 mode=run.mode,
                 dataset=run.dataset,
                 engine_artefact=run.engine_artefact,
@@ -223,6 +234,19 @@ def _accuracy_report_response(
                 total=run.total,
                 correct=run.correct,
                 accuracy=run.accuracy,
+                macro_f1=run.macro_f1,
+                majority_baseline=(
+                    AccuracyMajorityBaselineResponse(
+                        majority_class=run.majority_baseline.majority_class,
+                        accuracy=run.majority_baseline.accuracy,
+                        model_minus_baseline=(
+                            run.majority_baseline.model_minus_baseline
+                        ),
+                        beats_baseline=run.majority_baseline.beats_baseline,
+                    )
+                    if run.majority_baseline is not None
+                    else None
+                ),
                 false_high_priority=AccuracyPriorityErrorRateResponse(
                     count=run.false_high_priority.count,
                     denominator=run.false_high_priority.denominator,

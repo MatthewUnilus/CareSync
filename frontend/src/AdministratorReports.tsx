@@ -37,6 +37,30 @@ function percent(value: number | null): string {
   return `${Math.round(value * 1000) / 10}%`;
 }
 
+function points(value: number): string {
+  const rounded = Math.round(value * 1000) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded} pts`;
+}
+
+function runTitle(run: AccuracyRun): string {
+  if (run.run_mode === "cross_validated") {
+    return "Cross-validated classifier";
+  }
+  if (run.run_mode === "pipeline") {
+    return run.fallback.enabled
+      ? "Whole pipeline · fallback enabled"
+      : "Whole pipeline · fallback disabled";
+  }
+  return run.run_id;
+}
+
+function sampleLabel(run: AccuracyRun): string {
+  if (run.source === "harness") {
+    return `${run.sample.labelled_cases} Encounters scored offline · no database involved`;
+  }
+  return `${run.sample.resolved_assessments} of ${run.sample.labelled_cases} labelled cases resolved against stored Assessments`;
+}
+
 function matrixCell(
   run: AccuracyRun,
   machine: UrgencyLevel,
@@ -61,7 +85,8 @@ function matrixTotal(
 }
 
 function modeLabel(run: AccuracyRun): string {
-  return run.fallback.enabled ? "Fallback enabled" : "Fallback disabled";
+  const fallback = run.fallback.enabled ? "fallback enabled" : "fallback disabled";
+  return `${run.run_mode} · ${fallback}`;
 }
 
 function RateFigure({
@@ -89,10 +114,14 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
     <article className="accuracy-run">
       <div className="accuracy-run-header">
         <div>
-          <h4>{run.run_id}</h4>
+          <h4>
+            {runTitle(run)}
+            {run.primary ? (
+              <span className="accuracy-primary">Primary</span>
+            ) : null}
+          </h4>
           <p className="muted">
-            {run.sample.resolved_assessments} of {run.sample.labelled_cases}{" "}
-            labelled cases resolved against stored Assessments
+            {run.run_id} · {sampleLabel(run)}
           </p>
         </div>
         <span
@@ -114,6 +143,32 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
             {run.correct} of {run.total} correct
           </span>
         </div>
+        {run.majority_baseline ? (
+          <div>
+            <dt>Majority baseline</dt>
+            <dd>{percent(run.majority_baseline.accuracy)}</dd>
+            <span
+              className={
+                run.majority_baseline.beats_baseline
+                  ? "accuracy-baseline-above"
+                  : "accuracy-baseline-below"
+              }
+            >
+              Model {points(run.majority_baseline.model_minus_baseline)} vs
+              always-{run.majority_baseline.majority_class} ·{" "}
+              {run.majority_baseline.beats_baseline
+                ? "above baseline"
+                : "BELOW baseline"}
+            </span>
+          </div>
+        ) : null}
+        {run.macro_f1 !== null ? (
+          <div>
+            <dt>Macro F1</dt>
+            <dd>{percent(run.macro_f1)}</dd>
+            <span className="muted">unweighted across all three levels</span>
+          </div>
+        ) : null}
         <RateFigure
           label="False High-Priority"
           note="non-High cases called High"

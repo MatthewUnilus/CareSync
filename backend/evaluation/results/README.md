@@ -89,3 +89,37 @@ statistic.
   configured offline, so all 10 are flagged unclassified.
 
 The report must show these comparisons, not just the accuracy figure.
+
+## How the Accuracy Evaluation Report consumes it
+
+The Report and the harness share `evaluation/artefact.py`, which owns the schema
+version, the harness version and the file name
+`accuracy-evaluation-<version>.json`. The Report's default path is that file
+under this directory, so the committed artefact above populates the flagship
+view with no configuration.
+
+`TRIAGEASSIST_ACCURACY_RUN_PATH` is the explicit override. Precedence is:
+
+1. the explicit path, whose shape (harness artefact or legacy per-case
+   manifest) is detected;
+2. `accuracy-evaluation.json` in this directory, if an environment still writes
+   the live per-case manifest;
+3. this versioned artefact.
+
+From a harness run the Report copies `metrics.confusion_matrix`,
+`metrics.per_class`, both `false_priority` objects, `metrics.accuracy`,
+`metrics.macro_f1`, `metrics.majority_baseline`, `metrics.encounter_count` and
+the optional `coverage`. It transposes the matrix from ground-truth rows into
+its own `(Machine Recommendation, ground truth)` cells and shows
+`encounter_count` as the sample size. Nothing here is recomputed from the
+database, so the evidence stays reproducible offline.
+
+`cross_validated` is presented first and labelled primary. Its
+`majority_baseline.model_minus_baseline` is shown with its sign, including when
+it is negative. `pipeline_fallback_enabled.coverage` is shown as its own
+statistic, never folded into accuracy. Override rate and reason distribution
+continue to come from stored Assessments and are unaffected by this file.
+
+The Report's required run keys are pinned by a test against this document. A
+new run or metric field fails that test until the consumer deliberately reads
+it.

@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.accuracy import FallbackMode
+from app.accuracy import FallbackMode, RunSource
 from app.departures import EncounterStatus
 from app.models import Role, Sex
 from app.override_reasons import OverrideReason, allows_free_text
@@ -369,8 +369,18 @@ class AccuracyFallbackCoverageResponse(BaseModel):
     unclassified_rate: float | None
 
 
+class AccuracyMajorityBaselineResponse(BaseModel):
+    majority_class: UrgencyLevel
+    accuracy: float
+    model_minus_baseline: float
+    beats_baseline: bool
+
+
 class AccuracyRunResponse(BaseModel):
     run_id: str
+    run_mode: str
+    source: RunSource
+    primary: bool
     mode: FallbackMode
     dataset: str | None
     engine_artefact: str | None
@@ -381,6 +391,8 @@ class AccuracyRunResponse(BaseModel):
     total: int
     correct: int
     accuracy: float | None
+    macro_f1: float | None
+    majority_baseline: AccuracyMajorityBaselineResponse | None
     false_high_priority: AccuracyPriorityErrorRateResponse
     false_low_priority: AccuracyPriorityErrorRateResponse
     fallback: AccuracyFallbackCoverageResponse
