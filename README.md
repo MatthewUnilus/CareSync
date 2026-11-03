@@ -8,8 +8,9 @@ This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
 Triage Assessment record, Symptom Group recognition, a trained classifier and a
 red-flag safety layer behind the Prioritization Engine, the live Queue board,
-the Re-assessment, Override and Departure actions, and the read-only
-Administrator dashboard. The fallback and Reports arrive in later tickets.
+the Re-assessment, Override and Departure actions, the read-only Administrator
+dashboard and its four Reports — including the Accuracy Evaluation, which is
+the project's central evidence.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -446,11 +447,11 @@ registration, intake, Override, Re-assessment, or Departure. That is enforced by
 the API, not by hiding buttons: every `/api/clinical/*` route refuses an
 Administrator with `403`, and the Administrator queue route refuses a Clinical
 user in the same way. The dashboard ends with a Reports section, described
-below; ticket 14's Accuracy Evaluation mounts in the same section.
+below, with the Accuracy Evaluation first and visually featured.
 
 ## Reports
 
-The three Reports are read-only. Each is computed inside the request from the
+The four Reports are read-only. Each is computed inside the request from the
 rows that record what happened — arrival and departure instants on the
 Encounter, and its Triage Assessment rows — never from a stored snapshot and
 never from the live Queue. Nothing is cached, so changing a record changes the
@@ -477,6 +478,17 @@ current UTC day.
   Assessment to departure, the part of the stay after the urgency decision
   existed. The Report returns each departed Encounter's two figures and their
   averages.
+- **Accuracy Evaluation**
+  (`GET /api/administrator/reports/accuracy-evaluation`) — the flagship view.
+  It joins each stored Assessment's immutable Machine Recommendation to an
+  independent ground-truth Urgency Level from a labelled evaluation run, and
+  reports the 3×3 confusion matrix, per-level precision and recall, separate
+  False High-Priority and False Low-Priority rates, the Override rate and
+  reason distribution, and fallback coverage as its own statistic. An Override
+  can never move a matrix cell. With no labelled run the view shows an explicit
+  empty state rather than a flattering zero. Definitions and the run manifest
+  contract are in
+  [`docs/accuracy-evaluation-report.md`](docs/accuracy-evaluation-report.md).
 
 ## Run the tests
 
@@ -546,6 +558,7 @@ also read.
 | GET    | `/api/administrator/reports/daily-queue` | Administrator |
 | GET    | `/api/administrator/reports/priority-distribution` | Administrator |
 | GET    | `/api/administrator/reports/performance` | Administrator |
+| GET    | `/api/administrator/reports/accuracy-evaluation` | Administrator |
 
 The `/access` routes are the role-gated surfaces from ticket 01; they exist to
 demonstrate that authorisation is enforced at the API boundary. A wrong Role
@@ -596,6 +609,7 @@ backend/
     reassessments.py   performing a Re-assessment and recording supersession
     queue.py           the Queue as a sort over awaiting Encounters
     reports.py         read-only Reports derived on demand from stored records
+    accuracy.py        the Accuracy Evaluation read model and run manifest loader
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
     seed.py            demo Clinical and Administrator users
@@ -618,7 +632,7 @@ frontend/
     ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
     QueueBoard.tsx     live Queue cards, expansion, Override and Depart actions
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
-    AdministratorReports.tsx    Daily Queue, Priority Distribution, Performance
+    AdministratorReports.tsx    Accuracy Evaluation, Daily Queue, Distribution, Performance
     usePolling.ts      shared poll-on-interval and poll-on-focus hook
     queueDisplay.ts    shared waiting-time and urgency formatting
     IntakeScreen.tsx   Clinical intake and recent Encounters
