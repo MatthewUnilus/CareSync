@@ -4,10 +4,11 @@ Clinical decision support for emergency-department triage. The system recommends
 an Urgency Level for each Encounter and keeps the Queue ordered from that
 recommendation, leaving the final decision with clinical staff.
 
-This ticket establishes the runnable walking skeleton: the HTTP API, the React
-client, authentication, the two Roles, Patient registration, and Encounter
-intake. The Queue board, the Prioritization Engine, and Reports arrive in later
-tickets.
+This build covers the walking skeleton: the HTTP API, the React client,
+authentication, the two Roles, Patient registration, Encounter intake, the
+Triage Assessment record, and the live Queue board. The Prioritization Engine
+behind the board is a documented deterministic stub; the trained classifier,
+Override, Re-assessment, Departure, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -104,11 +105,43 @@ in the form:
 | Notes                      | optional, up to 2000 characters |
 
 `arrived_at` is written when the Encounter is opened and cannot be changed
-afterwards; the Encounter itself is never updated, only its intake. Intake may
-be corrected while no Triage Assessment exists for the Encounter. No Triage
-Assessment can be created yet, so every correction is currently allowed; once
-ticket 03 adds assessments, the same route returns `409 Conflict` instead. See
-`backend/app/intake.py`.
+afterwards; the Encounter itself is never updated, only its intake. Intake is
+complete as soon as the Encounter exists, so opening an Encounter also creates
+its first Triage Assessment in the same transaction. A later correction attempt
+therefore returns `409 Conflict`: the Assessment's snapshot is the durable record
+of what the recommendation was made from. See `backend/app/intake.py`.
+
+## Prioritization Engine and the Queue
+
+The engine boundary (Seam B) is `app.prioritisation.recommend`: a pure function
+taking a `PrioritisationInputs` and returning exactly one `UrgencyLevel`, with no
+session and no database. It is called directly by
+`backend/tests/test_prioritisation.py`.
+
+This ticket ships a **documented deterministic stub** at that boundary. In one
+paragraph: High if any single severe observation is present — oxygen saturation
+below 92%, heart rate outside 50–120, systolic pressure outside 90–179,
+temperature outside 35.0–38.9 °C, or pain 8 or more; otherwise Medium if any
+moderate observation is present — oxygen saturation below 95%, heart rate above
+100, systolic pressure below 100 or 160 and above, temperature 38.0 °C or above
+or below 36.0 °C, or pain 5 or more; otherwise Low. It ignores the complaint text,
+age, illness duration, and Symptom Groups. Ticket 06 replaces it with the trained
+classifier; tickets 05, 07, and 08 add recognition, the safety layer, and the
+fallback behind the same boundary.
+
+The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
+Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
+are first-in-first-out. The level that governs is the latest Triage Assessment's
+Final Decision, which currently equals the Machine Recommendation because no
+Override exists yet. An Encounter is awaiting while `departed_at` is null; ticket
+11 adds the Departure action. `waiting_seconds` is derived from `arrived_at` at
+read time.
+
+The client polls `GET /api/clinical/queue` every five seconds and on window
+focus, so a change to a Final Decision appears without a manual refresh.
+`QueueBoard.tsx` renders compact cards — urgency colour, Patient name, short
+complaint, time waiting — and expands to the full vitals, pain level, duration,
+notes, and the actions that exist (none for the Queue yet).
 
 ## Run the tests
 
@@ -163,6 +196,7 @@ also read.
 | POST   | `/api/clinical/patients`                | Clinical      |
 | POST   | `/api/clinical/encounters`              | Clinical      |
 | GET    | `/api/clinical/encounters`              | Clinical      |
+| GET    | `/api/clinical/queue`                   | Clinical      |
 | GET    | `/api/clinical/encounters/{id}`         | Clinical      |
 | PUT    | `/api/clinical/encounters/{id}/intake`  | Clinical      |
 | GET    | `/api/administrator/access`             | Administrator |
@@ -171,7 +205,7 @@ The `/access` routes are the role-gated surfaces from ticket 01; they exist to
 demonstrate that authorisation is enforced at the API boundary. A wrong Role
 receives `403`; an unauthenticated request receives `401`.
 
-`GET /api/clinical/encounters` is a recency list for correcting a saved intake —
+`GET /api/clinical/encounters` is a recency list for reviewing a saved intake —
 newest arrival first, `?limit=` up to 100. It is not the Queue: it is not
 ordered by Urgency Level and does not filter awaiting versus departed.
 
@@ -195,24 +229,30 @@ backend/
     main.py            app factory, router wiring, startup seeding
     config.py          Settings (TRIAGEASSIST_* env vars)
     db.py              engine and session factory
-    models.py          User, UserSession, Role, Patient, Encounter, Sex
+    models.py          User, UserSession, Role, Patient, Encounter,
+                       TriageAssessment, Sex
     schemas.py         request/response models
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
+    prioritisation.py  Seam B: the pure Prioritization Engine (stub in ticket 03)
+    assessments.py     captures inputs, runs the engine, appends the Assessment
+    queue.py           the Queue as a sort over awaiting Encounters
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
     seed.py            demo Clinical and Administrator users
     routers/
       auth.py          login, me, logout, change-own-password
       meta.py          the two Roles
-      clinical.py      Patient registration, Encounter intake, corrections
+      clinical.py      Patient registration, intake, Assessments, Queue
       administrator.py Administrator-gated surface
-  tests/               API-level pytest suite (SQLite)
+  tests/               API-level pytest suite (SQLite) and Seam B unit tests
 frontend/
   src/
     App.tsx            session check and screen switch
     LoginScreen.tsx    login form
-    IntakeScreen.tsx   Clinical intake, correction, recent Encounters
+    ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
+    QueueBoard.tsx     live Queue cards, expansion, five-second polling
+    IntakeScreen.tsx   Clinical intake and recent Encounters
     Shell.tsx          post-login shell, role badge, password change
     api.ts             typed fetch wrapper
 ```
