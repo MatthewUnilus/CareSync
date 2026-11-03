@@ -136,6 +136,41 @@ export interface AdministratorQueueSnapshot {
   entries: AdministratorQueueEntry[];
 }
 
+export interface DailyQueueReport {
+  day: string;
+  starts_at: string;
+  ends_at: string;
+  volume: number;
+  throughput: number;
+  awaiting: number;
+}
+
+export interface PriorityLevelCount {
+  urgency_level: UrgencyLevel;
+  encounters: number;
+}
+
+export interface PriorityDistributionReport {
+  total: number;
+  levels: PriorityLevelCount[];
+}
+
+export interface PerformanceEntry {
+  encounter_id: number;
+  arrived_at: string;
+  assessed_at: string;
+  departed_at: string;
+  waiting_seconds: number;
+  processing_seconds: number;
+}
+
+export interface PerformanceReport {
+  completed: number;
+  average_waiting_seconds: number;
+  average_processing_seconds: number;
+  entries: PerformanceEntry[];
+}
+
 interface ApiResult<T> {
   body: T;
   status: number;
@@ -259,4 +294,16 @@ export const api = {
     }),
   administratorQueue: () =>
     request<AdministratorQueueSnapshot>("/api/administrator/queue"),
+  /*
+   * Reports are read-only derivations. The daily figure defaults to the
+   * server's UTC day; the other two are whole-record views.
+   */
+  dailyQueueReport: () =>
+    request<DailyQueueReport>("/api/administrator/reports/daily-queue"),
+  priorityDistributionReport: () =>
+    request<PriorityDistributionReport>(
+      "/api/administrator/reports/priority-distribution",
+    ),
+  performanceReport: () =>
+    request<PerformanceReport>("/api/administrator/reports/performance"),
 };
