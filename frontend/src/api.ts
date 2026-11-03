@@ -1,3 +1,6 @@
+import { detectPlatform } from "./runtime";
+import { apiUrl, readApiBaseUrlOverride } from "./runtimeConfig";
+
 export type Role = "clinical" | "administrator";
 
 export type Sex = "female" | "male" | "other" | "unspecified";
@@ -113,9 +116,18 @@ async function requestDetailed<T>(
   path: string,
   init?: RequestInit,
 ): Promise<ApiResult<T>> {
-  const response = await fetch(path, {
+  // Read the base URL per request: the native Server setting can change
+  // without reloading the app. The web build resolves to "", so the request
+  // stays relative and same-origin exactly as before.
+  const url = apiUrl(path, {
+    platform: detectPlatform(),
+    configured: import.meta.env.VITE_API_BASE_URL,
+    override: readApiBaseUrlOverride(),
+  });
+
+  const response = await fetch(url, {
     ...init,
-    credentials: "same-origin",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),

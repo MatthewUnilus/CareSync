@@ -1,12 +1,14 @@
 import { useState } from "react";
 
+import { detectPlatform } from "./runtime";
+import { defaultClinicalView } from "./platform";
 import IntakeScreen from "./IntakeScreen";
 import QueueBoard from "./QueueBoard";
 
-type ClinicalView = "queue" | "intake";
-
 export default function ClinicalWorkspace() {
-  const [view, setView] = useState<ClinicalView>("queue");
+  const [view, setView] = useState(() =>
+    defaultClinicalView(detectPlatform()),
+  );
 
   return (
     <>

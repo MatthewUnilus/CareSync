@@ -11,10 +11,22 @@
     "dev:api": "uv run --directory backend uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:web": "npm run dev --workspace @triageassist/web",
     "seed": "uv run --directory backend python -m app.seed",
-    "test": "uv run --directory backend pytest",
-    "build:web": "npm run build --workspace @triageassist/web"
+    "test": "npm run test:api && npm run test:web",
+    "test:api": "uv run --directory backend pytest",
+    "test:web": "npm run test --workspace @triageassist/web",
+    "build:web": "npm run build --workspace @triageassist/web",
+    "mobile:sync": "npm run build:web && cap sync",
+    "mobile:run:android": "npm run mobile:sync && cap run android --no-sync",
+    "mobile:open:android": "cap open android",
+    "mobile:open:ios": "cap open ios"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0"
   }
 }
