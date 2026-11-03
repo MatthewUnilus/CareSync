@@ -1,13 +1,13 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 import { api, ApiError } from "./api";
 import type { CurrentUser, Role } from "./api";
-import ClinicalWorkspace from "./ClinicalWorkspace";
 
 interface ShellProps {
   user: CurrentUser;
   onLogout: () => Promise<void>;
+  children: ReactNode;
 }
 
 interface Notice {
@@ -19,12 +19,11 @@ function roleLabel(role: Role): string {
   return role === "clinical" ? "Clinical" : "Administrator";
 }
 
-export default function Shell({ user, onLogout }: ShellProps) {
+export default function Shell({ user, onLogout, children }: ShellProps) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [passwordNotice, setPasswordNotice] = useState<Notice | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [accessNotice, setAccessNotice] = useState<Notice | null>(null);
 
   async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,22 +47,6 @@ export default function Shell({ user, onLogout }: ShellProps) {
       });
     } finally {
       setChangingPassword(false);
-    }
-  }
-
-  async function checkAccess(scope: Role) {
-    setAccessNotice(null);
-    try {
-      const result = await api.access(scope);
-      setAccessNotice({ kind: "success", text: result.message });
-    } catch (caught) {
-      setAccessNotice({
-        kind: "error",
-        text:
-          caught instanceof ApiError
-            ? `Refused (${caught.status}): ${caught.message}`
-            : "Unable to reach the server.",
-      });
     }
   }
 
@@ -91,62 +74,12 @@ export default function Shell({ user, onLogout }: ShellProps) {
         </div>
       </header>
 
-      <main className="shell-main">
-        {user.role === "clinical" ? (
-          <ClinicalWorkspace />
-        ) : (
-          <>
-            <section className="card">
-              <h2>Signed in</h2>
-              <p className="lead">
-                You hold the <strong>{roleLabel(user.role)}</strong> role.
-              </p>
-              <dl className="facts">
-                <div>
-                  <dt>Email</dt>
-                  <dd>{user.email}</dd>
-                </div>
-                <div>
-                  <dt>Role</dt>
-                  <dd>{roleLabel(user.role)}</dd>
-                </div>
-              </dl>
-              <p className="muted">Reports arrive with later tickets.</p>
-            </section>
-
-            <section className="card">
-              <h2>Role enforcement</h2>
-              <p className="muted">
-                The API decides access, not this screen. Both buttons are
-                available to both roles; one of them will be refused.
-              </p>
-              <div className="row">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => checkAccess("clinical")}
-                >
-                  Call Clinical endpoint
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => checkAccess("administrator")}
-                >
-                  Call Administrator endpoint
-                </button>
-              </div>
-              {accessNotice ? (
-                <p
-                  className={`notice notice-${accessNotice.kind}`}
-                  role="status"
-                >
-                  {accessNotice.text}
-                </p>
-              ) : null}
-            </section>
-          </>
-        )}
+      <main
+        className={`shell-main${
+          user.role === "administrator" ? " shell-main-wide" : ""
+        }`}
+      >
+        {children}
 
         <section className="card">
           <h2>Change password</h2>

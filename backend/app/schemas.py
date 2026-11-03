@@ -187,3 +187,22 @@ class QueueEntryResponse(BaseModel):
 class QueueResponse(BaseModel):
     as_of: UtcDatetime
     entries: list[QueueEntryResponse]
+
+
+class AdministratorQueueEntryResponse(BaseModel):
+    """One row of the Administrator's dense Queue table."""
+
+    encounter_id: int
+    arrived_at: UtcDatetime
+    waiting_seconds: int
+    urgency_level: UrgencyLevel
+    patient_name: str
+    presenting_complaint: str
+    machine_recommendation: UrgencyLevel
+    final_decision: UrgencyLevel
+    final_decision_differs: bool
+
+
+class AdministratorQueueResponse(BaseModel):
+    as_of: UtcDatetime
+    entries: list[AdministratorQueueEntryResponse]
