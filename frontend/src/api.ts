@@ -1,5 +1,7 @@
 export type Role = "clinical" | "administrator";
 
+export type Sex = "female" | "male" | "other" | "unspecified";
+
 export interface CurrentUser {
   id: number;
   email: string;
@@ -12,6 +14,52 @@ export interface AccessResponse {
   message: string;
 }
 
+export interface Patient {
+  id: number;
+  full_name: string;
+  age: number;
+  sex: Sex;
+  contact_phone: string;
+  contact_email: string | null;
+  registered_at: string;
+}
+
+export interface NewPatient {
+  full_name: string;
+  age: number;
+  sex: Sex;
+  contact_phone: string;
+  contact_email: string | null;
+}
+
+export interface BloodPressure {
+  systolic: number;
+  diastolic: number;
+}
+
+export interface Intake {
+  presenting_complaint: string;
+  pain_level: number;
+  illness_duration_hours: number;
+  temperature_c: number;
+  heart_rate_bpm: number;
+  blood_pressure: BloodPressure;
+  oxygen_saturation_percent: number;
+  notes: string | null;
+}
+
+export interface Encounter {
+  id: number;
+  arrived_at: string;
+  patient: Patient;
+  intake: Intake;
+}
+
+interface ApiResult<T> {
+  body: T;
+  status: number;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -22,7 +70,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestDetailed<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<ApiResult<T>> {
   const response = await fetch(path, {
     ...init,
     credentials: "same-origin",
@@ -33,7 +84,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (response.status === 204) {
-    return undefined as T;
+    return { body: undefined as T, status: response.status };
   }
 
   const body = await response.json().catch(() => null);
@@ -45,7 +96,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, detail);
   }
 
-  return body as T;
+  return { body: body as T, status: response.status };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestDetailed<T>(path, init)).body;
 }
 
 export const api = {
@@ -66,4 +121,25 @@ export const api = {
     }),
   access: (scope: Role) =>
     request<AccessResponse>(`/api/${scope}/access`),
+  registerPatient: (patient: NewPatient) =>
+    requestDetailed<Patient>("/api/clinical/patients", {
+      method: "POST",
+      body: JSON.stringify(patient),
+    }),
+  openEncounter: (patientId: number, intake: Intake) =>
+    request<Encounter>("/api/clinical/encounters", {
+      method: "POST",
+      body: JSON.stringify({ patient_id: patientId, intake }),
+    }),
+  correctIntake: (encounterId: number, intake: Intake) =>
+    request<Encounter>(`/api/clinical/encounters/${encounterId}/intake`, {
+      method: "PUT",
+      body: JSON.stringify(intake),
+    }),
+  getEncounter: (encounterId: number) =>
+    request<Encounter>(`/api/clinical/encounters/${encounterId}`),
+  recentEncounters: (limit = 10) =>
+    request<{ encounters: Encounter[] }>(
+      `/api/clinical/encounters?limit=${limit}`,
+    ),
 };

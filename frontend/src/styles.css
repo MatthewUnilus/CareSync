@@ -37,7 +37,9 @@ dd {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -90,6 +92,28 @@ input {
 }
 
 input:focus {
+  outline: 2px solid rgba(13, 111, 104, 0.35);
+  outline-offset: 1px;
+  border-color: var(--brand);
+}
+
+select,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  background: #ffffff;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+}
+
+textarea {
+  resize: vertical;
+}
+
+select:focus,
+textarea:focus {
   outline: 2px solid rgba(13, 111, 104, 0.35);
   outline-offset: 1px;
   border-color: var(--brand);
@@ -271,6 +295,71 @@ input:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+.intake-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.intake-fieldset legend {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding-bottom: 0.35rem;
+}
+
+.intake-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+}
+
+.intake-grid > * {
+  min-width: 0;
+}
+
+.span-all {
+  grid-column: 1 / -1;
+}
+
+.required-mark {
+  color: var(--danger);
+}
+
+.encounter-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.encounter-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+  background: #fbfdfd;
+}
+
+.encounter-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.encounter-complaint {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 540px) {

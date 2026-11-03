@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 
 import { api, ApiError } from "./api";
 import type { CurrentUser, Role } from "./api";
+import IntakeScreen from "./IntakeScreen";
 
 interface ShellProps {
   user: CurrentUser;
@@ -91,59 +92,61 @@ export default function Shell({ user, onLogout }: ShellProps) {
       </header>
 
       <main className="shell-main">
-        <section className="card">
-          <h2>Signed in</h2>
-          <p className="lead">
-            You hold the <strong>{roleLabel(user.role)}</strong> role.
-          </p>
-          <dl className="facts">
-            <div>
-              <dt>Email</dt>
-              <dd>{user.email}</dd>
-            </div>
-            <div>
-              <dt>Role</dt>
-              <dd>{roleLabel(user.role)}</dd>
-            </div>
-          </dl>
-          <p className="muted">
-            {user.role === "clinical"
-              ? "Patient registration and the Queue board arrive with later tickets."
-              : "Reports arrive with later tickets."}
-          </p>
-        </section>
+        {user.role === "clinical" ? (
+          <IntakeScreen />
+        ) : (
+          <>
+            <section className="card">
+              <h2>Signed in</h2>
+              <p className="lead">
+                You hold the <strong>{roleLabel(user.role)}</strong> role.
+              </p>
+              <dl className="facts">
+                <div>
+                  <dt>Email</dt>
+                  <dd>{user.email}</dd>
+                </div>
+                <div>
+                  <dt>Role</dt>
+                  <dd>{roleLabel(user.role)}</dd>
+                </div>
+              </dl>
+              <p className="muted">Reports arrive with later tickets.</p>
+            </section>
 
-        <section className="card">
-          <h2>Role enforcement</h2>
-          <p className="muted">
-            The API decides access, not this screen. Both buttons are available
-            to both roles; one of them will be refused.
-          </p>
-          <div className="row">
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => checkAccess("clinical")}
-            >
-              Call Clinical endpoint
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => checkAccess("administrator")}
-            >
-              Call Administrator endpoint
-            </button>
-          </div>
-          {accessNotice ? (
-            <p
-              className={`notice notice-${accessNotice.kind}`}
-              role="status"
-            >
-              {accessNotice.text}
-            </p>
-          ) : null}
-        </section>
+            <section className="card">
+              <h2>Role enforcement</h2>
+              <p className="muted">
+                The API decides access, not this screen. Both buttons are
+                available to both roles; one of them will be refused.
+              </p>
+              <div className="row">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => checkAccess("clinical")}
+                >
+                  Call Clinical endpoint
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => checkAccess("administrator")}
+                >
+                  Call Administrator endpoint
+                </button>
+              </div>
+              {accessNotice ? (
+                <p
+                  className={`notice notice-${accessNotice.kind}`}
+                  role="status"
+                >
+                  {accessNotice.text}
+                </p>
+              ) : null}
+            </section>
+          </>
+        )}
 
         <section className="card">
           <h2>Change password</h2>

@@ -5,8 +5,9 @@ an Urgency Level for each Encounter and keeps the Queue ordered from that
 recommendation, leaving the final decision with clinical staff.
 
 This ticket establishes the runnable walking skeleton: the HTTP API, the React
-client, authentication, and the two Roles. Intake, the Queue board, the
-Prioritization Engine, and Reports arrive in later tickets.
+client, authentication, the two Roles, Patient registration, and Encounter
+intake. The Queue board, the Prioritization Engine, and Reports arrive in later
+tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -65,6 +66,50 @@ changed. To seed manually (for example after deleting the database):
 npm run seed
 ```
 
+## Patient matching
+
+Registering a Patient reuses an existing record when the normalised full name
+**and** the normalised contact phone number both match:
+
+- name: surrounding whitespace trimmed, internal whitespace collapsed to one
+  space, case-folded (`"  Ada   Lovelace "` matches `"ada lovelace"`)
+- phone: non-digits dropped, a leading `+` kept (`"0770-090 0123"` matches
+  `"07700 900123"`)
+
+Requiring both is deliberate. A name alone collides between different people, so
+matching on name only would merge two Patients irreversibly. The cost is that a
+returning Patient who gives a new phone number registers a second record; a
+duplicate can be resolved later, a bad merge cannot. The API answers
+`201 Created` for a new Patient and `200 OK` when an existing record is reused.
+
+The rule is enforced by a unique constraint on the normalised pair, so a
+concurrent double submission cannot create two rows either. Re-registration
+never overwrites the stored name, age, sex, or contact details.
+
+## Intake
+
+Opening an Encounter requires the intake that a Triage Assessment will later run
+on. Every field except notes is required and is validated server-side as well as
+in the form:
+
+| Field                      | Range                          |
+| -------------------------- | ------------------------------ |
+| Presenting complaint       | 1–2000 characters, free text   |
+| Pain level                 | 1–10                           |
+| Illness duration           | 0–8760 hours                   |
+| Temperature                | 30–45 °C                       |
+| Heart rate                 | 20–300 bpm                     |
+| Blood pressure             | systolic 50–300, diastolic 20–200, systolic above diastolic |
+| Oxygen saturation          | 50–100 %                       |
+| Notes                      | optional, up to 2000 characters |
+
+`arrived_at` is written when the Encounter is opened and cannot be changed
+afterwards; the Encounter itself is never updated, only its intake. Intake may
+be corrected while no Triage Assessment exists for the Encounter. No Triage
+Assessment can be created yet, so every correction is currently allowed; once
+ticket 03 adds assessments, the same route returns `409 Conflict` instead. See
+`backend/app/intake.py`.
+
 ## Run the tests
 
 ```powershell
@@ -107,19 +152,28 @@ also read.
 
 ## API surface
 
-| Method | Path                          | Access        |
-| ------ | ----------------------------- | ------------- |
-| POST   | `/api/auth/login`             | Public        |
-| GET    | `/api/auth/me`                | Authenticated |
-| POST   | `/api/auth/logout`            | Public        |
-| POST   | `/api/auth/password`          | Authenticated |
-| GET    | `/api/roles`                  | Public        |
-| GET    | `/api/clinical/access`        | Clinical      |
-| GET    | `/api/administrator/access`   | Administrator |
+| Method | Path                                    | Access        |
+| ------ | --------------------------------------- | ------------- |
+| POST   | `/api/auth/login`                       | Public        |
+| GET    | `/api/auth/me`                          | Authenticated |
+| POST   | `/api/auth/logout`                      | Public        |
+| POST   | `/api/auth/password`                    | Authenticated |
+| GET    | `/api/roles`                            | Public        |
+| GET    | `/api/clinical/access`                  | Clinical      |
+| POST   | `/api/clinical/patients`                | Clinical      |
+| POST   | `/api/clinical/encounters`              | Clinical      |
+| GET    | `/api/clinical/encounters`              | Clinical      |
+| GET    | `/api/clinical/encounters/{id}`         | Clinical      |
+| PUT    | `/api/clinical/encounters/{id}/intake`  | Clinical      |
+| GET    | `/api/administrator/access`             | Administrator |
 
-The two `/access` routes are the role-gated surfaces for this ticket; they exist
-to demonstrate that authorisation is enforced at the API boundary. A wrong Role
+The `/access` routes are the role-gated surfaces from ticket 01; they exist to
+demonstrate that authorisation is enforced at the API boundary. A wrong Role
 receives `403`; an unauthenticated request receives `401`.
+
+`GET /api/clinical/encounters` is a recency list for correcting a saved intake —
+newest arrival first, `?limit=` up to 100. It is not the Queue: it is not
+ordered by Urgency Level and does not filter awaiting versus departed.
 
 ## Security behaviour
 
@@ -141,21 +195,24 @@ backend/
     main.py            app factory, router wiring, startup seeding
     config.py          Settings (TRIAGEASSIST_* env vars)
     db.py              engine and session factory
-    models.py          User, UserSession, Role
+    models.py          User, UserSession, Role, Patient, Encounter, Sex
     schemas.py         request/response models
+    patients.py        Patient matching rule and find-or-create
+    intake.py          whether an Encounter's intake may still be corrected
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
     seed.py            demo Clinical and Administrator users
     routers/
       auth.py          login, me, logout, change-own-password
       meta.py          the two Roles
-      clinical.py      Clinical-gated surface
+      clinical.py      Patient registration, Encounter intake, corrections
       administrator.py Administrator-gated surface
   tests/               API-level pytest suite (SQLite)
 frontend/
   src/
     App.tsx            session check and screen switch
     LoginScreen.tsx    login form
+    IntakeScreen.tsx   Clinical intake, correction, recent Encounters
     Shell.tsx          post-login shell, role badge, password change
     api.ts             typed fetch wrapper
 ```
