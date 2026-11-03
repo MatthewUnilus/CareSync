@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from pydantic import (
@@ -268,3 +268,40 @@ class AdministratorQueueEntryResponse(BaseModel):
 class AdministratorQueueResponse(BaseModel):
     as_of: UtcDatetime
     entries: list[AdministratorQueueEntryResponse]
+
+
+class DailyQueueReportResponse(BaseModel):
+    """One UTC day's arrival volume, departure throughput, and backlog."""
+
+    day: date
+    starts_at: UtcDatetime
+    ends_at: UtcDatetime
+    volume: int
+    throughput: int
+    awaiting: int
+
+
+class PriorityLevelCountResponse(BaseModel):
+    urgency_level: UrgencyLevel
+    encounters: int
+
+
+class PriorityDistributionReportResponse(BaseModel):
+    total: int
+    levels: list[PriorityLevelCountResponse]
+
+
+class PerformanceEntryResponse(BaseModel):
+    encounter_id: int
+    arrived_at: UtcDatetime
+    assessed_at: UtcDatetime
+    departed_at: UtcDatetime
+    waiting_seconds: int
+    processing_seconds: int
+
+
+class PerformanceReportResponse(BaseModel):
+    completed: int
+    average_waiting_seconds: float
+    average_processing_seconds: float
+    entries: list[PerformanceEntryResponse]

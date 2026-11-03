@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { api, ApiError } from "./api";
 import type { AdministratorQueueSnapshot } from "./api";
+import AdministratorReports from "./AdministratorReports";
 import { formatWaiting, urgencyClass } from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
@@ -143,11 +144,7 @@ export default function AdministratorDashboard() {
         data-reports-mount="administrator"
       >
         <h2>Reports</h2>
-        <p className="muted">
-          Daily Queue, Priority Distribution, Performance, and Accuracy
-          Evaluation reports mount here in tickets 13 and 14. All are read-only
-          views derived on demand from Triage Assessment records.
-        </p>
+        <AdministratorReports />
       </section>
     </>
   );
