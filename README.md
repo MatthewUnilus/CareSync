@@ -7,9 +7,9 @@ recommendation, leaving the final decision with clinical staff.
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
 Triage Assessment record, Symptom Group recognition, a trained classifier behind
-the Prioritization Engine, the live Queue board, the Override and Departure
-actions, and the read-only Administrator dashboard. The safety layer, the
-fallback, Re-assessment, and Reports arrive in later tickets.
+the Prioritization Engine, the live Queue board, the Re-assessment, Override and
+Departure actions, and the read-only Administrator dashboard. The safety layer,
+the fallback, and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -111,7 +111,9 @@ afterwards; the Encounter itself is never updated, only its intake. Intake is
 complete as soon as the Encounter exists, so opening an Encounter also creates
 its first Triage Assessment in the same transaction. A later correction attempt
 therefore returns `409 Conflict`: the Assessment's snapshot is the durable record
-of what the recommendation was made from. See `backend/app/intake.py`.
+of what the recommendation was made from. To capture a changed condition, use a
+Re-assessment (below), which appends a new Assessment instead of rewriting an
+old one. See `backend/app/intake.py`.
 
 ## Symptom Groups
 
@@ -184,16 +186,17 @@ The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
 are first-in-first-out. The level that governs is the latest Triage Assessment's
 Final Decision, which starts equal to the Machine Recommendation and moves only
-through an Override. An Encounter is awaiting while `departed_at` is null and
-departed once its Departure instant is set; those two are the only conditions in
-scope. `waiting_seconds` is derived from `arrived_at` at read time.
+through an Override or a Re-assessment. An Encounter is awaiting while
+`departed_at` is null and departed once its Departure instant is set; those two
+are the only conditions in scope. `waiting_seconds` is derived from `arrived_at`
+at read time.
 
 The client polls `GET /api/clinical/queue` every five seconds and on window
 focus, so a change to a Final Decision or a Departure appears without a manual
 refresh. `QueueBoard.tsx` renders compact cards — urgency colour, Patient name,
 short complaint, time waiting — and expands to the full vitals, pain level,
-duration, the Symptom Groups recognised from the complaint, notes, the Override
-form, and the Depart action.
+duration, the Symptom Groups recognised from the complaint, notes, the
+Re-assessment form, the Override form, and the Depart action.
 
 ## Mobile client
 
@@ -342,9 +345,41 @@ a second column, so the condition and the instant cannot disagree. A departed
 Encounter is still readable in full — Patient, intake, Triage Assessments and
 Overrides — through `GET /api/clinical/encounters/{id}`, and it stays in the
 recency list. Clinical actions that need an awaiting Encounter are refused with
-`409`: an Override says so in its own terms, and Re-assessment (ticket 10) will
-use the same shared guard. Departing twice is refused with `409` and does not
+`409`: both an Override and a Re-assessment say so in their own terms through
+the same shared guard. Departing twice is refused with `409` and does not
 overwrite the first instant.
+
+## Re-assessment
+
+A Clinical user may ask for a fresh Triage Assessment on an awaiting Encounter:
+
+```http
+POST /api/clinical/encounters/{id}/reassessment
+{
+  "presenting_complaint": "Chest pain, worse on exertion",
+  "pain_level": 9,
+  ...
+}
+```
+
+The request carries the intake captured now — the Encounter's condition may have
+changed — and the server appends a new Assessment with its own Machine
+Recommendation. Re-assessment is manual only: there is no timer, scheduled
+re-evaluation, time-based escalation or background job, and reading the Queue
+never creates an Assessment.
+
+The new row records `supersedes_assessment_id`, the Assessment that was
+governing until it arrived, so the whole sequence is reconstructable from the
+rows. Nothing earlier is edited: every previous Assessment keeps its snapshot,
+its Machine Recommendation and its Overrides. `GET /api/clinical/encounters/{id}`
+returns `assessment` (the governing, most recent one) alongside `assessments`
+(the history, oldest first).
+
+The Queue sorts on the **latest** Assessment's Final Decision. So if Assessment A
+was Overridden to Low and a Re-assessment then recommends High, the Encounter
+sits where that new decision puts it, not where the old Override did. An Override
+on a superseded Assessment is refused with `409`, because only the governing
+Assessment can move the Encounter.
 
 ## Administrator dashboard
 
@@ -364,8 +399,38 @@ There are no clinical actions anywhere in the Administrator surface — no
 registration, intake, Override, Re-assessment, or Departure. That is enforced by
 the API, not by hiding buttons: every `/api/clinical/*` route refuses an
 Administrator with `403`, and the Administrator queue route refuses a Clinical
-user in the same way. The dashboard ends with a Reports section that tickets 13
-and 14 fill; it is read-only and currently explains what will mount there.
+user in the same way. The dashboard ends with a Reports section, described
+below; ticket 14's Accuracy Evaluation mounts in the same section.
+
+## Reports
+
+The three Reports are read-only. Each is computed inside the request from the
+rows that record what happened — arrival and departure instants on the
+Encounter, and its Triage Assessment rows — never from a stored snapshot and
+never from the live Queue. Nothing is cached, so changing a record changes the
+next Report and reverting the record reverts the figure; no Report write creates
+a row or performs a clinical action. An Encounter's *governing* Assessment is
+its highest-id one, matching the Queue, so a Re-assessment is reflected without
+counting the Encounter twice.
+
+A **day** is one UTC calendar day, half-open: `[00:00, next 00:00)`. The Daily
+Queue Report takes an optional `?day=YYYY-MM-DD` and otherwise uses the server's
+current UTC day.
+
+- **Daily Queue** (`GET /api/administrator/reports/daily-queue`) — *volume* is
+  Encounters that arrived on the day; *throughput* is Encounters that departed
+  on the day, even if they arrived earlier; *awaiting* is the day's arrivals
+  that still have no departure instant.
+- **Priority Distribution**
+  (`GET /api/administrator/reports/priority-distribution`) — one count per
+  Encounter at the Urgency Level of its governing Assessment's Final Decision,
+  across every stored Encounter, including departed and re-assessed ones.
+- **Performance** (`GET /api/administrator/reports/performance`) — over departed
+  Encounters only, because only they have a departure instant. *Waiting time* is
+  arrival to departure, the whole Encounter; *processing time* is the governing
+  Assessment to departure, the part of the stay after the urgency decision
+  existed. The Report returns each departed Encounter's two figures and their
+  averages.
 
 ## Run the tests
 
@@ -429,8 +494,12 @@ also read.
 | GET    | `/api/clinical/override-reasons`        | Clinical      |
 | POST   | `/api/clinical/encounters/{id}/override` | Clinical     |
 | POST   | `/api/clinical/encounters/{id}/departure` | Clinical    |
+| POST   | `/api/clinical/encounters/{id}/reassessment` | Clinical |
 | GET    | `/api/administrator/access`             | Administrator |
 | GET    | `/api/administrator/queue`              | Administrator |
+| GET    | `/api/administrator/reports/daily-queue` | Administrator |
+| GET    | `/api/administrator/reports/priority-distribution` | Administrator |
+| GET    | `/api/administrator/reports/performance` | Administrator |
 
 The `/access` routes are the role-gated surfaces from ticket 01; they exist to
 demonstrate that authorisation is enforced at the API boundary. A wrong Role
@@ -477,7 +546,9 @@ backend/
     override_reasons.py  the fixed Override Reason set (one source of truth)
     overrides.py       performing an Override and its guards
     departures.py      performing a Departure and the awaiting-Encounter guard
+    reassessments.py   performing a Re-assessment and recording supersession
     queue.py           the Queue as a sort over awaiting Encounters
+    reports.py         read-only Reports derived on demand from stored records
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
     seed.py            demo Clinical and Administrator users
@@ -485,7 +556,7 @@ backend/
       auth.py          login, me, logout, change-own-password
       meta.py          the two Roles
       clinical.py      Patient registration, intake, Assessments, Queue
-      administrator.py Administrator queue read model and access surface
+      administrator.py Administrator queue read model, Reports and access surface
   evaluation/          rubric, labeller, corpus, dataset loaders and training
     datasets/          provenance.json: sources, licences, checksums, rejection
     triage_datasets.py dataset-agnostic loaders into TrainingEncounter rows
@@ -500,6 +571,7 @@ frontend/
     ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
     QueueBoard.tsx     live Queue cards, expansion, Override and Depart actions
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
+    AdministratorReports.tsx    Daily Queue, Priority Distribution, Performance
     usePolling.ts      shared poll-on-interval and poll-on-focus hook
     queueDisplay.ts    shared waiting-time and urgency formatting
     IntakeScreen.tsx   Clinical intake and recent Encounters

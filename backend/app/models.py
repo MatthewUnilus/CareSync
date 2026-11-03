@@ -116,7 +116,9 @@ class Encounter(Base):
     ``arrived_at`` is written once, at creation, and is never updated. Intake
     values may be corrected only until the first Triage Assessment exists, at
     which point the Assessment's snapshot becomes the durable record of what
-    the recommendation was made from.
+    the recommendation was made from. The one exception is an explicit
+    Re-assessment, which captures the Encounter's current condition and freezes
+    it into a new Assessment; every earlier snapshot is left untouched.
 
     An Encounter is **awaiting** while ``departed_at`` is null, and **departed**
     once the Departure action records the instant. The Queue is every awaiting
@@ -190,9 +192,13 @@ class TriageAssessment(Base):
 
     Rows are append-only. ``machine_recommendation`` is the engine's output and
     is protected from later updates; ``final_decision`` is what governs the
-    Queue and starts equal to the Machine Recommendation. Ticket 09 adds the
-    Override that may change the Final Decision, which is why only the
-    recommendation and the captured inputs are frozen here.
+    Queue and starts equal to the Machine Recommendation. An Override may
+    change the Final Decision, which is why only the recommendation and the
+    captured inputs are frozen here.
+
+    An Encounter may hold several rows: a Re-assessment appends a new one and
+    points ``supersedes_assessment_id`` at the row it replaced. The most recent
+    row is the one that governs.
 
     The snapshot is stored as columns rather than a JSON blob so the data layer
     stays dialect-neutral (ADR 0001). It includes the Patient's age because age
@@ -244,7 +250,7 @@ class TriageAssessment(Base):
     machine_recommendation: Mapped[str] = mapped_column(String(16))
     final_decision: Mapped[str] = mapped_column(String(16))
 
-    # Ticket 10 links a Re-assessment back to the assessment it supersedes.
+    # Set by a Re-assessment: the Assessment it replaced. Null on the first.
     supersedes_assessment_id: Mapped[int | None] = mapped_column(
         ForeignKey("triage_assessments.id"), nullable=True
     )

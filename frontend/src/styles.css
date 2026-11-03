@@ -513,6 +513,14 @@ textarea:focus {
   margin: 0;
 }
 
+.queue-reassessment {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.8rem;
+}
+
 .queue-override-form {
   display: grid;
   gap: 0.75rem;
@@ -673,7 +681,79 @@ textarea:focus {
 }
 
 .admin-reports {
-  border-style: dashed;
+  display: grid;
+  gap: 1rem;
+}
+
+.reports {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.report-block {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.report-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+}
+
+.report-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.report-header .muted {
+  font-size: 0.85rem;
+}
+
+.report-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.report-stats > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 8rem;
+}
+
+.report-stats dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.report-stats dd {
+  font-size: 1.55rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-stats span {
+  font-size: 0.78rem;
+}
+
+.report-note {
+  font-size: 0.8rem;
+  max-width: 62ch;
+}
+
+.report-table-wrap {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.report-table {
+  font-size: 0.85rem;
 }
 
 @media (max-width: 540px) {

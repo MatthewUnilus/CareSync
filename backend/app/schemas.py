@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from pydantic import (
@@ -175,6 +175,9 @@ class AssessmentResponse(BaseModel):
     recognised_symptom_groups: list[str]
     override: OverrideRecordResponse | None = None
     snapshot: AssessmentSnapshot
+    # Set by a Re-assessment: the governing Assessment it replaced. Null on a
+    # first Assessment, so the history reconstructs the whole sequence.
+    supersedes_assessment_id: int | None = None
 
 
 class OverrideRequest(BaseModel):
@@ -218,6 +221,11 @@ class EncounterResponse(BaseModel):
     while the instant is null, departed once it is set. A departed Encounter
     is still returned in full, with its Patient, intake, Assessment and
     Override intact.
+
+    ``assessment`` is the governing (most recent) Assessment. ``assessments``
+    is the whole history oldest-first, so a Re-assessed Encounter stays
+    readable back to its first decision; the earlier rows keep their own
+    snapshots and Overrides.
     """
 
     id: int
@@ -227,6 +235,7 @@ class EncounterResponse(BaseModel):
     patient: PatientResponse
     intake: IntakePayload
     assessment: AssessmentResponse | None = None
+    assessments: list[AssessmentResponse] = Field(default_factory=list)
 
 
 class EncounterListResponse(BaseModel):
@@ -268,3 +277,40 @@ class AdministratorQueueEntryResponse(BaseModel):
 class AdministratorQueueResponse(BaseModel):
     as_of: UtcDatetime
     entries: list[AdministratorQueueEntryResponse]
+
+
+class DailyQueueReportResponse(BaseModel):
+    """One UTC day's arrival volume, departure throughput, and backlog."""
+
+    day: date
+    starts_at: UtcDatetime
+    ends_at: UtcDatetime
+    volume: int
+    throughput: int
+    awaiting: int
+
+
+class PriorityLevelCountResponse(BaseModel):
+    urgency_level: UrgencyLevel
+    encounters: int
+
+
+class PriorityDistributionReportResponse(BaseModel):
+    total: int
+    levels: list[PriorityLevelCountResponse]
+
+
+class PerformanceEntryResponse(BaseModel):
+    encounter_id: int
+    arrived_at: UtcDatetime
+    assessed_at: UtcDatetime
+    departed_at: UtcDatetime
+    waiting_seconds: int
+    processing_seconds: int
+
+
+class PerformanceReportResponse(BaseModel):
+    completed: int
+    average_waiting_seconds: float
+    average_processing_seconds: float
+    entries: list[PerformanceEntryResponse]
