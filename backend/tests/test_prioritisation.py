@@ -3,9 +3,10 @@
 These tests call the engine directly with constructed inputs. They import no
 database, open no session, and assert only the returned Urgency Level, so they
 survive any refactor of the engine's internals. Since ticket 06 the level comes
-from the trained classifier; the anchors below are the presentations the shipped
-interim artefact separates, and they are asserted exactly because the engine is
-deterministic.
+from the trained classifier; since ticket 07 the safety layer may raise it. The
+Low and Medium anchors below fire no red-flag rule, and the High anchor is
+already the classifier's own answer, so these assert the composed boundary
+exactly. The rules themselves are covered in ``test_red_flags.py``.
 """
 
 import time

@@ -6,10 +6,10 @@ recommendation, leaving the final decision with clinical staff.
 
 This build covers the walking skeleton: the HTTP API, the React client,
 authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, a trained classifier behind
-the Prioritization Engine, the live Queue board, the Re-assessment, Override and
-Departure actions, and the read-only Administrator dashboard. The safety layer,
-the fallback, and Reports arrive in later tickets.
+Triage Assessment record, Symptom Group recognition, a trained classifier and a
+red-flag safety layer behind the Prioritization Engine, the live Queue board,
+the Re-assessment, Override and Departure actions, and the read-only
+Administrator dashboard. The fallback and Reports arrive in later tickets.
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
@@ -180,8 +180,33 @@ uv run python -m evaluation.train_classifier
 ```
 
 Tickets 07 and 08 add the red-flag safety layer and the cached fallback behind
-the same boundary. Until the safety layer exists, a red-flag presentation that
-happens to have unremarkable vitals is not raised by the engine on its own.
+the same boundary. The safety layer is now in place; the fallback is not yet.
+
+### Red-flag safety layer
+
+`app.red_flags` is the deterministic layer that runs **after** the classifier
+and can only raise a recommendation to High. It can never lower one, and a
+presentation with no firing rule is returned exactly as the classifier produced
+it. Twenty red-flag rules cover ESI danger-zone vitals (oxygen saturation, the
+age-banded heart-rate thresholds, infant fever), two adult blood-pressure
+extremes, and recognised symptoms such as chest pain, stroke signs, altered
+mental status, seizure, suicidal ideation, major haemorrhage, anaphylaxis,
+overdose, head injury, neck stiffness, vaginal bleeding and syncope.
+
+Each rule carries a clinical citation to ESI v4 and, where it implements the
+same criterion, to the independent rubric in
+`backend/evaluation/RUBRIC.md`. The full rule table, its citations and the
+deliberate limits of the layer are in
+[`docs/red-flag-safety-layer.md`](docs/red-flag-safety-layer.md). The limits are
+real: it is not a full ESI rule engine, it does not count resources or see
+respiratory rate/mental status, and a pain-only presentation can still be
+under-triaged because the handbook's severe-pain criterion needs a clinician's
+judgement that the engine does not receive.
+
+The layer is pure and deterministic like the classifier, and iterating twenty
+predicates is microseconds, so the three-second budget holds. The composed
+result is the Machine Recommendation stored on the Assessment and the level the
+Queue orders by; no client change was needed.
 
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
@@ -539,6 +564,7 @@ backend/
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
     prioritisation.py  Seam B: the pure Prioritization Engine
+    red_flags.py       the deterministic red-flag safety layer (ticket 07)
     features.py        the structured feature vector training and inference share
     classifier.py      loads the JSON artefact; softmax inference, no database
     symptom_groups.py  the fixed vocabulary and spaCy recognition onto it
