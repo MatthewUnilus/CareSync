@@ -173,6 +173,10 @@ class AssessmentResponse(BaseModel):
     machine_recommendation: UrgencyLevel
     final_decision: UrgencyLevel
     recognised_symptom_groups: list[str]
+    # True when the complaint matched no Symptom Group and the fallback
+    # provider was unavailable or timed out. A separate signal from an
+    # Override, which is represented by ``override`` and ``override_flag``.
+    unclassified: bool = False
     override: OverrideRecordResponse | None = None
     snapshot: AssessmentSnapshot
     # Set by a Re-assessment: the governing Assessment it replaced. Null on a
@@ -253,6 +257,9 @@ class QueueEntryResponse(BaseModel):
     intake: IntakePayload
     assessment: AssessmentResponse
     override_flag: bool
+    # Its own state, not a reuse of override_flag: the fallback provider could
+    # not classify the complaint, so the recommendation needs clinical review.
+    unclassified_flag: bool
 
 
 class QueueResponse(BaseModel):

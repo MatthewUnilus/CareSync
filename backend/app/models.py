@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -250,6 +251,14 @@ class TriageAssessment(Base):
     machine_recommendation: Mapped[str] = mapped_column(String(16))
     final_decision: Mapped[str] = mapped_column(String(16))
 
+    # True only when the complaint matched no Symptom Group and the fallback
+    # provider was unavailable or exceeded its timeout, so the recommendation
+    # came from the safety layer's documented default. Frozen with the rest of
+    # the Assessment; it is not the same signal as an Override.
+    unclassified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     # Set by a Re-assessment: the Assessment it replaced. Null on the first.
     supersedes_assessment_id: Mapped[int | None] = mapped_column(
         ForeignKey("triage_assessments.id"), nullable=True
@@ -280,6 +289,7 @@ _ASSESSMENT_FROZEN_FIELDS = (
     "notes",
     "recognised_symptom_groups",
     "machine_recommendation",
+    "unclassified",
     "supersedes_assessment_id",
 )
 
@@ -298,6 +308,34 @@ def _refuse_rewriting_an_assessment(_mapper, _connection, target) -> None:
             "A Triage Assessment's captured inputs and Machine Recommendation "
             f"are immutable; refused to change {', '.join(changed)}"
         )
+
+
+class FallbackCacheEntry(Base):
+    """One cached answer from the runtime fallback provider.
+
+    The key is the SHA-256 of the complaint text exactly as stored, so identical
+    wording always resolves to the same provider answer, including after a
+    process restart. Only the provider's complaint-only level is cached: the
+    safety layer is applied to it on every resolve, because the same words can
+    belong to a patient with different vitals. A degraded (unclassified) answer
+    is never cached, so a transient outage does not stick in the record.
+    """
+
+    __tablename__ = "fallback_cache"
+    __table_args__ = (
+        CheckConstraint(
+            "machine_recommendation IN ('High', 'Medium', 'Low')",
+            name="ck_fallback_cache_machine_recommendation",
+        ),
+    )
+
+    complaint_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    presenting_complaint: Mapped[str] = mapped_column(String(2000))
+    machine_recommendation: Mapped[str] = mapped_column(String(16))
+    provider: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
 
 class Override(Base):

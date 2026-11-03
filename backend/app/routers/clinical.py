@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.assessments import create_triage_assessment
 from app.departures import encounter_status, perform_departure
-from app.deps import DbSession, require_role
+from app.deps import DbSession, Fallback, require_role
 from app.intake import apply_intake, ensure_intake_editable
 from app.models import Encounter, Override, Patient, Role, TriageAssessment, User
 from app.override_reasons import OVERRIDE_REASONS
@@ -86,6 +86,7 @@ def open_encounter(
     payload: EncounterCreateRequest,
     db: DbSession,
     user: ClinicalUser,
+    fallback: Fallback,
 ) -> EncounterResponse:
     patient = db.get(Patient, payload.patient_id)
     if patient is None:
@@ -98,7 +99,7 @@ def open_encounter(
     apply_intake(encounter, payload.intake)
     db.add(encounter)
     db.flush()
-    assessment = create_triage_assessment(db, encounter)
+    assessment = create_triage_assessment(db, encounter, fallback=fallback)
     db.commit()
     return _encounter_response(encounter, assessment)
 
@@ -150,6 +151,7 @@ def get_queue(db: DbSession, user: ClinicalUser) -> QueueResponse:
                 intake=_intake_payload(entry.encounter),
                 assessment=_assessment_response(entry.assessment),
                 override_flag=entry.override_flag,
+                unclassified_flag=entry.unclassified_flag,
             )
             for entry in entries
         ],
@@ -234,6 +236,7 @@ def reassess_encounter(
     payload: IntakePayload,
     db: DbSession,
     user: ClinicalUser,
+    fallback: Fallback,
 ) -> EncounterResponse:
     """Append a fresh Triage Assessment from the intake supplied.
 
@@ -244,7 +247,7 @@ def reassess_encounter(
     governs the Encounter's Queue position on the next read.
     """
     encounter = _get_encounter(db, encounter_id)
-    perform_reassessment(db, encounter, intake=payload)
+    perform_reassessment(db, encounter, intake=payload, fallback=fallback)
     db.commit()
     return _encounter_response(encounter)
 
@@ -326,6 +329,7 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
         machine_recommendation=assessment.machine_recommendation,
         final_decision=assessment.final_decision,
         recognised_symptom_groups=groups,
+        unclassified=assessment.unclassified,
         override=_override_response(
             assessment.overrides[-1] if assessment.overrides else None
         ),

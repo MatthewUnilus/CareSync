@@ -437,8 +437,10 @@ def test_the_override_flag_is_its_own_state_name(
     (entry,) = queue_entries(clinical_client)
 
     assert entry["override_flag"] is True
-    # Ticket 08 adds the unclassified flag as a separate field; this one is
-    # about human disagreement only, never a generic "flagged" concept.
+    # The unclassified flag is its own field (ticket 08), never a reuse of
+    # this one: a human disagreement and a provider failure are different
+    # facts about an Assessment.
+    assert entry["unclassified_flag"] is False
     assert "flagged" not in entry
     assert "unclassified" not in entry
 

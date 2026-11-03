@@ -39,6 +39,16 @@ class QueueEntry:
             self.assessment.final_decision
         ) != UrgencyLevel(self.assessment.machine_recommendation)
 
+    @property
+    def unclassified_flag(self) -> bool:
+        """True when the fallback provider could not classify the complaint.
+
+        Distinct from ``override_flag``: an Override is a human disagreement
+        with a classified recommendation, while this says the recommendation
+        itself came from the safety layer's default and needs review.
+        """
+        return bool(self.assessment.unclassified)
+
 
 @dataclass(frozen=True)
 class AdministratorQueueRow:
