@@ -170,12 +170,74 @@ function OverrideAction({
   );
 }
 
+/*
+ * The Departure action is its own component and handler, self-contained so
+ * that another action (the Re-assessment ticket) can sit beside it without
+ * touching it. It sends no body: the server records the departure instant.
+ */
+function DepartureAction({
+  entry,
+  onDeparted,
+}: {
+  entry: QueueEntry;
+  onDeparted: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function depart() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.departEncounter(entry.encounter_id);
+      onDeparted();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Unable to reach the server.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="queue-departure">
+      <p className="muted">
+        Departing records the departure instant and removes this Encounter from
+        the awaiting board. The Patient, Assessments and Overrides stay on
+        record.
+      </p>
+      {error ? (
+        <p className="notice notice-error" role="status">
+          {error}
+        </p>
+      ) : null}
+      <div className="row">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            void depart();
+          }}
+          disabled={saving}
+        >
+          {saving ? "Departing…" : "Depart"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ExpandedDetail({
   entry,
   onOverridden,
+  onDeparted,
 }: {
   entry: QueueEntry;
   onOverridden: () => void;
+  onDeparted: () => void;
 }) {
   const { intake } = entry;
   const symptomGroups = entry.assessment.recognised_symptom_groups;
@@ -244,6 +306,7 @@ function ExpandedDetail({
       <div>
         <p className="queue-detail-label">Actions</p>
         <OverrideAction entry={entry} onOverridden={onOverridden} />
+        <DepartureAction entry={entry} onDeparted={onDeparted} />
       </div>
     </div>
   );
@@ -364,6 +427,9 @@ export default function QueueBoard() {
                   <ExpandedDetail
                     entry={entry}
                     onOverridden={() => {
+                      void load();
+                    }}
+                    onDeparted={() => {
                       void load();
                     }}
                   />

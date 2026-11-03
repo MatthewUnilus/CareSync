@@ -14,6 +14,7 @@ Recommendation is never written by this path; only ``final_decision`` moves.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.departures import ensure_awaiting
 from app.models import Encounter, Override, TriageAssessment, User
 from app.override_reasons import OverrideReason
 from app.prioritisation import UrgencyLevel
@@ -45,11 +46,7 @@ def perform_override(
     The caller commits; this keeps the Assessment update and the Override row
     in one transaction.
     """
-    if encounter.departed_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ENCOUNTER_DEPARTED_DETAIL,
-        )
+    ensure_awaiting(encounter, ENCOUNTER_DEPARTED_DETAIL)
 
     assessment = session.get(TriageAssessment, assessment_id)
     governing = encounter.assessments[-1] if encounter.assessments else None

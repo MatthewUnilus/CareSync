@@ -119,8 +119,9 @@ class Encounter(Base):
     the recommendation was made from.
 
     An Encounter is **awaiting** while ``departed_at`` is null, and **departed**
-    once ticket 11 records the departure instant. The Queue is every awaiting
-    Encounter, sorted; it is never a stored sequence.
+    once the Departure action records the instant. The Queue is every awaiting
+    Encounter, sorted; it is never a stored sequence. There is no second status
+    column: the condition is derived from this one nullable instant.
     """
 
     __tablename__ = "encounters"
