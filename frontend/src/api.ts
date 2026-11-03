@@ -2,6 +2,8 @@ export type Role = "clinical" | "administrator";
 
 export type Sex = "female" | "male" | "other" | "unspecified";
 
+export type UrgencyLevel = "High" | "Medium" | "Low";
+
 export interface CurrentUser {
   id: number;
   email: string;
@@ -53,6 +55,43 @@ export interface Encounter {
   arrived_at: string;
   patient: Patient;
   intake: Intake;
+  assessment: Assessment | null;
+}
+
+export interface AssessmentSnapshot {
+  presenting_complaint: string;
+  age: number;
+  pain_level: number;
+  illness_duration_hours: number;
+  temperature_c: number;
+  heart_rate_bpm: number;
+  blood_pressure: BloodPressure;
+  oxygen_saturation_percent: number;
+  notes: string | null;
+}
+
+export interface Assessment {
+  id: number;
+  assessed_at: string;
+  machine_recommendation: UrgencyLevel;
+  final_decision: UrgencyLevel;
+  recognised_symptom_groups: string[];
+  snapshot: AssessmentSnapshot;
+}
+
+export interface QueueEntry {
+  encounter_id: number;
+  arrived_at: string;
+  waiting_seconds: number;
+  urgency_level: UrgencyLevel;
+  patient: Patient;
+  intake: Intake;
+  assessment: Assessment;
+}
+
+export interface QueueSnapshot {
+  as_of: string;
+  entries: QueueEntry[];
 }
 
 interface ApiResult<T> {
@@ -142,4 +181,5 @@ export const api = {
     request<{ encounters: Encounter[] }>(
       `/api/clinical/encounters?limit=${limit}`,
     ),
+  queue: () => request<QueueSnapshot>("/api/clinical/queue"),
 };
