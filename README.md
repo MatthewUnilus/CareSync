@@ -342,8 +342,38 @@ There are no clinical actions anywhere in the Administrator surface — no
 registration, intake, Override, Re-assessment, or Departure. That is enforced by
 the API, not by hiding buttons: every `/api/clinical/*` route refuses an
 Administrator with `403`, and the Administrator queue route refuses a Clinical
-user in the same way. The dashboard ends with a Reports section that tickets 13
-and 14 fill; it is read-only and currently explains what will mount there.
+user in the same way. The dashboard ends with a Reports section, described
+below; ticket 14's Accuracy Evaluation mounts in the same section.
+
+## Reports
+
+The three Reports are read-only. Each is computed inside the request from the
+rows that record what happened — arrival and departure instants on the
+Encounter, and its Triage Assessment rows — never from a stored snapshot and
+never from the live Queue. Nothing is cached, so changing a record changes the
+next Report and reverting the record reverts the figure; no Report write creates
+a row or performs a clinical action. An Encounter's *governing* Assessment is
+its highest-id one, matching the Queue, so a Re-assessment is reflected without
+counting the Encounter twice.
+
+A **day** is one UTC calendar day, half-open: `[00:00, next 00:00)`. The Daily
+Queue Report takes an optional `?day=YYYY-MM-DD` and otherwise uses the server's
+current UTC day.
+
+- **Daily Queue** (`GET /api/administrator/reports/daily-queue`) — *volume* is
+  Encounters that arrived on the day; *throughput* is Encounters that departed
+  on the day, even if they arrived earlier; *awaiting* is the day's arrivals
+  that still have no departure instant.
+- **Priority Distribution**
+  (`GET /api/administrator/reports/priority-distribution`) — one count per
+  Encounter at the Urgency Level of its governing Assessment's Final Decision,
+  across every stored Encounter, including departed and re-assessed ones.
+- **Performance** (`GET /api/administrator/reports/performance`) — over departed
+  Encounters only, because only they have a departure instant. *Waiting time* is
+  arrival to departure, the whole Encounter; *processing time* is the governing
+  Assessment to departure, the part of the stay after the urgency decision
+  existed. The Report returns each departed Encounter's two figures and their
+  averages.
 
 ## Run the tests
 
@@ -409,6 +439,9 @@ also read.
 | POST   | `/api/clinical/encounters/{id}/departure` | Clinical    |
 | GET    | `/api/administrator/access`             | Administrator |
 | GET    | `/api/administrator/queue`              | Administrator |
+| GET    | `/api/administrator/reports/daily-queue` | Administrator |
+| GET    | `/api/administrator/reports/priority-distribution` | Administrator |
+| GET    | `/api/administrator/reports/performance` | Administrator |
 
 The `/access` routes are the role-gated surfaces from ticket 01; they exist to
 demonstrate that authorisation is enforced at the API boundary. A wrong Role
@@ -454,6 +487,7 @@ backend/
     overrides.py       performing an Override and its guards
     departures.py      performing a Departure and the awaiting-Encounter guard
     queue.py           the Queue as a sort over awaiting Encounters
+    reports.py         read-only Reports derived on demand from stored records
     security.py        argon2 hashing, session token hashing
     deps.py            get_current_user, require_role
     seed.py            demo Clinical and Administrator users
@@ -461,7 +495,7 @@ backend/
       auth.py          login, me, logout, change-own-password
       meta.py          the two Roles
       clinical.py      Patient registration, intake, Assessments, Queue
-      administrator.py Administrator queue read model and access surface
+      administrator.py Administrator queue read model, Reports and access surface
   tests/               API-level pytest suite (SQLite) and Seam B unit tests
 frontend/
   src/
@@ -471,6 +505,7 @@ frontend/
     ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
     QueueBoard.tsx     live Queue cards, expansion, Override and Depart actions
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
+    AdministratorReports.tsx    Daily Queue, Priority Distribution, Performance
     usePolling.ts      shared poll-on-interval and poll-on-focus hook
     queueDisplay.ts    shared waiting-time and urgency formatting
     IntakeScreen.tsx   Clinical intake and recent Encounters
