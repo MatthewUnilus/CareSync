@@ -895,6 +895,25 @@ textarea:focus {
   text-align: left;
 }
 
+.accuracy-variant {
+  display: grid;
+  gap: 0.5rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.75rem;
+}
+
+.accuracy-variant h5 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.accuracy-variant .accuracy-stats dd {
+  font-size: 1.3rem;
+}
+
 .accuracy-provenance {
   font-size: 0.8rem;
 }

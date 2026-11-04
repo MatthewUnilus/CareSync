@@ -160,14 +160,14 @@ export interface DailyQueueReport {
   awaiting: number;
 }
 
-export interface PriorityLevelCount {
+export interface UrgencyLevelCount {
   urgency_level: UrgencyLevel;
   encounters: number;
 }
 
-export interface PriorityDistributionReport {
+export interface UrgencyDistributionReport {
   total: number;
-  levels: PriorityLevelCount[];
+  levels: UrgencyLevelCount[];
 }
 
 export interface PerformanceEntry {
@@ -188,8 +188,11 @@ export interface PerformanceReport {
 
 export type AccuracyFallbackMode = "fallback-disabled" | "fallback-enabled";
 
-/** Where the run's matrix came from: stored Assessments or the offline artefact. */
-export type AccuracyRunSource = "assessments" | "harness";
+/**
+ * Where the run's matrix came from: a live per-case manifest, a stored
+ * evaluation run, or the offline artefact.
+ */
+export type AccuracyRunSource = "assessments" | "evaluation" | "harness";
 
 export interface AccuracyMajorityBaseline {
   majority_class: UrgencyLevel;
@@ -229,6 +232,24 @@ export interface AccuracyPriorityErrorRate {
   rate: number | null;
 }
 
+export interface AccuracyLevelRecall {
+  count: number;
+  denominator: number;
+  rate: number | null;
+}
+
+/** A secondary scoring of a run: explicitly not a Machine Recommendation. */
+export interface AccuracyRunVariant {
+  description: string;
+  total: number;
+  correct: number;
+  accuracy: number;
+  macro_f1: number;
+  false_high_priority: AccuracyPriorityErrorRate;
+  false_low_priority: AccuracyPriorityErrorRate;
+  high_class_recall: AccuracyLevelRecall;
+}
+
 export interface AccuracyRunSample {
   labelled_cases: number;
   resolved_assessments: number;
@@ -266,7 +287,9 @@ export interface AccuracyRun {
   majority_baseline: AccuracyMajorityBaseline | null;
   false_high_priority: AccuracyPriorityErrorRate;
   false_low_priority: AccuracyPriorityErrorRate;
+  high_class_recall: AccuracyLevelRecall;
   fallback: AccuracyFallbackCoverage;
+  classifier_only: AccuracyRunVariant | null;
 }
 
 export interface AccuracyOverrideReasonCount {
@@ -376,11 +399,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ patient_id: patientId, intake }),
     }),
-  correctIntake: (encounterId: number, intake: Intake) =>
-    request<Encounter>(`/api/clinical/encounters/${encounterId}/intake`, {
-      method: "PUT",
-      body: JSON.stringify(intake),
-    }),
   getEncounter: (encounterId: number) =>
     request<Encounter>(`/api/clinical/encounters/${encounterId}`),
   recentEncounters: (limit = 10) =>
@@ -435,7 +453,7 @@ export const api = {
   dailyQueueReport: () =>
     request<DailyQueueReport>("/api/administrator/reports/daily-queue"),
   priorityDistributionReport: () =>
-    request<PriorityDistributionReport>(
+    request<UrgencyDistributionReport>(
       "/api/administrator/reports/priority-distribution",
     ),
   performanceReport: () =>

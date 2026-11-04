@@ -69,10 +69,6 @@ def perform_departure(session: Session, encounter: Encounter) -> Encounter:
     transaction. The instant is the server's clock at the moment of the
     action; it is never accepted from the caller.
     """
-    if encounter.departed_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=ALREADY_DEPARTED_DETAIL,
-        )
+    ensure_awaiting(encounter, ALREADY_DEPARTED_DETAIL)
     encounter.departed_at = utc_now()
     return encounter

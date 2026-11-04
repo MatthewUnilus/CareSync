@@ -298,14 +298,14 @@ class DailyQueueReportResponse(BaseModel):
     awaiting: int
 
 
-class PriorityLevelCountResponse(BaseModel):
+class UrgencyLevelCountResponse(BaseModel):
     urgency_level: UrgencyLevel
     encounters: int
 
 
-class PriorityDistributionReportResponse(BaseModel):
+class UrgencyDistributionReportResponse(BaseModel):
     total: int
-    levels: list[PriorityLevelCountResponse]
+    levels: list[UrgencyLevelCountResponse]
 
 
 class PerformanceEntryResponse(BaseModel):
@@ -354,6 +354,25 @@ class AccuracyPriorityErrorRateResponse(BaseModel):
     rate: float | None
 
 
+class AccuracyLevelRecallResponse(BaseModel):
+    count: int
+    denominator: int
+    rate: float | None
+
+
+class AccuracyRunVariantResponse(BaseModel):
+    """A secondary scoring, explicitly not a Machine Recommendation."""
+
+    description: str
+    total: int
+    correct: int
+    accuracy: float
+    macro_f1: float
+    false_high_priority: AccuracyPriorityErrorRateResponse
+    false_low_priority: AccuracyPriorityErrorRateResponse
+    high_class_recall: AccuracyLevelRecallResponse
+
+
 class AccuracyRunSampleResponse(BaseModel):
     labelled_cases: int
     resolved_assessments: int
@@ -395,7 +414,9 @@ class AccuracyRunResponse(BaseModel):
     majority_baseline: AccuracyMajorityBaselineResponse | None
     false_high_priority: AccuracyPriorityErrorRateResponse
     false_low_priority: AccuracyPriorityErrorRateResponse
+    high_class_recall: AccuracyLevelRecallResponse
     fallback: AccuracyFallbackCoverageResponse
+    classifier_only: AccuracyRunVariantResponse | None
 
 
 class AccuracyOverrideReasonCountResponse(BaseModel):

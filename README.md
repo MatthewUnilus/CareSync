@@ -490,6 +490,19 @@ current UTC day.
   contract are in
   [`docs/accuracy-evaluation-report.md`](docs/accuracy-evaluation-report.md).
 
+  To make the Report read stored, immutable Assessments rather than a file,
+  materialise the rubric-labelled corpus through the real engine (from
+  `backend/`):
+
+  ```powershell
+  uv run python -m evaluation.materialise
+  ```
+
+  Each evaluation Assessment keeps the rubric label in its own
+  `ground_truth_level` column; those rows are excluded from the Queue and from
+  the activity and performance Reports, and take precedence when present. The
+  offline harness artefact remains the fallback source.
+
 ## Run the tests
 
 ```powershell

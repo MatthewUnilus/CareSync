@@ -17,6 +17,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select, update
 
+from conftest import (
+    HIGH_AGE,
+    HIGH_INTAKE,
+    LOW_AGE,
+    LOW_INTAKE,
+    MEDIUM_AGE,
+    MEDIUM_INTAKE,
+)
 from app.models import Encounter, Override, Patient, TriageAssessment
 
 ADMINISTRATOR_CREDENTIALS = {
@@ -24,40 +32,6 @@ ADMINISTRATOR_CREDENTIALS = {
     "password": "administrator-password",
 }
 
-LOW_INTAKE = {
-    "presenting_complaint": "Mild headache for a day",
-    "pain_level": 2,
-    "illness_duration_hours": 24,
-    "temperature_c": 36.6,
-    "heart_rate_bpm": 70,
-    "blood_pressure": {"systolic": 116, "diastolic": 72},
-    "oxygen_saturation_percent": 99,
-    "notes": None,
-}
-MEDIUM_INTAKE = {
-    **LOW_INTAKE,
-    "pain_level": 6,
-    "presenting_complaint": "Abdominal pain",
-    "illness_duration_hours": 12,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 80,
-    "blood_pressure": {"systolic": 110, "diastolic": 70},
-    "oxygen_saturation_percent": 94,
-}
-HIGH_INTAKE = {
-    **LOW_INTAKE,
-    "pain_level": 9,
-    "presenting_complaint": "Chest pain",
-    "illness_duration_hours": 2,
-    "temperature_c": 38.9,
-    "heart_rate_bpm": 140,
-    "blood_pressure": {"systolic": 90, "diastolic": 55},
-    "oxygen_saturation_percent": 86,
-}
-
-LOW_AGE = 24
-MEDIUM_AGE = 80
-HIGH_AGE = 78
 
 DAY = date(2026, 3, 10)
 

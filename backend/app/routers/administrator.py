@@ -13,19 +13,21 @@ from app.schemas import (
     AccuracyFallbackCoverageResponse,
     AccuracyGroundTruthSourceResponse,
     AccuracyLevelMetricsResponse,
+    AccuracyLevelRecallResponse,
     AccuracyMajorityBaselineResponse,
     AccuracyOverrideMetricsResponse,
     AccuracyOverrideReasonCountResponse,
     AccuracyPriorityErrorRateResponse,
     AccuracyRunResponse,
     AccuracyRunSampleResponse,
+    AccuracyRunVariantResponse,
     AdministratorQueueEntryResponse,
     AdministratorQueueResponse,
     DailyQueueReportResponse,
     PerformanceEntryResponse,
     PerformanceReportResponse,
-    PriorityDistributionReportResponse,
-    PriorityLevelCountResponse,
+    UrgencyDistributionReportResponse,
+    UrgencyLevelCountResponse,
 )
 from app.timeutils import utc_now
 
@@ -103,18 +105,18 @@ def get_daily_queue_report(
 
 @router.get(
     "/reports/priority-distribution",
-    response_model=PriorityDistributionReportResponse,
+    response_model=UrgencyDistributionReportResponse,
 )
 def get_priority_distribution_report(
     db: DbSession,
     user: AdministratorUser,
-) -> PriorityDistributionReportResponse:
+) -> UrgencyDistributionReportResponse:
     """One count per Encounter at its governing Assessment's Final Decision."""
     report = reports.priority_distribution(db)
-    return PriorityDistributionReportResponse(
+    return UrgencyDistributionReportResponse(
         total=report.total,
         levels=[
-            PriorityLevelCountResponse(
+            UrgencyLevelCountResponse(
                 urgency_level=level.urgency_level,
                 encounters=level.encounters,
             )
@@ -256,6 +258,43 @@ def _accuracy_report_response(
                     count=run.false_low_priority.count,
                     denominator=run.false_low_priority.denominator,
                     rate=run.false_low_priority.rate,
+                ),
+                high_class_recall=AccuracyLevelRecallResponse(
+                    count=run.high_class_recall.count,
+                    denominator=run.high_class_recall.denominator,
+                    rate=run.high_class_recall.rate,
+                ),
+                classifier_only=(
+                    AccuracyRunVariantResponse(
+                        description=run.classifier_only.description,
+                        total=run.classifier_only.total,
+                        correct=run.classifier_only.correct,
+                        accuracy=run.classifier_only.accuracy,
+                        macro_f1=run.classifier_only.macro_f1,
+                        false_high_priority=AccuracyPriorityErrorRateResponse(
+                            count=run.classifier_only.false_high_priority.count,
+                            denominator=(
+                                run.classifier_only.false_high_priority.denominator
+                            ),
+                            rate=run.classifier_only.false_high_priority.rate,
+                        ),
+                        false_low_priority=AccuracyPriorityErrorRateResponse(
+                            count=run.classifier_only.false_low_priority.count,
+                            denominator=(
+                                run.classifier_only.false_low_priority.denominator
+                            ),
+                            rate=run.classifier_only.false_low_priority.rate,
+                        ),
+                        high_class_recall=AccuracyLevelRecallResponse(
+                            count=run.classifier_only.high_class_recall.count,
+                            denominator=(
+                                run.classifier_only.high_class_recall.denominator
+                            ),
+                            rate=run.classifier_only.high_class_recall.rate,
+                        ),
+                    )
+                    if run.classifier_only is not None
+                    else None
                 ),
                 fallback=AccuracyFallbackCoverageResponse(
                     enabled=run.fallback.enabled,

@@ -8,6 +8,7 @@ import type {
   QueueSnapshot,
   UrgencyLevel,
 } from "./api";
+import IntakeFields from "./IntakeFields";
 import { buildIntake, intakeFormValues } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
 import { formatArrival, formatWaiting, urgencyClass } from "./queueDisplay";
@@ -259,13 +260,6 @@ function ReassessmentAction({
     // must not overwrite what the user is typing.
   }, [assessmentId]);
 
-  function update<K extends keyof IntakeFormValues>(
-    key: K,
-    value: IntakeFormValues[K],
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -294,120 +288,11 @@ function ReassessmentAction({
         the Queue.
       </p>
       <form className="stack" onSubmit={submit}>
-        <fieldset className="intake-fieldset">
-          <legend>Current intake</legend>
-          <div className="intake-grid">
-            <label className="span-all">
-              Presenting complaint <span className="required-mark">*</span>
-              <textarea
-                required
-                rows={2}
-                value={form.complaint}
-                onChange={(event) => update("complaint", event.target.value)}
-              />
-            </label>
-            <label>
-              Pain level (1–10) <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={1}
-                max={10}
-                step={1}
-                value={form.painLevel}
-                onChange={(event) => update("painLevel", event.target.value)}
-              />
-            </label>
-            <label>
-              Illness duration (hours) <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={0}
-                max={8760}
-                step={0.5}
-                inputMode="decimal"
-                value={form.durationHours}
-                onChange={(event) => update("durationHours", event.target.value)}
-              />
-            </label>
-            <label>
-              Temperature (°C) <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={30}
-                max={45}
-                step={0.1}
-                inputMode="decimal"
-                value={form.temperatureC}
-                onChange={(event) => update("temperatureC", event.target.value)}
-              />
-            </label>
-            <label>
-              Heart rate (bpm) <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={20}
-                max={300}
-                step={1}
-                inputMode="numeric"
-                value={form.heartRate}
-                onChange={(event) => update("heartRate", event.target.value)}
-              />
-            </label>
-            <label>
-              Blood pressure systolic <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={50}
-                max={300}
-                step={1}
-                inputMode="numeric"
-                value={form.systolic}
-                onChange={(event) => update("systolic", event.target.value)}
-              />
-            </label>
-            <label>
-              Blood pressure diastolic <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={20}
-                max={200}
-                step={1}
-                inputMode="numeric"
-                value={form.diastolic}
-                onChange={(event) => update("diastolic", event.target.value)}
-              />
-            </label>
-            <label>
-              Oxygen saturation (%) <span className="required-mark">*</span>
-              <input
-                type="number"
-                required
-                min={50}
-                max={100}
-                step={1}
-                inputMode="numeric"
-                value={form.oxygenSaturation}
-                onChange={(event) =>
-                  update("oxygenSaturation", event.target.value)
-                }
-              />
-            </label>
-            <label className="span-all">
-              Notes (optional)
-              <textarea
-                rows={2}
-                value={form.notes}
-                onChange={(event) => update("notes", event.target.value)}
-              />
-            </label>
-          </div>
-        </fieldset>
+        <IntakeFields
+          legend="Current intake"
+          form={form}
+          onChange={setForm}
+        />
         {error ? (
           <p className="notice notice-error" role="status">
             {error}

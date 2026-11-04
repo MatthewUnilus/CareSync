@@ -116,13 +116,88 @@
     "accuracy": "correct Machine Recommendations divided by scored Encounters",
     "confusion_matrix": "rows are ground-truth Urgency Levels and columns are Machine Recommendations, in the order High, Medium, Low",
     "coverage": "share of Encounters whose complaint matched no Symptom Group and was therefore resolved by the fallback path",
-    "false_high_priority": "share of ground-truth Medium or Low Encounters recommended High (over-triage)",
-    "false_low_priority": "share of ground-truth High Encounters recommended Medium or Low (missed urgent cases)",
+    "false_high_priority": "share of ground-truth Medium or Low Encounters recommended High (over-triage): recommended High with a non-High truth / every non-High truth",
+    "false_low_priority": "share of ground-truth Medium or High Encounters recommended Low (under-triage): recommended Low with a non-Low truth / every non-Low truth",
+    "high_class_recall": "share of ground-truth High Encounters recommended High; its complement is the missed-urgent-cases signal",
     "majority_baseline": "always predicting the commonest ground-truth class in the scored set; beats_baseline is true only when accuracy is strictly greater",
     "per_class": "precision = correctly recommended as this level / all recommended as this level; recall = correctly recommended as this level / all labelled as this level; zero_division is reported as 0"
   },
   "runs": [
     {
+      "classifier_only": {
+        "description": "the learned classifier layer alone, without the safety layer; this is a secondary diagnostic and is not a Machine Recommendation",
+        "matches_recorded_artefact": true,
+        "metrics": {
+          "accuracy": 0.422222222222,
+          "confusion_matrix": {
+            "labels": [
+              "High",
+              "Medium",
+              "Low"
+            ],
+            "rows": [
+              [
+                77,
+                51,
+                70
+              ],
+              [
+                293,
+                211,
+                327
+              ],
+              [
+                255,
+                278,
+                643
+              ]
+            ]
+          },
+          "encounter_count": 2205,
+          "false_high_priority": {
+            "count": 548,
+            "denominator": 2007,
+            "rate": 0.273044344793
+          },
+          "false_low_priority": {
+            "count": 397,
+            "denominator": 1029,
+            "rate": 0.385811467444
+          },
+          "high_class_recall": {
+            "count": 77,
+            "denominator": 198,
+            "rate": 0.388888888889
+          },
+          "macro_f1": 0.358416574537,
+          "majority_baseline": {
+            "accuracy": 0.533333333333,
+            "beats_baseline": false,
+            "class": "Low",
+            "model_minus_baseline": -0.111111111111
+          },
+          "per_class": {
+            "High": {
+              "f1": 0.187120291616,
+              "precision": 0.1232,
+              "recall": 0.388888888889,
+              "support": 198
+            },
+            "Low": {
+              "f1": 0.580324909747,
+              "precision": 0.618269230769,
+              "recall": 0.546768707483,
+              "support": 1176
+            },
+            "Medium": {
+              "f1": 0.307804522247,
+              "precision": 0.390740740741,
+              "recall": 0.253910950662,
+              "support": 831
+            }
+          }
+        }
+      },
       "dataset": {
         "encounter_count": 2205,
         "kind": "published_triage_dataset",
@@ -157,7 +232,7 @@
           }
         ]
       },
-      "description": "the learned classifier layer, scored out of fold on the published training dataset",
+      "description": "the composed engine — out-of-fold classifier plus the deterministic red-flag safety layer — scored on the published training dataset; the primary metrics are Machine Recommendations",
       "engine_artefact": {
         "artefact_path": "models/urgency-classifier-v1.0.0.json",
         "artefact_sha256": "67e26155e4cc3bc5285aef36a0d248466a6c76628817163c74148874a2cd4a29",
@@ -179,9 +254,8 @@
         "rubric_version": null
       },
       "id": "cross_validated",
-      "matches_recorded_artefact": true,
       "metrics": {
-        "accuracy": 0.422222222222,
+        "accuracy": 0.341950113379,
         "confusion_matrix": {
           "labels": [
             "High",
@@ -190,57 +264,62 @@
           ],
           "rows": [
             [
-              77,
-              51,
-              70
+              126,
+              18,
+              54
             ],
             [
-              293,
-              211,
-              327
+              463,
+              112,
+              256
             ],
             [
-              255,
-              278,
-              643
+              496,
+              164,
+              516
             ]
           ]
         },
         "encounter_count": 2205,
         "false_high_priority": {
-          "count": 548,
+          "count": 959,
           "denominator": 2007,
-          "rate": 0.273044344793
+          "rate": 0.477827603388
         },
         "false_low_priority": {
-          "count": 121,
-          "denominator": 198,
-          "rate": 0.611111111111
+          "count": 310,
+          "denominator": 1029,
+          "rate": 0.301263362488
         },
-        "macro_f1": 0.358416574537,
+        "high_class_recall": {
+          "count": 126,
+          "denominator": 198,
+          "rate": 0.636363636364
+        },
+        "macro_f1": 0.303670093251,
         "majority_baseline": {
           "accuracy": 0.533333333333,
           "beats_baseline": false,
           "class": "Low",
-          "model_minus_baseline": -0.111111111111
+          "model_minus_baseline": -0.191383219955
         },
         "per_class": {
           "High": {
-            "f1": 0.187120291616,
-            "precision": 0.1232,
-            "recall": 0.388888888889,
+            "f1": 0.196414653157,
+            "precision": 0.116129032258,
+            "recall": 0.636363636364,
             "support": 198
           },
           "Low": {
-            "f1": 0.580324909747,
-            "precision": 0.618269230769,
-            "recall": 0.546768707483,
+            "f1": 0.515484515485,
+            "precision": 0.624697336562,
+            "recall": 0.438775510204,
             "support": 1176
           },
           "Medium": {
-            "f1": 0.307804522247,
-            "precision": 0.390740740741,
-            "recall": 0.253910950662,
+            "f1": 0.199111111111,
+            "precision": 0.380952380952,
+            "recall": 0.134777376655,
             "support": 831
           }
         }
@@ -255,74 +334,6 @@
         "scored_by": "a model refit inside each fold from the training step's own estimator configuration",
         "seed": 20261103,
         "standardiser": "fit inside each fold"
-      },
-      "safety_layer": {
-        "description": "the same out-of-fold classifier predictions with the deterministic red-flag safety layer applied",
-        "metrics": {
-          "accuracy": 0.341950113379,
-          "confusion_matrix": {
-            "labels": [
-              "High",
-              "Medium",
-              "Low"
-            ],
-            "rows": [
-              [
-                126,
-                18,
-                54
-              ],
-              [
-                463,
-                112,
-                256
-              ],
-              [
-                496,
-                164,
-                516
-              ]
-            ]
-          },
-          "encounter_count": 2205,
-          "false_high_priority": {
-            "count": 959,
-            "denominator": 2007,
-            "rate": 0.477827603388
-          },
-          "false_low_priority": {
-            "count": 72,
-            "denominator": 198,
-            "rate": 0.363636363636
-          },
-          "macro_f1": 0.303670093251,
-          "majority_baseline": {
-            "accuracy": 0.533333333333,
-            "beats_baseline": false,
-            "class": "Low",
-            "model_minus_baseline": -0.191383219955
-          },
-          "per_class": {
-            "High": {
-              "f1": 0.196414653157,
-              "precision": 0.116129032258,
-              "recall": 0.636363636364,
-              "support": 198
-            },
-            "Low": {
-              "f1": 0.515484515485,
-              "precision": 0.624697336562,
-              "recall": 0.438775510204,
-              "support": 1176
-            },
-            "Medium": {
-              "f1": 0.199111111111,
-              "precision": 0.380952380952,
-              "recall": 0.134777376655,
-              "support": 831
-            }
-          }
-        }
       }
     },
     {
@@ -395,9 +406,14 @@
           "rate": 0.0
         },
         "false_low_priority": {
-          "count": 6,
+          "count": 10,
+          "denominator": 20,
+          "rate": 0.5
+        },
+        "high_class_recall": {
+          "count": 9,
           "denominator": 15,
-          "rate": 0.4
+          "rate": 0.6
         },
         "macro_f1": 0.444444444444,
         "majority_baseline": {
@@ -774,9 +790,14 @@
           "rate": 0.0
         },
         "false_low_priority": {
-          "count": 6,
+          "count": 7,
+          "denominator": 20,
+          "rate": 0.35
+        },
+        "high_class_recall": {
+          "count": 9,
           "denominator": 15,
-          "rate": 0.4
+          "rate": 0.6
         },
         "macro_f1": 0.418929110106,
         "majority_baseline": {

@@ -320,6 +320,12 @@ def test_false_high_and_false_low_priority_rates_are_separate_figures(
     assert report.false_low_priority.denominator == 6
     assert report.false_low_priority.rate == pytest.approx(1 / 6)
 
+    # High-class recall is the missed-urgent signal and lives under its own
+    # name: 2 of 3 ground-truth High cases were called High.
+    assert report.high_class_recall.count == 2
+    assert report.high_class_recall.denominator == 3
+    assert report.high_class_recall.rate == pytest.approx(2 / 3)
+
 
 def test_a_later_override_cannot_move_a_machine_recommendation_in_the_matrix(
     client: TestClient, session
@@ -733,6 +739,7 @@ def _harness_run(
     coverage: dict[str, Any] | None = None,
     predictions: list[dict[str, Any]] | None = None,
     dataset_kind: str = "rubric_labelled_synthetic_corpus",
+    classifier_only: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if dataset_kind == "published_triage_dataset":
         dataset: dict[str, Any] = {
@@ -788,12 +795,19 @@ def _harness_run(
             "per_class": per_class,
             "false_high_priority": false_high,
             "false_low_priority": false_low,
+            "high_class_recall": {
+                "count": rows[0][0],
+                "denominator": sum(rows[0]),
+                "rate": (rows[0][0] / sum(rows[0])) if sum(rows[0]) else 0.0,
+            },
         },
     }
     if coverage is not None:
         run["coverage"] = coverage
     if predictions is not None:
         run["predictions"] = predictions
+    if classifier_only is not None:
+        run["classifier_only"] = classifier_only
     return run
 
 
@@ -819,9 +833,48 @@ def _three_run_fixture() -> dict[str, Any]:
                 baseline_accuracy=2 / 3,
                 model_minus_baseline=0.0,
                 beats_baseline=False,
-                false_high={"count": 0, "denominator": 1, "rate": 0.0},
-                false_low={"count": 0, "denominator": 2, "rate": 0.0},
+                false_high={"count": 1, "denominator": 1, "rate": 1.0},
+                false_low={"count": 0, "denominator": 3, "rate": 0.0},
                 dataset_kind="published_triage_dataset",
+                classifier_only={
+                    "description": (
+                        "the classifier alone; not a Machine Recommendation"
+                    ),
+                    "metrics": _harness_run(
+                        "classifier_only",
+                        run_mode="cross_validated",
+                        total=3,
+                        rows=[[1, 1, 0], [1, 0, 0], [0, 0, 0]],
+                        per_class={
+                            "High": {
+                                "precision": 0.5,
+                                "recall": 0.5,
+                                "f1": 0.5,
+                                "support": 2,
+                            },
+                            "Medium": {
+                                "precision": 0.0,
+                                "recall": 0.0,
+                                "f1": 0.0,
+                                "support": 1,
+                            },
+                            "Low": {
+                                "precision": 0.0,
+                                "recall": 0.0,
+                                "f1": 0.0,
+                                "support": 0,
+                            },
+                        },
+                        accuracy=1 / 3,
+                        macro_f1=1 / 6,
+                        baseline_class="High",
+                        baseline_accuracy=2 / 3,
+                        model_minus_baseline=-1 / 3,
+                        beats_baseline=False,
+                        false_high={"count": 1, "denominator": 1, "rate": 1.0},
+                        false_low={"count": 0, "denominator": 3, "rate": 0.0},
+                    )["metrics"],
+                },
             ),
             _harness_run(
                 "pipeline",
@@ -839,7 +892,7 @@ def _three_run_fixture() -> dict[str, Any]:
                 model_minus_baseline=-0.5,
                 beats_baseline=False,
                 false_high={"count": 0, "denominator": 0, "rate": 0.0},
-                false_low={"count": 1, "denominator": 2, "rate": 0.5},
+                false_low={"count": 0, "denominator": 2, "rate": 0.0},
                 predictions=[
                     {"encounter_id": "syn-001", "fallback_used": False, "unclassified": False},
                     {"encounter_id": "syn-002", "fallback_used": False, "unclassified": False},
@@ -912,6 +965,11 @@ def test_a_fixture_artefact_with_all_three_runs_parses_into_the_expected_payload
     assert cross["majority_baseline"]["majority_class"] == "High"
     assert cross["majority_baseline"]["beats_baseline"] is False
     assert cross["fallback"]["coverage"] is None
+    assert cross["high_class_recall"]["rate"] == pytest.approx(1.0)
+    # The classifier-only variant is surfaced, and says what it is.
+    assert "not a Machine Recommendation" in cross["classifier_only"]["description"]
+    assert cross["classifier_only"]["accuracy"] == pytest.approx(1 / 3)
+    assert cross["classifier_only"]["high_class_recall"]["rate"] == pytest.approx(0.5)
 
     pipeline = payload["runs"][1]
     assert pipeline["total"] == 2
@@ -956,11 +1014,14 @@ def test_the_committed_harness_artefact_is_consumed_as_is(client: TestClient) ->
     assert cross["primary"] is True
     assert cross["source"] == "harness"
     assert cross["total"] == 2205
-    assert cross["accuracy"] == pytest.approx(0.422222222222)
-    assert cross["macro_f1"] == pytest.approx(0.358416574537)
+    # Primary metrics are the composed engine, not the classifier alone.
+    assert cross["accuracy"] == pytest.approx(0.341950113379)
+    assert cross["macro_f1"] == pytest.approx(0.303670093251)
     assert cross["majority_baseline"]["accuracy"] == pytest.approx(0.533333333333)
-    assert cross["majority_baseline"]["model_minus_baseline"] == pytest.approx(-0.111111111111)
+    assert cross["majority_baseline"]["model_minus_baseline"] == pytest.approx(-0.191383219955)
     assert cross["majority_baseline"]["beats_baseline"] is False
+    assert "not a Machine Recommendation" in cross["classifier_only"]["description"]
+    assert cross["classifier_only"]["accuracy"] == pytest.approx(0.422222222222)
 
     assert pipeline["total"] == 27
     assert pipeline["sample"]["labelled_cases"] == 27

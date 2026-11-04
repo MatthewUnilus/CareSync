@@ -10,45 +10,17 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import (
+    HIGH_AGE,
+    HIGH_INTAKE,
+    LOW_AGE,
+    LOW_INTAKE,
+    MEDIUM_AGE,
+    MEDIUM_INTAKE,
+)
 from app.intake import INTAKE_LOCKED_DETAIL
 from app.models import TriageAssessment
 
-LOW_INTAKE = {
-    "presenting_complaint": "Mild headache for a day",
-    "pain_level": 2,
-    "illness_duration_hours": 24,
-    "temperature_c": 36.6,
-    "heart_rate_bpm": 70,
-    "blood_pressure": {"systolic": 116, "diastolic": 72},
-    "oxygen_saturation_percent": 99,
-    "notes": None,
-}
-
-MEDIUM_INTAKE = {
-    **LOW_INTAKE,
-    "pain_level": 6,
-    "presenting_complaint": "Abdominal pain",
-    "illness_duration_hours": 12,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 80,
-    "blood_pressure": {"systolic": 110, "diastolic": 70},
-    "oxygen_saturation_percent": 94,
-}
-
-HIGH_INTAKE = {
-    **LOW_INTAKE,
-    "pain_level": 9,
-    "presenting_complaint": "Chest pain",
-    "illness_duration_hours": 2,
-    "temperature_c": 38.4,
-    "heart_rate_bpm": 130,
-    "blood_pressure": {"systolic": 95, "diastolic": 58},
-    "oxygen_saturation_percent": 88,
-}
-
-LOW_AGE = 24
-MEDIUM_AGE = 80
-HIGH_AGE = 78
 
 
 def register_patient(

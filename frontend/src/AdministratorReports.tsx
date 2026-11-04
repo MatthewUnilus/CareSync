@@ -9,7 +9,7 @@ import type {
   AccuracyRun,
   DailyQueueReport,
   PerformanceReport,
-  PriorityDistributionReport,
+  UrgencyDistributionReport,
   UrgencyLevel,
 } from "./api";
 import { formatWaiting, urgencyClass } from "./queueDisplay";
@@ -21,13 +21,9 @@ const LEVELS: UrgencyLevel[] = ["High", "Medium", "Low"];
 
 interface ReportSet {
   dailyQueue: DailyQueueReport;
-  priorityDistribution: PriorityDistributionReport;
+  priorityDistribution: UrgencyDistributionReport;
   performance: PerformanceReport;
   accuracyEvaluation: AccuracyEvaluationReport;
-}
-
-function seconds(value: number): string {
-  return formatWaiting(Math.round(value));
 }
 
 function percent(value: number | null): string {
@@ -44,12 +40,15 @@ function points(value: number): string {
 
 function runTitle(run: AccuracyRun): string {
   if (run.run_mode === "cross_validated") {
-    return "Cross-validated classifier";
+    return "Cross-validated composed engine";
   }
   if (run.run_mode === "pipeline") {
     return run.fallback.enabled
       ? "Whole pipeline · fallback enabled"
       : "Whole pipeline · fallback disabled";
+  }
+  if (run.run_mode === "evaluation") {
+    return "Stored evaluation run · rubric-labelled corpus";
   }
   return run.run_id;
 }
@@ -57,6 +56,9 @@ function runTitle(run: AccuracyRun): string {
 function sampleLabel(run: AccuracyRun): string {
   if (run.source === "harness") {
     return `${run.sample.labelled_cases} Encounters scored offline · no database involved`;
+  }
+  if (run.source === "evaluation") {
+    return `${run.sample.resolved_assessments} stored evaluation-run Assessments · ground truth held in its own column`;
   }
   return `${run.sample.resolved_assessments} of ${run.sample.labelled_cases} labelled cases resolved against stored Assessments`;
 }
@@ -92,18 +94,18 @@ function modeLabel(run: AccuracyRun): string {
 function RateFigure({
   label,
   note,
-  error,
+  figure,
 }: {
   label: string;
   note: string;
-  error: AccuracyPriorityErrorRate;
+  figure: AccuracyPriorityErrorRate;
 }) {
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{percent(error.rate)}</dd>
+      <dd>{percent(figure.rate)}</dd>
       <span className="muted">
-        {error.count} of {error.denominator} · {note}
+        {figure.count} of {figure.denominator} · {note}
       </span>
     </div>
   );
@@ -171,13 +173,18 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
         ) : null}
         <RateFigure
           label="False High-Priority"
-          note="non-High cases called High"
-          error={run.false_high_priority}
+          note="recommended High with a non-High truth, over every non-High truth"
+          figure={run.false_high_priority}
         />
         <RateFigure
           label="False Low-Priority"
-          note="non-Low cases called Low; missed urgency"
-          error={run.false_low_priority}
+          note="recommended Low with a non-Low truth, over every non-Low truth"
+          figure={run.false_low_priority}
+        />
+        <RateFigure
+          label="High-class recall"
+          note="truth-High cases called High; the complement is the missed-urgent share"
+          figure={run.high_class_recall}
         />
         <div>
           <dt>Fallback coverage</dt>
@@ -294,6 +301,42 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
           </tbody>
         </table>
       </div>
+
+      {run.classifier_only ? (
+        <div className="accuracy-variant">
+          <h5>Classifier only · secondary, not a Machine Recommendation</h5>
+          <p className="muted report-note">
+            The learned classifier without the red-flag safety layer. Shown for
+            diagnosis only: the figures above are the engine&rsquo;s actual
+            Machine Recommendations.
+          </p>
+          <dl className="report-stats accuracy-stats">
+            <div>
+              <dt>Classifier accuracy</dt>
+              <dd>{percent(run.classifier_only.accuracy)}</dd>
+              <span className="muted">
+                {run.classifier_only.correct} of {run.classifier_only.total}{" "}
+                correct
+              </span>
+            </div>
+            <div>
+              <dt>Classifier macro F1</dt>
+              <dd>{percent(run.classifier_only.macro_f1)}</dd>
+              <span className="muted">without the safety layer</span>
+            </div>
+            <RateFigure
+              label="Classifier False Low-Priority"
+              note="recommended Low with a non-Low truth"
+              figure={run.classifier_only.false_low_priority}
+            />
+            <RateFigure
+              label="Classifier High-class recall"
+              note="truth-High cases the classifier itself called High"
+              figure={run.classifier_only.high_class_recall}
+            />
+          </dl>
+        </div>
+      ) : null}
 
       <p className="muted report-note accuracy-provenance">
         Ground truth: <strong>{run.ground_truth.name}</strong> (
@@ -600,12 +643,20 @@ export default function AdministratorReports() {
             <dl className="report-stats">
               <div>
                 <dt>Average waiting</dt>
-                <dd>{seconds(reports.performance.average_waiting_seconds)}</dd>
+                <dd>
+                  {formatWaiting(
+                    Math.round(reports.performance.average_waiting_seconds),
+                  )}
+                </dd>
                 <span className="muted">arrival to departure</span>
               </div>
               <div>
                 <dt>Average processing</dt>
-                <dd>{seconds(reports.performance.average_processing_seconds)}</dd>
+                <dd>
+                  {formatWaiting(
+                    Math.round(reports.performance.average_processing_seconds),
+                  )}
+                </dd>
                 <span className="muted">assessment to departure</span>
               </div>
             </dl>
