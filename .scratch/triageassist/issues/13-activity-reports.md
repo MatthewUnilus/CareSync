@@ -4,7 +4,7 @@
 
 **Blocked by:** 11.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The Daily Queue Report shows a day's volume and throughput.
 - [ ] The Priority Distribution Report shows how Urgency Levels were distributed across Encounters.
@@ -13,3 +13,7 @@
 - [ ] A Report's figures change when the underlying records change, and change back when they are reverted.
 - [ ] An Administrator can view all three Reports on the web dashboard.
 - [ ] Reports are read-only: viewing one performs no clinical action and changes no record.
+
+## Comments
+
+Resolved on `integration` (merge `6e2e130`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

@@ -4,7 +4,7 @@
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The Symptom Group vocabulary exists as a concrete, finite list authored clinically first, anchored on ESI red-flag and common presentations.
 - [ ] A complaint is recognised onto zero or more Symptom Groups, with no synonym table and no inference beyond matching onto that list.
@@ -12,3 +12,7 @@
 - [ ] The expanded Encounter card shows which Symptom Groups the complaint was mapped onto.
 - [ ] A complaint matching no Symptom Group is recognised as matching none, and is distinguishable from a complaint that matched one.
 - [ ] Vocabulary terms use the project's glossary vocabulary, and no term is introduced that `CONTEXT.md` does not define.
+
+## Comments
+
+Resolved on `integration` (merge `061d360`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

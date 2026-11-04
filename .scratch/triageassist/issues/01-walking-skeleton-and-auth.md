@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The full stack starts from a clean checkout with a single documented command and serves the client against the API backed by Postgres.
 - [ ] A Clinical user starts a session with a valid password and is refused one with an invalid password.
@@ -13,3 +13,7 @@
 - [ ] An authenticated user can change their own password, and the old password stops working afterwards.
 - [ ] An Administrator is refused every clinical action and a Clinical user is refused every Administrator-only action, at the API boundary rather than only in the client.
 - [ ] There are exactly two Roles; no third role exists in the system.
+
+## Comments
+
+Resolved on `integration` (merge `6c858bc`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

@@ -4,7 +4,7 @@
 
 **Blocked by:** 02.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The Prioritization Engine is reachable as a pure function taking captured inputs and returning one Machine Recommendation, callable with constructed inputs and no database.
 - [ ] Completing intake creates a Triage Assessment holding the captured inputs and the Machine Recommendation, and the recommendation is immutable once written.
@@ -14,3 +14,7 @@
 - [ ] Each awaiting Encounter appears as a compact card showing Urgency Level, patient name, short complaint, and time waiting computed from arrival.
 - [ ] A card expands to show full vitals, pain level, duration, notes, and the available actions.
 - [ ] The board reflects a change in an Encounter's Final Decision without a manual refresh.
+
+## Comments
+
+Resolved on `integration` (merge `174dca4`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

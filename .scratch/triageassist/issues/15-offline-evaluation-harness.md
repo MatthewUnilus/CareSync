@@ -4,7 +4,7 @@
 
 **Blocked by:** 04, 08.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The harness scores the engine against labelled data through the pure engine boundary, with no database involved.
 - [ ] A cross-validated run on the published dataset produces per-level precision and recall plus the confusion matrix.
@@ -13,3 +13,7 @@
 - [ ] Fallback coverage rate is reported as its own statistic from a separate run with the fallback enabled.
 - [ ] Running the harness twice over the same fixed inputs produces identical figures.
 - [ ] The harness records which dataset, which rubric version, and which engine artefact produced each result, and its output is consumable by the Accuracy Evaluation Report.
+
+## Comments
+
+Resolved on `integration` (merge `bae9983`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

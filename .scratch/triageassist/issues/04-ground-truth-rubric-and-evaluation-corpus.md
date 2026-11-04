@@ -4,7 +4,7 @@
 
 **Blocked by:** 02.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A written rubric maps a described presentation to exactly one Urgency Level, citing its published source criteria.
 - [ ] The rubric's inputs are deliberately broader than the Prioritization Engine's feature set, and it is authored without reference to the engine's rules.
@@ -13,3 +13,7 @@
 - [ ] The generated corpus is reproducible from a fixed seed.
 - [ ] The corpus is stored in a form a later evaluation run can consume without re-generating it.
 - [ ] Ground-truth labels are kept distinct from Machine Recommendations and Final Decisions in the stored data.
+
+## Comments
+
+Resolved on `integration` (merge `2f69b30`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Each rule in the layer carries a clinical citation, and the citation is visible in the project's documentation of the layer.
 - [ ] A presentation the classifier alone would place at Medium or Low is returned as High when a red-flag rule fires.
@@ -12,3 +12,7 @@
 - [ ] The layer applies within the same three-second budget as the rest of the recommendation.
 - [ ] The resulting Machine Recommendation is what is stored on the Triage Assessment and what the board orders by.
 - [ ] The layer is deliberately bounded to a moderate documented set, and does not grow into a full ESI rule engine.
+
+## Comments
+
+Resolved on `integration` (merge `c79c0b1`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

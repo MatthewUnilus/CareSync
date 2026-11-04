@@ -4,10 +4,14 @@
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The client codebase is packaged through a native shell and runs as an installed app on a mobile device or emulator.
 - [ ] The installed app logs in and performs the full intake-to-Queue path against the backend API.
 - [ ] The app and the web dashboard remain one codebase; no feature exists in only one of them.
 - [ ] The bedside intake surface is the app's primary screen, reachable without navigating through the administrator surface.
 - [ ] Session expiry is honoured in the app the same way it is in the browser.
+
+## Comments
+
+Resolved on `integration` (merge `e273b82`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

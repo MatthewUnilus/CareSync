@@ -4,7 +4,7 @@
 
 **Blocked by:** 09.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Re-assessment is available only as an explicit action by a Clinical user, and never happens automatically or on a schedule.
 - [ ] Re-assessment creates a new Triage Assessment for the same Encounter, with its own captured inputs and its own Machine Recommendation.
@@ -13,3 +13,7 @@
 - [ ] Each assessment records which assessment it superseded, so the sequence is reconstructable.
 - [ ] The board card reflects the most recent assessment's decision, flags, and recognised Symptom Groups.
 - [ ] Nothing in the Queue reorders unless a Re-assessment or an Override was explicitly performed.
+
+## Comments
+
+Resolved on `integration` (merge `05a063c`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

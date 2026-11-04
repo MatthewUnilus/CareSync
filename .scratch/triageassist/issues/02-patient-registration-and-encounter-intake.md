@@ -4,7 +4,7 @@
 
 **Blocked by:** 01.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A Clinical user registers a Patient with name, age, sex, and contact details.
 - [ ] Registering the same Patient again reuses the existing Patient record instead of creating a duplicate, and that Patient's Encounter history stays together.
@@ -14,3 +14,7 @@
 - [ ] Intake values can be corrected while no assessment has run for the Encounter.
 - [ ] Intake is usable on a phone-width viewport without horizontal scrolling.
 - [ ] An Encounter is attributable to exactly one Patient, and a Patient may hold many Encounters over time.
+
+## Comments
+
+Resolved on `integration` (merge `ccff563`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).

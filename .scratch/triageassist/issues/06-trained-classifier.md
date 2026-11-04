@@ -4,7 +4,7 @@
 
 **Blocked by:** 05.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The feature vector is built from recognised Symptom Groups, pain level, illness duration, age, and the four vitals, and contains no raw complaint text.
 - [ ] The classifier is trained on a published, citable dataset, with the dataset and its provenance recorded alongside the trained artefact.
@@ -12,3 +12,7 @@
 - [ ] The engine boundary keeps its existing shape: still pure, still returning exactly one Urgency Level, still callable with constructed inputs and no database.
 - [ ] An Encounter taken through intake receives a recommendation produced by the classifier rather than the stub.
 - [ ] The same constructed inputs always produce the same Machine Recommendation.
+
+## Comments
+
+Resolved on `integration` (merge `2bcd13e`). Full suite green: 381 passed, 10 skipped (dataset-dependent, skipped when the published data is not cached).
