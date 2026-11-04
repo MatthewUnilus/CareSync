@@ -71,6 +71,10 @@ def governing_assessments(session: Session) -> list[AssessedEncounter]:
     """
     encounters = session.scalars(
         select(Encounter)
+        # Evaluation-run rows are excluded: the activity and performance
+        # Reports describe what happened in this facility, not the labelled
+        # corpus that evidences the engine.
+        .where(Encounter.evaluation_run_id.is_(None))
         .options(selectinload(Encounter.assessments))
         .order_by(Encounter.id)
     ).all()
@@ -97,7 +101,9 @@ def daily_queue(session: Session, day: date) -> DailyQueueReport:
     volume = 0
     throughput = 0
     awaiting = 0
-    for encounter in session.scalars(select(Encounter)).all():
+    for encounter in session.scalars(
+        select(Encounter).where(Encounter.evaluation_run_id.is_(None))
+    ).all():
         if starts_at <= as_utc(encounter.arrived_at) < ends_at:
             volume += 1
             if encounter.departed_at is None:
@@ -116,27 +122,27 @@ def daily_queue(session: Session, day: date) -> DailyQueueReport:
 
 
 @dataclass(frozen=True)
-class PriorityLevelCount:
+class UrgencyLevelCount:
     urgency_level: UrgencyLevel
     encounters: int
 
 
 @dataclass(frozen=True)
-class PriorityDistributionReport:
+class UrgencyDistributionReport:
     total: int
-    levels: list[PriorityLevelCount]
+    levels: list[UrgencyLevelCount]
 
 
-def priority_distribution(session: Session) -> PriorityDistributionReport:
+def priority_distribution(session: Session) -> UrgencyDistributionReport:
     """How many Encounters sit at each Urgency Level, one per Encounter."""
     counts = {level: 0 for level in UrgencyLevel}
     for row in governing_assessments(session):
         counts[row.urgency_level] += 1
     ordered = sorted(UrgencyLevel, key=lambda level: URGENCY_RANK[level])
-    return PriorityDistributionReport(
+    return UrgencyDistributionReport(
         total=sum(counts.values()),
         levels=[
-            PriorityLevelCount(level, counts[level]) for level in ordered
+            UrgencyLevelCount(level, counts[level]) for level in ordered
         ],
     )
 

@@ -152,15 +152,31 @@ def test_the_confusion_matrix_has_ground_truth_rows_and_prediction_columns() -> 
     ]
 
 
-def test_false_low_priority_rate_counts_only_missed_high_urgency() -> None:
+def test_false_low_priority_rate_is_low_recommendations_over_non_low_truths() -> None:
+    # The documented one-vs-rest definition: recommended Low with a non-Low
+    # truth, over every non-Low truth. A missed High is not the denominator.
+    metrics = harness.compute_metrics(
+        ["High", "High", "High", "Medium", "Low"],
+        ["High", "Medium", "Low", "Low", "Low"],
+    )
+
+    assert metrics["false_low_priority"]["count"] == 2
+    assert metrics["false_low_priority"]["denominator"] == 4
+    assert metrics["false_low_priority"]["rate"] == pytest.approx(0.5)
+
+
+def test_high_class_recall_is_reported_as_its_own_missed_urgent_signal() -> None:
     metrics = harness.compute_metrics(
         ["High", "High", "High", "Medium", "Low"],
         ["High", "Medium", "Low", "Medium", "Low"],
     )
 
-    assert metrics["false_low_priority"]["count"] == 2
-    assert metrics["false_low_priority"]["denominator"] == 3
-    assert metrics["false_low_priority"]["rate"] == pytest.approx(2 / 3)
+    recall = metrics["high_class_recall"]
+    assert recall["count"] == 1
+    assert recall["denominator"] == 3
+    assert recall["rate"] == pytest.approx(1 / 3)
+    # Its complement is the missed-urgent-cases share, not False Low.
+    assert 1 - recall["rate"] == pytest.approx(2 / 3)
 
 
 def test_false_high_priority_rate_counts_only_overtriaged_non_high_urgency() -> None:
@@ -292,14 +308,39 @@ def test_every_run_records_its_dataset_rubric_and_engine_identity(
     ).hexdigest()
 
 
+def test_the_primary_cross_validated_metrics_are_the_composed_engine(
+    published_evidence,
+) -> None:
+    run = run_named(published_evidence, "cross_validated")
+    variant = run["classifier_only"]
+
+    # The classifier alone is a secondary diagnostic. The primary metrics must
+    # include the safety layer, which can only raise a recommendation. Raising
+    # can lower accuracy when it over-triages, so equality of accuracy is not
+    # the property to assert.
+    assert variant["metrics"] != run["metrics"]
+    assert variant["metrics"]["encounter_count"] == run["metrics"][
+        "encounter_count"
+    ]
+    composed_high = sum(row[0] for row in run["metrics"]["confusion_matrix"]["rows"])
+    classifier_high = sum(
+        row[0] for row in variant["metrics"]["confusion_matrix"]["rows"]
+    )
+    assert composed_high >= classifier_high
+    assert "not a Machine Recommendation" in variant["description"]
+
+
 def test_the_cross_validated_run_reproduces_the_artefacts_recorded_scores(
     published_evidence,
 ) -> None:
     recorded = json.loads(ARTEFACT_PATH.read_text(encoding="utf-8"))[
         "cross_validation"
     ]
-    metrics = run_named(published_evidence, "cross_validated")["metrics"]
+    variant = run_named(published_evidence, "cross_validated")["classifier_only"]
+    metrics = variant["metrics"]
 
+    # The recorded block is the classifier-only cross-validation, so it is the
+    # variant that must reproduce it - not the composed primary score.
     assert metrics["accuracy"] == pytest.approx(recorded["accuracy"], abs=1e-12)
     assert metrics["macro_f1"] == pytest.approx(recorded["macro_f1"], abs=1e-12)
     assert metrics["confusion_matrix"]["rows"] == recorded["confusion_matrix"]
@@ -308,32 +349,19 @@ def test_the_cross_validated_run_reproduces_the_artefacts_recorded_scores(
             assert metrics["per_class"][level][statistic] == pytest.approx(
                 recorded["per_class"][level][statistic], abs=1e-12
             )
-    assert run_named(published_evidence, "cross_validated")[
-        "matches_recorded_artefact"
-    ] is True
+    assert variant["matches_recorded_artefact"] is True
 
 
-def test_the_shipped_model_is_reported_as_below_the_majority_baseline(
+def test_the_shipped_classifier_is_reported_as_below_the_majority_baseline(
     published_evidence,
 ) -> None:
-    metrics = run_named(published_evidence, "cross_validated")["metrics"]
+    metrics = run_named(published_evidence, "cross_validated")["classifier_only"][
+        "metrics"
+    ]
 
     assert metrics["majority_baseline"]["class"] == "Low"
     assert metrics["accuracy"] < metrics["majority_baseline"]["accuracy"]
     assert metrics["majority_baseline"]["beats_baseline"] is False
-
-
-def test_the_cross_validated_run_also_reports_the_safety_layer_variant(
-    published_evidence,
-) -> None:
-    run = run_named(published_evidence, "cross_validated")
-
-    assert run["safety_layer"]["metrics"]["encounter_count"] == run[
-        "metrics"
-    ]["encounter_count"]
-    assert run["safety_layer"]["metrics"]["false_low_priority"] != run["metrics"][
-        "false_low_priority"
-    ]
 
 
 # --- reproducibility --------------------------------------------------------

@@ -138,6 +138,49 @@ def test_intake_correction_is_refused_once_an_assessment_exists(
     assert fetched.json()["patient"]["id"] == patient_id
 
 
+def test_a_corrected_intake_is_recorded_as_a_reassessment(
+    clinical_client: TestClient,
+) -> None:
+    """The correction intent is reachable through Re-assessment, not PUT intake.
+
+    Opening an Encounter creates its first Assessment, so the correction route
+    is always refused. A typo is corrected by capturing the current intake as a
+    new Assessment: the earlier snapshot stays frozen, and the new one governs.
+    """
+    patient_id = register_patient(clinical_client)
+    encounter_id = open_encounter(clinical_client, patient_id).json()["id"]
+
+    corrected_intake = {
+        **INTAKE,
+        "pain_level": 5,
+        "temperature_c": 36.8,
+        "heart_rate_bpm": 88,
+        "blood_pressure": {"systolic": 132, "diastolic": 84},
+        "oxygen_saturation_percent": 97,
+    }
+
+    refused = clinical_client.put(
+        f"/api/clinical/encounters/{encounter_id}/intake",
+        json=corrected_intake,
+    )
+    assert refused.status_code == 409
+
+    response = clinical_client.post(
+        f"/api/clinical/encounters/{encounter_id}/reassessment",
+        json=corrected_intake,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["intake"] == corrected_intake
+    assert len(body["assessments"]) == 2
+    first, second = body["assessments"]
+    assert first["snapshot"]["pain_level"] == INTAKE["pain_level"]
+    assert second["snapshot"]["pain_level"] == 5
+    assert second["supersedes_assessment_id"] == first["id"]
+    assert body["assessment"]["id"] == second["id"]
+
+
 def test_a_patient_may_hold_many_encounters(clinical_client: TestClient) -> None:
     patient_id = register_patient(clinical_client)
 

@@ -26,7 +26,7 @@ class DatabaseFallbackCache:
         if entry is None:
             return None
         return FallbackCacheHit(
-            urgency_level=UrgencyLevel(entry.machine_recommendation),
+            urgency_level=UrgencyLevel(entry.urgency_level),
             provider=entry.provider,
         )
 
@@ -45,7 +45,7 @@ class DatabaseFallbackCache:
             FallbackCacheEntry(
                 complaint_hash=complaint_hash,
                 presenting_complaint=complaint,
-                machine_recommendation=urgency_level.value,
+                urgency_level=urgency_level.value,
                 provider=provider,
             )
         )

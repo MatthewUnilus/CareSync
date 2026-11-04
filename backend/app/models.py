@@ -168,6 +168,14 @@ class Encounter(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
 
+    # Set only when this Encounter is a stored row of a named evaluation run.
+    # Such rows are real Patients/Encounters/Assessments, scored through the
+    # engine, but they are measurement scaffolding: the Queue and the activity
+    # Reports exclude them. Live Encounters leave this null.
+    evaluation_run_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True
+    )
+
     presenting_complaint: Mapped[str] = mapped_column(String(2000))
     pain_level: Mapped[int] = mapped_column(Integer)
     illness_duration_hours: Mapped[float] = mapped_column(Float)
@@ -217,6 +225,11 @@ class TriageAssessment(Base):
             name="ck_triage_assessments_final_decision",
         ),
         CheckConstraint(
+            "ground_truth_level IS NULL OR "
+            "ground_truth_level IN ('High', 'Medium', 'Low')",
+            name="ck_triage_assessments_ground_truth_level",
+        ),
+        CheckConstraint(
             "pain_level >= 1 AND pain_level <= 10",
             name="ck_triage_assessments_pain_level",
         ),
@@ -250,6 +263,14 @@ class TriageAssessment(Base):
 
     machine_recommendation: Mapped[str] = mapped_column(String(16))
     final_decision: Mapped[str] = mapped_column(String(16))
+
+    # Independent ground truth, present only on an evaluation-run row. It is
+    # deliberately a separate column from ``machine_recommendation`` and
+    # ``final_decision`` so the rubric label can never be confused with either.
+    # Null on every live Assessment.
+    ground_truth_level: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
 
     # True only when the complaint matched no Symptom Group and the fallback
     # provider was unavailable or exceeded its timeout, so the recommendation
@@ -289,6 +310,7 @@ _ASSESSMENT_FROZEN_FIELDS = (
     "notes",
     "recognised_symptom_groups",
     "machine_recommendation",
+    "ground_truth_level",
     "unclassified",
     "supersedes_assessment_id",
 )
@@ -319,19 +341,23 @@ class FallbackCacheEntry(Base):
     safety layer is applied to it on every resolve, because the same words can
     belong to a patient with different vitals. A degraded (unclassified) answer
     is never cached, so a transient outage does not stick in the record.
+
+    The column is ``urgency_level``, not ``machine_recommendation``: this is the
+    external provider's answer to the complaint alone, before the safety layer
+    and before the engine produces a Machine Recommendation.
     """
 
     __tablename__ = "fallback_cache"
     __table_args__ = (
         CheckConstraint(
-            "machine_recommendation IN ('High', 'Medium', 'Low')",
-            name="ck_fallback_cache_machine_recommendation",
+            "urgency_level IN ('High', 'Medium', 'Low')",
+            name="ck_fallback_cache_urgency_level",
         ),
     )
 
     complaint_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     presenting_complaint: Mapped[str] = mapped_column(String(2000))
-    machine_recommendation: Mapped[str] = mapped_column(String(16))
+    urgency_level: Mapped[str] = mapped_column(String(16))
     provider: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

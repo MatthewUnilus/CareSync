@@ -101,11 +101,17 @@ METRIC_DEFINITIONS: dict[str, str] = {
     ),
     "false_high_priority": (
         "share of ground-truth Medium or Low Encounters recommended High "
-        "(over-triage)"
+        "(over-triage): recommended High with a non-High truth / every "
+        "non-High truth"
     ),
     "false_low_priority": (
-        "share of ground-truth High Encounters recommended Medium or Low "
-        "(missed urgent cases)"
+        "share of ground-truth Medium or High Encounters recommended Low "
+        "(under-triage): recommended Low with a non-Low truth / every "
+        "non-Low truth"
+    ),
+    "high_class_recall": (
+        "share of ground-truth High Encounters recommended High; its "
+        "complement is the missed-urgent-cases signal"
     ),
     "majority_baseline": (
         "always predicting the commonest ground-truth class in the scored set; "
@@ -197,12 +203,11 @@ def compute_metrics(
     majority_accuracy = truth_counts[majority_class] / total
 
     non_high = [index for index, level in enumerate(truth) if level != CLASS_ORDER[0]]
-    missed_high = [
-        index
-        for index, level in enumerate(truth)
-        if level == CLASS_ORDER[0] and predicted[index] != CLASS_ORDER[0]
-    ]
+    non_low = [index for index, level in enumerate(truth) if level != CLASS_ORDER[2]]
     false_high = sum(1 for index in non_high if predicted[index] == CLASS_ORDER[0])
+    false_low = sum(1 for index in non_low if predicted[index] == CLASS_ORDER[2])
+    high_support = truth_counts.get(CLASS_ORDER[0], 0)
+    high_correct = matrix[0][0]
 
     return {
         "encounter_count": total,
@@ -225,13 +230,14 @@ def compute_metrics(
             "rate": _round(false_high / len(non_high)) if non_high else 0.0,
         },
         "false_low_priority": {
-            "count": len(missed_high),
-            "denominator": truth_counts.get(CLASS_ORDER[0], 0),
-            "rate": (
-                _round(len(missed_high) / truth_counts[CLASS_ORDER[0]])
-                if truth_counts.get(CLASS_ORDER[0], 0)
-                else 0.0
-            ),
+            "count": false_low,
+            "denominator": len(non_low),
+            "rate": _round(false_low / len(non_low)) if non_low else 0.0,
+        },
+        "high_class_recall": {
+            "count": high_correct,
+            "denominator": high_support,
+            "rate": _round(high_correct / high_support) if high_support else 0.0,
         },
     }
 
@@ -610,13 +616,17 @@ def build_evidence(
         Path(engine_path).read_text(encoding="utf-8")
     )["cross_validation"]
 
-    # Mode one: cross-validated scoring of the learned layer.
+    # Mode one: cross-validated scoring of the composed engine. The primary
+    # score is the Machine Recommendation the engine actually produces, so it
+    # includes the deterministic safety layer. The classifier alone is kept
+    # beside it as a clearly labelled secondary variant: it is not a Machine
+    # Recommendation.
     classifier_predictions = cross_validated_predictions(
         records, folds=folds, seed=seed
     )
     labels = [record.urgency_level.value for record in records]
-    cross_validated_metrics = compute_metrics(labels, classifier_predictions)
-    safety_layer_metrics = compute_metrics(
+    classifier_only_metrics = compute_metrics(labels, classifier_predictions)
+    composed_metrics = compute_metrics(
         labels, composed_predictions(records, classifier_predictions)
     )
 
@@ -624,8 +634,9 @@ def build_evidence(
         "id": "cross_validated",
         "mode": "cross_validated",
         "description": (
-            "the learned classifier layer, scored out of fold on the published "
-            "training dataset"
+            "the composed engine — out-of-fold classifier plus the "
+            "deterministic red-flag safety layer — scored on the published "
+            "training dataset; the primary metrics are Machine Recommendations"
         ),
         "fallback": "disabled",
         "dataset": _published_dataset_identity(records, sources),
@@ -640,17 +651,18 @@ def build_evidence(
                 "reproduction can be checked"
             ),
         ),
-        "metrics": cross_validated_metrics,
-        "safety_layer": {
+        "metrics": composed_metrics,
+        "classifier_only": {
             "description": (
-                "the same out-of-fold classifier predictions with the "
-                "deterministic red-flag safety layer applied"
+                "the learned classifier layer alone, without the safety layer; "
+                "this is a secondary diagnostic and is not a Machine "
+                "Recommendation"
             ),
-            "metrics": safety_layer_metrics,
+            "metrics": classifier_only_metrics,
+            "matches_recorded_artefact": _matches_recorded(
+                classifier_only_metrics, recorded_cross_validation
+            ),
         },
-        "matches_recorded_artefact": _matches_recorded(
-            cross_validated_metrics, recorded_cross_validation
-        ),
     }
 
     # Mode two: the whole pipeline, primary run with the fallback disabled.

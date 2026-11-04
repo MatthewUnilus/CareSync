@@ -59,7 +59,24 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 DEFAULT_TIMEOUT_LEVEL = "Medium"
 DEFAULT_TIMEOUT_SECONDS = 2.0
 
-_VALID_LEVELS = ("High", "Medium", "Low")
+
+def _valid_levels(urgency_level: type) -> tuple[str, ...]:
+    """The three Urgency Levels, derived from the enum rather than restated."""
+    return tuple(level.value for level in urgency_level)
+
+
+def _canonical_level(value: object, urgency_level: type) -> "UrgencyLevel":
+    """Match a provider's spelling onto the Urgency Level it names, once."""
+    if isinstance(value, urgency_level):
+        return value
+    if isinstance(value, str):
+        wanted = value.strip().casefold()
+        for candidate in _valid_levels(urgency_level):
+            if wanted == candidate.casefold():
+                return urgency_level(candidate)
+    raise FallbackUnavailable(
+        f"fallback provider returned an unknown Urgency Level: {value!r}"
+    )
 
 
 class FallbackUnavailable(RuntimeError):
@@ -219,13 +236,7 @@ def _parse_provider_body(raw: str, urgency_level: type) -> "UrgencyLevel":
         value = payload
     if not isinstance(value, str):
         raise FallbackUnavailable("fallback provider returned no Urgency Level")
-
-    for candidate in _VALID_LEVELS:
-        if value.strip().casefold() == candidate.casefold():
-            return urgency_level(candidate)
-    raise FallbackUnavailable(
-        f"fallback provider returned an unknown Urgency Level: {value!r}"
-    )
+    return _canonical_level(value, urgency_level)
 
 
 def complaint_hash(complaint: str) -> str:
@@ -327,15 +338,7 @@ class FallbackResolver:
 
 
 def _coerce_level(value: object, urgency_level: type) -> "UrgencyLevel":
-    if isinstance(value, urgency_level):
-        return value
-    if isinstance(value, str):
-        for candidate in _VALID_LEVELS:
-            if value.strip().casefold() == candidate.casefold():
-                return urgency_level(candidate)
-    raise FallbackUnavailable(
-        f"fallback provider returned an unknown Urgency Level: {value!r}"
-    )
+    return _canonical_level(value, urgency_level)
 
 
 def build_fallback_provider(settings: "Settings") -> FallbackProvider:

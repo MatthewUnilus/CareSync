@@ -129,10 +129,13 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Override, TriageAssessment
+from app.models import Encounter, Override, TriageAssessment
 from app.override_reasons import OVERRIDE_REASONS, OverrideReason
 from app.prioritisation import URGENCY_RANK, UrgencyLevel
 from evaluation.artefact import LEGACY_MANIFEST_PATH, RESULTS_PATH
+from evaluation.corpus import RUBRIC_DOCUMENT
+from evaluation.rubric import CITATION as RUBRIC_CITATION
+from evaluation.rubric import RUBRIC_VERSION
 
 MANIFEST_SCHEMA_VERSION = 1
 
@@ -155,12 +158,11 @@ HARNESS_RUN_FIELDS: frozenset[str] = frozenset(
 #: optional to the consumer, but a new key still has to be acknowledged here.
 HARNESS_OPTIONAL_RUN_FIELDS: frozenset[str] = frozenset(
     {
+        "classifier_only",
         "coverage",
         "description",
-        "matches_recorded_artefact",
         "predictions",
         "procedure",
-        "safety_layer",
     }
 )
 
@@ -171,6 +173,7 @@ HARNESS_METRIC_FIELDS: frozenset[str] = frozenset(
         "encounter_count",
         "false_high_priority",
         "false_low_priority",
+        "high_class_recall",
         "macro_f1",
         "majority_baseline",
         "per_class",
@@ -199,12 +202,16 @@ class RunSource(str, Enum):
 
     ``assessments`` is the live form: a labelled case names a stored
     Assessment, and the Machine Recommendation is read from that row.
-    ``harness`` is the offline form: the reproducible artefact carries its own
-    matrix, per-class figures and false-priority rates, and touches no database.
+    ``evaluation`` is a stored evaluation run: the same read, but the rows were
+    materialised from the rubric-labelled corpus and carry their own ground
+    truth. ``harness`` is the offline form: the reproducible artefact carries
+    its own matrix, per-class figures and false-priority rates, and touches no
+    database.
     """
 
     assessments = "assessments"
     harness = "harness"
+    evaluation = "evaluation"
 
 
 class _InvalidManifest(ValueError):
@@ -240,6 +247,7 @@ class EvaluationRun:
     cases: tuple[RunCase, ...]
     dataset: str | None = None
     engine_artefact: str | None = None
+    run_mode: str = "assessment"
 
 
 @dataclass(frozen=True)
@@ -265,8 +273,10 @@ class HarnessRun:
     levels: tuple["LevelMetrics", ...]
     false_high_priority: "PriorityErrorRate"
     false_low_priority: "PriorityErrorRate"
+    high_class_recall: "LevelRecall"
     fallback: "FallbackCoverage"
     predictions: int
+    classifier_only: "RunVariant | None" = None
 
 
 @dataclass(frozen=True)
@@ -297,6 +307,34 @@ class PriorityErrorRate:
     count: int
     denominator: int
     rate: float | None
+
+
+@dataclass(frozen=True)
+class LevelRecall:
+    """How many cases at a level the engine got right, out of that level's truth.
+
+    Named separately from the per-level table because High-class recall is the
+    "missed urgent cases" signal: its complement is exactly the share of
+    ground-truth High cases the engine did not call High.
+    """
+
+    count: int
+    denominator: int
+    rate: float | None
+
+
+@dataclass(frozen=True)
+class RunVariant:
+    """A secondary scoring of the same run, never a Machine Recommendation."""
+
+    description: str
+    total: int
+    correct: int
+    accuracy: float
+    macro_f1: float
+    false_high_priority: PriorityErrorRate
+    false_low_priority: PriorityErrorRate
+    high_class_recall: LevelRecall
 
 
 @dataclass(frozen=True)
@@ -350,7 +388,9 @@ class RunReport:
     majority_baseline: MajorityBaseline | None
     false_high_priority: PriorityErrorRate
     false_low_priority: PriorityErrorRate
+    high_class_recall: LevelRecall
     fallback: FallbackCoverage
+    classifier_only: RunVariant | None = None
 
 
 @dataclass(frozen=True)
@@ -586,6 +626,10 @@ def _parse_harness_run(raw: Any, index: int) -> HarnessRun:
             unclassified_rate=None,
         )
 
+    classifier_only = _parse_harness_variant(
+        raw.get("classifier_only"), f"{where}.classifier_only"
+    )
+
     raw_predictions = raw.get("predictions")
     if raw_predictions is None:
         predictions = metrics["total"]
@@ -615,8 +659,33 @@ def _parse_harness_run(raw: Any, index: int) -> HarnessRun:
         levels=metrics["levels"],
         false_high_priority=metrics["false_high_priority"],
         false_low_priority=metrics["false_low_priority"],
+        high_class_recall=metrics["high_class_recall"],
         fallback=coverage,
         predictions=predictions,
+        classifier_only=classifier_only,
+    )
+
+
+def _parse_harness_variant(raw: Any, where: str) -> RunVariant | None:
+    """Read a secondary scoring that is explicitly not a Machine Recommendation."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise _InvalidManifest(f"{where} must be an object")
+    description = _required_text(raw, "description", where)
+    raw_metrics = raw.get("metrics")
+    if not isinstance(raw_metrics, dict):
+        raise _InvalidManifest(f"{where}.metrics must be an object")
+    metrics = _parse_harness_metrics(raw_metrics, f"{where}.metrics")
+    return RunVariant(
+        description=description,
+        total=metrics["total"],
+        correct=metrics["correct"],
+        accuracy=metrics["accuracy"],
+        macro_f1=metrics["macro_f1"],
+        false_high_priority=metrics["false_high_priority"],
+        false_low_priority=metrics["false_low_priority"],
+        high_class_recall=metrics["high_class_recall"],
     )
 
 
@@ -655,6 +724,9 @@ def _parse_harness_metrics(
         ),
         "false_low_priority": _parse_harness_rate(
             raw.get("false_low_priority"), f"{where}.false_low_priority"
+        ),
+        "high_class_recall": _parse_level_recall(
+            raw.get("high_class_recall"), f"{where}.high_class_recall"
         ),
     }
 
@@ -810,6 +882,21 @@ def _parse_harness_rate(raw: Any, where: str) -> PriorityErrorRate:
         )
     rate = raw.get("rate")
     return PriorityErrorRate(
+        count=count,
+        denominator=denominator,
+        rate=None if rate is None else _number(rate, f"{where}.rate"),
+    )
+
+
+def _parse_level_recall(raw: Any, where: str) -> LevelRecall:
+    if not isinstance(raw, dict):
+        raise _InvalidManifest(f"{where} must be an object")
+    count = _required_int(raw, "count", where)
+    denominator = _required_int(raw, "denominator", where)
+    if count > denominator:
+        raise _InvalidManifest(f"{where}.count cannot exceed .denominator")
+    rate = raw.get("rate")
+    return LevelRecall(
         count=count,
         denominator=denominator,
         rate=None if rate is None else _number(rate, f"{where}.rate"),
@@ -1077,18 +1164,74 @@ def _required_bool(raw: dict[str, Any], key: str, where: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def database_evaluation_runs(session: Session) -> tuple[EvaluationRun, ...]:
+    """Stored evaluation runs, derived from the labelled Assessments.
+
+    A materialised corpus row is a real Patient, Encounter and Triage
+    Assessment. Its ``ground_truth_level`` is the rubric's label and its
+    ``machine_recommendation`` is the engine's actual output, so scoring it is a
+    read of stored, immutable records rather than of a JSON artefact. Runs are
+    grouped by the Encounter's ``evaluation_run_id``.
+    """
+    rows = session.execute(
+        select(
+            Encounter.evaluation_run_id,
+            TriageAssessment.id,
+            TriageAssessment.ground_truth_level,
+        )
+        .join(TriageAssessment, TriageAssessment.encounter_id == Encounter.id)
+        .where(Encounter.evaluation_run_id.is_not(None))
+        .where(TriageAssessment.ground_truth_level.is_not(None))
+        .order_by(Encounter.evaluation_run_id, TriageAssessment.id)
+    ).all()
+
+    grouped: dict[str, list[RunCase]] = {}
+    for run_id, assessment_id, ground_truth in rows:
+        grouped.setdefault(str(run_id), []).append(
+            RunCase(
+                assessment_id=int(assessment_id),
+                ground_truth=_level(ground_truth, "ground_truth_level"),
+            )
+        )
+
+    source = GroundTruthSource(
+        name="ESI v4 rubric",
+        version=RUBRIC_VERSION,
+        citation=RUBRIC_CITATION,
+        document=RUBRIC_DOCUMENT,
+    )
+    return tuple(
+        EvaluationRun(
+            run_id=run_id,
+            mode=FallbackMode.disabled,
+            ground_truth=source,
+            cases=tuple(cases),
+            dataset=f"stored evaluation run {run_id}",
+            run_mode="evaluation",
+        )
+        for run_id, cases in grouped.items()
+    )
+
+
 def build_report(
     session: Session, bundle: RunBundle | None
 ) -> AccuracyEvaluationReport:
     """Compute the Accuracy Evaluation Report from stored rows and one bundle.
 
-    Assessment-derived runs are scored against the immutable stored rows.
-    Harness runs are copied from the artefact as-is: their matrix, per-class
-    figures and false-priority rates are reproducible evidence and explicitly
-    do not depend on database state. Override figures always come from stored
-    Assessments in both cases.
+    A stored evaluation run takes precedence over the offline artefact: ticket
+    14 requires the figures to come from stored, immutable Triage Assessments
+    when such a run exists. Otherwise the supplied bundle (the harness artefact
+    or a legacy per-case manifest) is used. Assessment-derived runs are scored
+    against the immutable stored rows. Harness runs are copied from the
+    artefact as-is. Override figures always come from stored Assessments.
     """
     overrides = override_metrics(session)
+
+    stored_runs = database_evaluation_runs(session)
+    if stored_runs:
+        bundle = RunBundle(
+            schema_version=MANIFEST_SCHEMA_VERSION, runs=stored_runs
+        )
 
     if bundle is None or not bundle.runs:
         return AccuracyEvaluationReport(
@@ -1197,7 +1340,9 @@ def _harness_report(run: HarnessRun) -> RunReport:
         majority_baseline=run.majority_baseline,
         false_high_priority=run.false_high_priority,
         false_low_priority=run.false_low_priority,
+        high_class_recall=run.high_class_recall,
         fallback=run.fallback,
+        classifier_only=run.classifier_only,
     )
 
 
@@ -1301,8 +1446,12 @@ def evaluate_run(session: Session, run: EvaluationRun) -> RunReport:
 
     return RunReport(
         run_id=run.run_id,
-        run_mode="assessment",
-        source=RunSource.assessments,
+        run_mode=run.run_mode,
+        source=(
+            RunSource.evaluation
+            if run.run_mode == "evaluation"
+            else RunSource.assessments
+        ),
         primary=False,
         mode=run.mode,
         dataset=run.dataset,
@@ -1330,6 +1479,16 @@ def evaluate_run(session: Session, run: EvaluationRun) -> RunReport:
             count=false_low_count,
             denominator=non_low,
             rate=(false_low_count / non_low) if non_low else None,
+        ),
+        high_class_recall=LevelRecall(
+            count=matrix[UrgencyLevel.high][UrgencyLevel.high],
+            denominator=truth_totals[UrgencyLevel.high],
+            rate=(
+                matrix[UrgencyLevel.high][UrgencyLevel.high]
+                / truth_totals[UrgencyLevel.high]
+                if truth_totals[UrgencyLevel.high]
+                else None
+            ),
         ),
         fallback=fallback,
     )
@@ -1406,6 +1565,7 @@ __all__ = [
     "HARNESS_RUN_FIELDS",
     "HarnessRun",
     "LevelMetrics",
+    "LevelRecall",
     "MANIFEST_SCHEMA_VERSION",
     "MajorityBaseline",
     "OverrideMetrics",
@@ -1416,7 +1576,9 @@ __all__ = [
     "RunReport",
     "RunSample",
     "RunSource",
+    "RunVariant",
     "build_report",
+    "database_evaluation_runs",
     "evaluate_run",
     "load_configured_bundle",
     "load_run_bundle",

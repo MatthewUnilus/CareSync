@@ -42,6 +42,7 @@ def create_triage_assessment(
     *,
     supersedes: TriageAssessment | None = None,
     fallback: FallbackResolver | None = None,
+    ground_truth_level: str | None = None,
 ) -> TriageAssessment:
     """Run the engine once and append the resulting Assessment.
 
@@ -70,6 +71,10 @@ def create_triage_assessment(
         notes=encounter.notes,
         recognised_symptom_groups=",".join(inputs.recognised_symptom_groups),
         machine_recommendation=recommendation.level.value,
+        # Supplied only by the evaluation-corpus materialiser. Live Assessments
+        # have no ground truth, so the column stays null and the rubric label
+        # can never be confused with a Machine Recommendation.
+        ground_truth_level=ground_truth_level,
         unclassified=recommendation.unclassified,
         # No Override exists at this point, so the Final Decision starts equal
         # to the Machine Recommendation. An Override changes only this field.

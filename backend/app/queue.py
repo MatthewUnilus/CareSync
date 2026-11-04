@@ -78,6 +78,9 @@ def awaiting_queue(session: Session, now: datetime) -> list[QueueEntry]:
     encounters = session.scalars(
         select(Encounter)
         .where(Encounter.departed_at.is_(None))
+        # Evaluation-run rows are measurement scaffolding, not patients waiting
+        # for care. They stay queryable but never appear on the working Queue.
+        .where(Encounter.evaluation_run_id.is_(None))
         .options(
             selectinload(Encounter.assessments).selectinload(
                 TriageAssessment.overrides
