@@ -41,8 +41,10 @@ export default function App() {
 
   if (checking) {
     return (
-      <main className="centered">
-        <p className="muted">Checking session…</p>
+      <main className="grid min-h-dvh place-items-center bg-background-full p-6">
+        <p className="text-body-regular text-text-secondary">
+          Checking session…
+        </p>
       </main>
     );
   }
@@ -53,8 +55,10 @@ export default function App() {
 
   if (pathname !== homePathForRole(user.role)) {
     return (
-      <main className="centered">
-        <p className="muted">Opening your workspace…</p>
+      <main className="grid min-h-dvh place-items-center bg-background-full p-6">
+        <p className="text-body-regular text-text-secondary">
+          Opening your workspace…
+        </p>
       </main>
     );
   }

@@ -91,6 +91,23 @@ export interface AuthCardProps {
   centered?: boolean;
   /** Sign-up only: adds a stacked confirm-password field. */
   confirmPassword?: boolean;
+  /**
+   * Sign-in only: show the remember-me checkbox. Hosts whose sessions are
+   * not preference-driven set false rather than ship a control that does
+   * nothing. Defaults to true.
+   */
+  showRememberMe?: boolean;
+  /**
+   * Sign-in only: show the forgot-password link. Hosts without a reset flow
+   * set false rather than advertise one. Defaults to true.
+   */
+  showForgotPassword?: boolean;
+  /**
+   * Show the footer link to the opposite mode (`signin` → sign-up, `signup`
+   * → sign-in). Hosts without self-service sign-up set false. Defaults to
+   * true; the verify step's resend action is unaffected.
+   */
+  showSwitch?: boolean;
   /** Small print under the card, outside its border. */
   footnote?: ReactNode;
   /** Fires with the form's own FormData; wire it to your auth library. */
@@ -147,6 +164,9 @@ export function AuthCard({
   logo,
   centered = false,
   confirmPassword = false,
+  showRememberMe = true,
+  showForgotPassword = true,
+  showSwitch = true,
   footnote,
   onSubmit,
   onProvider,
@@ -263,7 +283,7 @@ export function AuthCard({
           name="email"
           type="email"
           label="Email"
-          placeholder="you@company.com"
+          placeholder="name@example.com"
           autoComplete="email"
           hint={signup ? "We use this to contact you, and never share it." : undefined}
           isRequired
@@ -297,18 +317,22 @@ export function AuthCard({
             name="password"
             type="password"
             label="Password"
-            placeholder={signup ? "At least 8 characters" : "Enter your password"}
+            placeholder={signup ? "At least 8 characters" : undefined}
             autoComplete={signup ? "new-password" : "current-password"}
             isRequired
           />
         )}
 
-        {signup || verify ? null : (
+        {signup || verify || (!showRememberMe && !showForgotPassword) ? null : (
           <div className="flex items-center justify-between">
-            <Checkbox size="sm" isSelected={remember} onChange={setRemember}>
-              Remember me
-            </Checkbox>
-            <LinkButton href="#">Forgot password?</LinkButton>
+            {showRememberMe ? (
+              <Checkbox size="sm" isSelected={remember} onChange={setRemember}>
+                Remember me
+              </Checkbox>
+            ) : null}
+            {showForgotPassword ? (
+              <LinkButton href="#">Forgot password?</LinkButton>
+            ) : null}
           </div>
         )}
 
@@ -345,11 +369,11 @@ export function AuthCard({
           {copy.switchLead}{" "}
           <LinkButton onClick={onResend}>{copy.switchAction}</LinkButton>
         </p>
-      ) : (
+      ) : showSwitch ? (
         <p className="mt-6 text-center text-body-regular text-text-secondary">
           {copy.switchLead} <LinkButton href={switchHref}>{copy.switchAction}</LinkButton>
         </p>
-      )}
+      ) : null}
     </>
   );
 

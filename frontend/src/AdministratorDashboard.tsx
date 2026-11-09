@@ -1,9 +1,25 @@
 import { useCallback, useState } from "react";
 
+import { RiRefreshLine } from "@remixicon/react";
+import { Button } from "@/components/base/buttons/button";
+import { cx } from "@/utils/cx";
+
 import { api, ApiError } from "./api";
 import type { AdministratorQueueSnapshot } from "./api";
+import {
+  cardClass,
+  figureClass,
+  mutedTextClass,
+  noticeClass,
+  tableCaptionClass,
+  tableCellClass,
+  tableClass,
+  tableHeadCellClass,
+  tableRowClass,
+  tableWrapClass,
+} from "./design";
 import AdministratorReports from "./AdministratorReports";
-import { formatWaiting, urgencyClass } from "./queueDisplay";
+import { formatWaiting, urgencyTextClass } from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -37,94 +53,119 @@ export default function AdministratorDashboard() {
 
   return (
     <>
-      <section className="card admin-queue">
-        <div className="queue-header">
+      <section className={cardClass}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2>Queue overview</h2>
-            <p className="muted">
+            <h2 className="text-title-3-medium text-text-primary">
+              Queue overview
+            </h2>
+            <p className={mutedTextClass}>
               {entries.length === 0
-                ? "No Encounters awaiting"
-                : `${entries.length} awaiting`}{" "}
+                ? "No encounters waiting"
+                : `${entries.length} waiting`}{" "}
               · updates every 5 seconds
             </p>
           </div>
-          <button
-            type="button"
-            className="secondary"
+          <Button
+            variant="secondary"
+            size="small"
+            leadingIcon={RiRefreshLine}
             onClick={() => {
               void load();
             }}
           >
             Refresh now
-          </button>
+          </Button>
         </div>
 
         {error ? (
-          <p className="notice notice-error" role="status">
+          <p className={noticeClass.error} role="status">
             {error}
           </p>
         ) : null}
 
         {loading && snapshot === null ? (
-          <p className="muted">Loading the Queue…</p>
+          <p className={mutedTextClass}>Loading the queue…</p>
         ) : null}
 
         {!loading && entries.length === 0 ? (
-          <p className="muted">No Encounters are awaiting.</p>
+          <p className={mutedTextClass}>No encounters are waiting</p>
         ) : null}
 
         {entries.length > 0 ? (
-          <div className="admin-table-wrap">
-            <table className="admin-queue-table">
-              <caption className="admin-table-caption">
-                Awaiting Encounters in Queue order: Urgency Level, then arrival
+          <div className={tableWrapClass}>
+            <table className={tableClass}>
+              <caption className={tableCaptionClass}>
+                Awaiting encounters in queue order: urgency level, then arrival
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Urgency</th>
-                  <th scope="col">Patient</th>
-                  <th scope="col">Complaint</th>
-                  <th scope="col">Waiting</th>
-                  <th scope="col">Decision vs recommendation</th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Urgency
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Patient
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Complaint
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Waiting
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Decision vs recommendation
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((entry) => (
-                  <tr key={entry.encounter_id}>
-                    <td>
-                      <span
-                        className={`urgency-badge ${urgencyClass(entry.urgency_level)}`}
-                      >
-                        {entry.urgency_level}
-                      </span>
+                  <tr key={entry.encounter_id} className={tableRowClass}>
+                    <td
+                      className={cx(
+                        tableCellClass,
+                        "text-body-medium font-medium whitespace-nowrap",
+                        urgencyTextClass(entry.urgency_level),
+                      )}
+                    >
+                      {entry.urgency_level}
                     </td>
                     <td
-                      className="admin-patient"
+                      className={cx(
+                        tableCellClass,
+                        "font-medium whitespace-nowrap text-text-primary",
+                      )}
                       title={`Encounter #${entry.encounter_id}`}
                     >
                       {entry.patient_name}
                     </td>
-                    <td className="admin-complaint">
-                      <span title={entry.presenting_complaint}>
-                        {entry.presenting_complaint}
-                      </span>
+                    <td
+                      className={cx(tableCellClass, "max-w-md truncate")}
+                      title={entry.presenting_complaint}
+                    >
+                      {entry.presenting_complaint}
                     </td>
-                    <td className="admin-waiting">
+                    <td
+                      className={cx(
+                        tableCellClass,
+                        "whitespace-nowrap text-text-secondary",
+                        figureClass,
+                      )}
+                    >
                       {formatWaiting(entry.waiting_seconds)}
                     </td>
-                    <td>
+                    <td className={cx(tableCellClass, "whitespace-nowrap")}>
                       {entry.final_decision_differs ? (
                         <span
-                          className="decision-flag decision-differs"
-                          title={`Machine Recommendation ${entry.machine_recommendation}; Final Decision ${entry.final_decision}`}
+                          className="text-caption-1-medium text-status-orange-text"
+                          title={`Machine recommendation ${entry.machine_recommendation}; final decision ${entry.final_decision}`}
                         >
                           Differs: {entry.machine_recommendation} →{" "}
                           {entry.final_decision}
                         </span>
                       ) : (
                         <span
-                          className="decision-flag decision-same"
-                          title={`Machine Recommendation and Final Decision are both ${entry.final_decision}`}
+                          className="text-caption-1-regular text-text-tertiary"
+                          title={`Machine recommendation and final decision are both ${entry.final_decision}`}
                         >
                           Same
                         </span>
@@ -139,11 +180,11 @@ export default function AdministratorDashboard() {
       </section>
 
       <section
-        className="card admin-reports"
+        className={cardClass}
         id="reports"
         data-reports-mount="administrator"
       >
-        <h2>Reports</h2>
+        <h2 className="text-title-3-medium text-text-primary">Reports</h2>
         <AdministratorReports />
       </section>
     </>

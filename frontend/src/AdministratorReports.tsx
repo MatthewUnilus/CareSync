@@ -1,5 +1,9 @@
 import { useCallback, useState } from "react";
 
+import { RiRefreshLine } from "@remixicon/react";
+import { Button } from "@/components/base/buttons/button";
+import { cx } from "@/utils/cx";
+
 import { api, ApiError } from "./api";
 import type {
   AccuracyConfusionCell,
@@ -12,12 +16,53 @@ import type {
   UrgencyDistributionReport,
   UrgencyLevel,
 } from "./api";
-import { formatWaiting, urgencyClass } from "./queueDisplay";
+import {
+  figureClass,
+  mutedTextClass,
+  noticeClass,
+  sectionLabelClass,
+  tableCaptionClass,
+  tableCellClass,
+  tableClass,
+  tableHeadCellClass,
+  tableRowClass,
+  tableWrapClass,
+} from "./design";
+import { formatWaiting, urgencyTextClass } from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
 const REPORT_POLL_INTERVAL_MS = 30_000;
 
 const LEVELS: UrgencyLevel[] = ["High", "Medium", "Low"];
+
+/*
+ * Report section rhythm: hairline-topped blocks inside the Reports card. The
+ * Accuracy Evaluation is the flagship view: first in the section, framed with
+ * the accent ramp and a heavier top edge, but the same tokens and table
+ * shapes as the other Reports. Nothing here softens a number.
+ */
+const reportsClass = "flex flex-col gap-5";
+const reportBlockClass =
+  "flex flex-col gap-3 border-t border-separator-border pt-4";
+const reportBlockFeaturedClass =
+  "flex flex-col gap-4 rounded-3xl border border-border-button-default bg-background-primary-default p-6";
+const reportHeaderClass = "flex flex-wrap items-baseline gap-x-4 gap-y-1";
+const reportStatsClass = "flex flex-wrap gap-6";
+const reportStatClass = "flex min-w-32 flex-col gap-0.5";
+const reportStatLabelClass = sectionLabelClass;
+const reportStatFigureClass = cx(
+  "text-title-1-medium text-text-primary",
+  figureClass,
+);
+const reportStatNoteClass = "text-caption-1-regular text-text-secondary";
+const reportNoteClass = "max-w-2xl text-body-2-regular text-text-secondary";
+const matrixCorrectCellClass =
+  "bg-status-lime-background text-center font-medium tabular-nums text-status-lime-text";
+const matrixMissCellClass =
+  "text-center tabular-nums text-text-tertiary";
+const matrixTotalCellClass = "text-center font-medium tabular-nums";
+const matrixRowHeaderClass =
+  "px-3 py-2 text-left align-middle font-medium whitespace-nowrap text-text-primary";
 
 interface ReportSet {
   dailyQueue: DailyQueueReport;
@@ -55,12 +100,12 @@ function runTitle(run: AccuracyRun): string {
 
 function sampleLabel(run: AccuracyRun): string {
   if (run.source === "harness") {
-    return `${run.sample.labelled_cases} Encounters scored offline · no database involved`;
+    return `${run.sample.labelled_cases} encounters scored offline · no database involved`;
   }
   if (run.source === "evaluation") {
-    return `${run.sample.resolved_assessments} stored evaluation-run Assessments · ground truth held in its own column`;
+    return `${run.sample.resolved_assessments} stored evaluation-run assessments · ground truth held in its own column`;
   }
-  return `${run.sample.resolved_assessments} of ${run.sample.labelled_cases} labelled cases resolved against stored Assessments`;
+  return `${run.sample.resolved_assessments} of ${run.sample.labelled_cases} labelled cases resolved against stored assessments`;
 }
 
 function matrixCell(
@@ -87,8 +132,9 @@ function matrixTotal(
 }
 
 function modeLabel(run: AccuracyRun): string {
+  const mode = run.run_mode === "cross_validated" ? "cross-validated" : run.run_mode;
   const fallback = run.fallback.enabled ? "fallback enabled" : "fallback disabled";
-  return `${run.run_mode} · ${fallback}`;
+  return `${mode} · ${fallback}`;
 }
 
 function RateFigure({
@@ -101,10 +147,10 @@ function RateFigure({
   figure: AccuracyPriorityErrorRate;
 }) {
   return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{percent(figure.rate)}</dd>
-      <span className="muted">
+    <div className={reportStatClass}>
+      <dt className={reportStatLabelClass}>{label}</dt>
+      <dd className={reportStatFigureClass}>{percent(figure.rate)}</dd>
+      <span className={reportStatNoteClass}>
         {figure.count} of {figure.denominator} · {note}
       </span>
     </div>
@@ -113,71 +159,77 @@ function RateFigure({
 
 function AccuracyRunView({ run }: { run: AccuracyRun }) {
   return (
-    <article className="accuracy-run">
-      <div className="accuracy-run-header">
+    <article className="flex flex-col gap-4 border-t border-separator-border pt-4 first:border-t-0 first:pt-0">
+      <div className="flex flex-wrap items-start justify-between gap-2 gap-x-4">
         <div>
-          <h4>
+          <h4 className="text-title-3-medium text-text-primary">
             {runTitle(run)}
             {run.primary ? (
-              <span className="accuracy-primary">Primary</span>
+              <span
+                className={cx(
+                  "ml-2 align-middle text-caption-1-medium text-text-tertiary",
+                  figureClass,
+                )}
+              >
+                primary
+              </span>
             ) : null}
           </h4>
-          <p className="muted">
+          <p className={reportStatNoteClass}>
             {run.run_id} · {sampleLabel(run)}
           </p>
         </div>
-        <span
-          className={`accuracy-mode ${
-            run.fallback.enabled
-              ? "accuracy-mode-enabled"
-              : "accuracy-mode-disabled"
-          }`}
-        >
+        <span className={cx(reportStatNoteClass, figureClass)}>
           {modeLabel(run)}
         </span>
       </div>
 
-      <dl className="report-stats accuracy-stats">
-        <div>
-          <dt>Accuracy</dt>
-          <dd>{percent(run.accuracy)}</dd>
-          <span className="muted">
+      <dl className={reportStatsClass}>
+        <div className={reportStatClass}>
+          <dt className={reportStatLabelClass}>Accuracy</dt>
+          <dd className={reportStatFigureClass}>{percent(run.accuracy)}</dd>
+          <span className={reportStatNoteClass}>
             {run.correct} of {run.total} correct
           </span>
         </div>
         {run.majority_baseline ? (
-          <div>
-            <dt>Majority baseline</dt>
-            <dd>{percent(run.majority_baseline.accuracy)}</dd>
+          <div className={reportStatClass}>
+            <dt className={reportStatLabelClass}>Majority baseline</dt>
+            <dd className={reportStatFigureClass}>
+              {percent(run.majority_baseline.accuracy)}
+            </dd>
             <span
-              className={
+              className={cx(
+                reportStatNoteClass,
                 run.majority_baseline.beats_baseline
-                  ? "accuracy-baseline-above"
-                  : "accuracy-baseline-below"
-              }
+                  ? "text-status-lime-text"
+                  : "font-medium text-text-error-primary",
+              )}
             >
               Model {points(run.majority_baseline.model_minus_baseline)} vs
               always-{run.majority_baseline.majority_class} ·{" "}
               {run.majority_baseline.beats_baseline
                 ? "above baseline"
-                : "BELOW baseline"}
+                : "below baseline"}
             </span>
           </div>
         ) : null}
         {run.macro_f1 !== null ? (
-          <div>
-            <dt>Macro F1</dt>
-            <dd>{percent(run.macro_f1)}</dd>
-            <span className="muted">unweighted across all three levels</span>
+          <div className={reportStatClass}>
+            <dt className={reportStatLabelClass}>Macro F1</dt>
+            <dd className={reportStatFigureClass}>{percent(run.macro_f1)}</dd>
+            <span className={reportStatNoteClass}>
+              unweighted across all three levels
+            </span>
           </div>
         ) : null}
         <RateFigure
-          label="False High-Priority"
+          label="False high priority"
           note="recommended High with a non-High truth, over every non-High truth"
           figure={run.false_high_priority}
         />
         <RateFigure
-          label="False Low-Priority"
+          label="False low priority"
           note="recommended Low with a non-Low truth, over every non-Low truth"
           figure={run.false_low_priority}
         />
@@ -186,12 +238,12 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
           note="truth-High cases called High; the complement is the missed-urgent share"
           figure={run.high_class_recall}
         />
-        <div>
-          <dt>Fallback coverage</dt>
-          <dd>
+        <div className={reportStatClass}>
+          <dt className={reportStatLabelClass}>Fallback coverage</dt>
+          <dd className={reportStatFigureClass}>
             {run.fallback.enabled ? percent(run.fallback.coverage) : "—"}
           </dd>
-          <span className="muted">
+          <span className={reportStatNoteClass}>
             {run.fallback.enabled
               ? `${run.fallback.fallback_used} of ${run.total} cases took the fallback path`
               : "not exercised in this run"}
@@ -199,101 +251,123 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
         </div>
       </dl>
 
-      <div className="admin-table-wrap">
-        <table className="admin-queue-table report-table accuracy-matrix">
-          <caption className="admin-table-caption">
-            Rows are the Machine Recommendation; columns are the ground-truth
-            Urgency Level. The diagonal is correct. Counted per Assessment, so a
-            Re-assessment adds a row of its own.
+      <div className={tableWrapClass}>
+        <table className={tableClass}>
+          <caption className={tableCaptionClass}>
+            Rows are the machine recommendation; columns are the ground-truth
+            urgency level. The diagonal is correct. Counted per assessment, so a
+            re-assessment adds a row of its own.
           </caption>
           <thead>
             <tr>
-              <th scope="col">Machine Recommendation</th>
+              <th scope="col" className={tableHeadCellClass}>
+                Machine recommendation
+              </th>
               {LEVELS.map((truth) => (
-                <th scope="col" key={truth}>
+                <th scope="col" className={tableHeadCellClass} key={truth}>
                   Truth: {truth}
                 </th>
               ))}
-              <th scope="col">Predicted</th>
+              <th scope="col" className={tableHeadCellClass}>
+                Predicted
+              </th>
             </tr>
           </thead>
           <tbody>
             {LEVELS.map((machine) => (
-              <tr key={machine}>
-                <th scope="row">
-                  <span className={`urgency-badge ${urgencyClass(machine)}`}>
-                    {machine}
-                  </span>
+              <tr key={machine} className={tableRowClass}>
+                <th
+                  scope="row"
+                  className={cx(
+                    matrixRowHeaderClass,
+                    urgencyTextClass(machine),
+                  )}
+                >
+                  {machine}
                 </th>
                 {LEVELS.map((truth) => (
                   <td
                     key={truth}
                     className={
                       machine === truth
-                        ? "accuracy-matrix-correct"
-                        : "accuracy-matrix-miss"
+                        ? matrixCorrectCellClass
+                        : matrixMissCellClass
                     }
                   >
                     {matrixCell(run, machine, truth)}
                   </td>
                 ))}
-                <td className="accuracy-matrix-total">
+                <td className={matrixTotalCellClass}>
                   {matrixTotal(run, "machine_recommendation", machine)}
                 </td>
               </tr>
             ))}
-            <tr>
-              <th scope="row" className="accuracy-matrix-total">
+            <tr className={tableRowClass}>
+              <th scope="row" className={matrixRowHeaderClass}>
                 Actually
               </th>
               {LEVELS.map((truth) => (
-                <td key={truth} className="accuracy-matrix-total">
+                <td key={truth} className={matrixTotalCellClass}>
                   {matrixTotal(run, "ground_truth", truth)}
                 </td>
               ))}
-              <td className="accuracy-matrix-total">{run.total}</td>
+              <td className={matrixTotalCellClass}>{run.total}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div className="admin-table-wrap">
-        <table className="admin-queue-table report-table">
-          <caption className="admin-table-caption">
-            Precision and recall for each Urgency Level separately. A dash means
+      <div className={tableWrapClass}>
+        <table className={tableClass}>
+          <caption className={tableCaptionClass}>
+            Precision and recall for each urgency level separately. A dash means
             the level had no denominator in this run.
           </caption>
           <thead>
             <tr>
-              <th scope="col">Urgency Level</th>
-              <th scope="col">Precision</th>
-              <th scope="col">Recall</th>
-              <th scope="col">Correct</th>
-              <th scope="col">Ground truth</th>
-              <th scope="col">Predicted</th>
+              <th scope="col" className={tableHeadCellClass}>
+                Urgency level
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Precision
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Recall
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Correct
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Ground truth
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Predicted
+              </th>
             </tr>
           </thead>
           <tbody>
             {run.levels.map((level) => (
-              <tr key={level.urgency_level}>
-                <th scope="row">
-                  <span
-                    className={`urgency-badge ${urgencyClass(level.urgency_level)}`}
-                  >
-                    {level.urgency_level}
-                  </span>
+              <tr key={level.urgency_level} className={tableRowClass}>
+                <th
+                  scope="row"
+                  className={cx(
+                    matrixRowHeaderClass,
+                    urgencyTextClass(level.urgency_level),
+                  )}
+                >
+                  {level.urgency_level}
                 </th>
-                <td className="accuracy-matrix-total">
+                <td className={matrixTotalCellClass}>
                   {percent(level.precision)}
                 </td>
-                <td className="accuracy-matrix-total">
+                <td className={matrixTotalCellClass}>
                   {percent(level.recall)}
                 </td>
-                <td className="accuracy-matrix-total">{level.correct}</td>
-                <td className="accuracy-matrix-total">
+                <td className={matrixTotalCellClass}>{level.correct}</td>
+                <td className={matrixTotalCellClass}>
                   {level.ground_truth_count}
                 </td>
-                <td className="accuracy-matrix-total">
+                <td className={matrixTotalCellClass}>
                   {level.predicted_count}
                 </td>
               </tr>
@@ -303,29 +377,37 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
       </div>
 
       {run.classifier_only ? (
-        <div className="accuracy-variant">
-          <h5>Classifier only · secondary, not a Machine Recommendation</h5>
-          <p className="muted report-note">
+        <div className="flex flex-col gap-2 border-t border-dashed border-separator-border pt-3">
+          <h5 className="text-caption-1-medium text-text-secondary">
+            Classifier only — secondary, not a machine recommendation
+          </h5>
+          <p className={reportNoteClass}>
             The learned classifier without the red-flag safety layer. Shown for
             diagnosis only: the figures above are the engine&rsquo;s actual
-            Machine Recommendations.
+            machine recommendations.
           </p>
-          <dl className="report-stats accuracy-stats">
-            <div>
-              <dt>Classifier accuracy</dt>
-              <dd>{percent(run.classifier_only.accuracy)}</dd>
-              <span className="muted">
+          <dl className={reportStatsClass}>
+            <div className={reportStatClass}>
+              <dt className={reportStatLabelClass}>Classifier accuracy</dt>
+              <dd className={reportStatFigureClass}>
+                {percent(run.classifier_only.accuracy)}
+              </dd>
+              <span className={reportStatNoteClass}>
                 {run.classifier_only.correct} of {run.classifier_only.total}{" "}
                 correct
               </span>
             </div>
-            <div>
-              <dt>Classifier macro F1</dt>
-              <dd>{percent(run.classifier_only.macro_f1)}</dd>
-              <span className="muted">without the safety layer</span>
+            <div className={reportStatClass}>
+              <dt className={reportStatLabelClass}>Classifier macro F1</dt>
+              <dd className={reportStatFigureClass}>
+                {percent(run.classifier_only.macro_f1)}
+              </dd>
+              <span className={reportStatNoteClass}>
+                without the safety layer
+              </span>
             </div>
             <RateFigure
-              label="Classifier False Low-Priority"
+              label="Classifier false low priority"
               note="recommended Low with a non-Low truth"
               figure={run.classifier_only.false_low_priority}
             />
@@ -338,7 +420,7 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
         </div>
       ) : null}
 
-      <p className="muted report-note accuracy-provenance">
+      <p className={reportNoteClass}>
         Ground truth: <strong>{run.ground_truth.name}</strong> (
         {run.ground_truth.version}) · {run.ground_truth.citation}
         {run.dataset ? ` · Dataset: ${run.dataset}` : null}
@@ -351,17 +433,17 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
       </p>
 
       {run.sample.missing_assessments.length > 0 ? (
-        <p className="notice notice-warning">
+        <p className={noticeClass.warning}>
           {run.sample.missing_assessments.length} labelled case(s) reference an
-          Assessment that is not stored and are excluded:{" "}
+          assessment that is not stored and are excluded:{" "}
           {run.sample.missing_assessments.join(", ")}.
         </p>
       ) : null}
 
       {run.sample.inconsistent_recommendations.length > 0 ? (
-        <p className="notice notice-warning">
+        <p className={noticeClass.warning}>
           {run.sample.inconsistent_recommendations.length} case(s) record a
-          recommendation that differs from the stored Assessment. The stored,
+          recommendation that differs from the stored assessment. The stored,
           immutable recommendation was used:{" "}
           {run.sample.inconsistent_recommendations.join(", ")}.
         </p>
@@ -372,48 +454,56 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
 
 function OverrideFigures({ overrides }: { overrides: AccuracyOverrideMetrics }) {
   return (
-    <div className="accuracy-overrides">
-      <div className="report-header">
-        <h4>Overrides</h4>
-        <p className="muted">
-          Across all {overrides.assessments} stored Assessments · where staff
+    <div className="flex flex-col gap-3 border-t border-separator-border pt-4">
+      <div className={reportHeaderClass}>
+        <h4 className="text-title-3-medium text-text-primary">Overrides</h4>
+        <p className={reportStatNoteClass}>
+          Across all {overrides.assessments} stored assessments · where staff
           disagreed with the engine
         </p>
       </div>
-      <dl className="report-stats accuracy-stats">
-        <div>
-          <dt>Override rate</dt>
-          <dd>{percent(overrides.rate)}</dd>
-          <span className="muted">
+      <dl className={reportStatsClass}>
+        <div className={reportStatClass}>
+          <dt className={reportStatLabelClass}>Override rate</dt>
+          <dd className={reportStatFigureClass}>{percent(overrides.rate)}</dd>
+          <span className={reportStatNoteClass}>
             {overrides.overridden_assessments} of {overrides.assessments}{" "}
-            Assessments carry an Override
+            assessments carry an override
           </span>
         </div>
-        <div>
-          <dt>Override records</dt>
-          <dd>{overrides.overrides}</dd>
-          <span className="muted">one row per human act</span>
+        <div className={reportStatClass}>
+          <dt className={reportStatLabelClass}>Override records</dt>
+          <dd className={reportStatFigureClass}>{overrides.overrides}</dd>
+          <span className={reportStatNoteClass}>one row per human act</span>
         </div>
       </dl>
-      <div className="admin-table-wrap">
-        <table className="admin-queue-table report-table">
-          <caption className="admin-table-caption">
-            Every Override Reason in the fixed glossary set, including reasons
+      <div className={tableWrapClass}>
+        <table className={tableClass}>
+          <caption className={tableCaptionClass}>
+            Every override reason in the fixed glossary set, including reasons
             with no occurrences in this period.
           </caption>
           <thead>
             <tr>
-              <th scope="col">Override Reason</th>
-              <th scope="col">Overrides</th>
-              <th scope="col">Share</th>
+              <th scope="col" className={tableHeadCellClass}>
+                Override reason
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Overrides
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Share
+              </th>
             </tr>
           </thead>
           <tbody>
             {overrides.reasons.map((reason) => (
-              <tr key={reason.reason}>
-                <th scope="row">{reason.reason}</th>
-                <td className="accuracy-matrix-total">{reason.overrides}</td>
-                <td className="accuracy-matrix-total">
+              <tr key={reason.reason} className={tableRowClass}>
+                <th scope="row" className={matrixRowHeaderClass}>
+                  {reason.reason}
+                </th>
+                <td className={matrixTotalCellClass}>{reason.overrides}</td>
+                <td className={matrixTotalCellClass}>
                   {percent(reason.share)}
                 </td>
               </tr>
@@ -432,13 +522,15 @@ function AccuracyEvaluation({
 }) {
   return (
     <section
-      className="report-block report-block-featured"
+      className={reportBlockFeaturedClass}
       aria-labelledby="accuracy-evaluation-report"
     >
-      <div className="report-header">
-        <h3 id="accuracy-evaluation-report">Accuracy Evaluation</h3>
-        <p className="muted">
-          Machine Recommendation against independent ground truth · the
+      <div className={reportHeaderClass}>
+        <h3 id="accuracy-evaluation-report" className="text-title-2-medium text-text-primary">
+          Accuracy Evaluation
+        </h3>
+        <p className={reportStatNoteClass}>
+          Machine recommendation against independent ground truth · the
           project's central evidence
         </p>
       </div>
@@ -446,14 +538,14 @@ function AccuracyEvaluation({
       {report.available ? (
         report.runs.map((run) => <AccuracyRunView key={run.run_id} run={run} />)
       ) : (
-        <div className="accuracy-empty">
-          <p className="notice notice-warning">
+        <div className="flex flex-col gap-2">
+          <p className={noticeClass.warning}>
             {report.empty_reason ??
               "No labelled evaluation run is available."}
           </p>
-          <p className="muted report-note">
+          <p className={reportNoteClass}>
             Accuracy is shown only when a run supplies independent ground-truth
-            Urgency Levels. Zero would be a claim, not a measurement, so no
+            urgency levels. Zero would be a claim, not a measurement, so no
             score is displayed.
           </p>
         </div>
@@ -513,31 +605,32 @@ export default function AdministratorReports() {
   usePolling(load, REPORT_POLL_INTERVAL_MS);
 
   return (
-    <div className="reports">
-      <div className="queue-header">
-        <p className="muted">
+    <div className={reportsClass}>
+      <div className={reportHeaderClass}>
+        <p className={mutedTextClass}>
           Read-only views derived on demand from stored records · updates every
           30 seconds
         </p>
-        <button
-          type="button"
-          className="secondary"
+        <Button
+          variant="secondary"
+          size="small"
+          leadingIcon={RiRefreshLine}
           onClick={() => {
             void load();
           }}
         >
           Refresh reports
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <p className="notice notice-error" role="status">
+        <p className={noticeClass.error} role="status">
           {error}
         </p>
       ) : null}
 
       {loading && reports === null ? (
-        <p className="muted">Loading the reports…</p>
+        <p className={mutedTextClass}>Loading the reports…</p>
       ) : null}
 
       {reports === null ? null : (
@@ -545,75 +638,110 @@ export default function AdministratorReports() {
           <AccuracyEvaluation report={reports.accuracyEvaluation} />
 
           <section
-            className="report-block"
+            className={reportBlockClass}
             aria-labelledby="daily-queue-report"
           >
-            <div className="report-header">
-              <h3 id="daily-queue-report">Daily Queue</h3>
-              <p className="muted">
+            <div className={reportHeaderClass}>
+              <h3 id="daily-queue-report" className="text-title-3-medium text-text-primary">
+                Daily Queue
+              </h3>
+              <p className={reportStatNoteClass}>
                 UTC day {reports.dailyQueue.day} · arrivals, departures and
                 backlog
               </p>
             </div>
-            <dl className="report-stats">
-              <div>
-                <dt>Volume</dt>
-                <dd>{reports.dailyQueue.volume}</dd>
-                <span className="muted">arrived</span>
+            <dl className={reportStatsClass}>
+              <div className={reportStatClass}>
+                <dt className={reportStatLabelClass}>Volume</dt>
+                <dd className={reportStatFigureClass}>
+                  {reports.dailyQueue.volume}
+                </dd>
+                <span className={reportStatNoteClass}>arrived</span>
               </div>
-              <div>
-                <dt>Throughput</dt>
-                <dd>{reports.dailyQueue.throughput}</dd>
-                <span className="muted">departed</span>
+              <div className={reportStatClass}>
+                <dt className={reportStatLabelClass}>Throughput</dt>
+                <dd className={reportStatFigureClass}>
+                  {reports.dailyQueue.throughput}
+                </dd>
+                <span className={reportStatNoteClass}>departed</span>
               </div>
-              <div>
-                <dt>Awaiting</dt>
-                <dd>{reports.dailyQueue.awaiting}</dd>
-                <span className="muted">of the day's arrivals</span>
+              <div className={reportStatClass}>
+                <dt className={reportStatLabelClass}>Awaiting</dt>
+                <dd className={reportStatFigureClass}>
+                  {reports.dailyQueue.awaiting}
+                </dd>
+                <span className={reportStatNoteClass}>
+                  of the day's arrivals
+                </span>
               </div>
             </dl>
-            <p className="muted report-note">
-              Volume counts Encounters that arrived on the day; throughput
+            <p className={reportNoteClass}>
+              Volume counts encounters that arrived on the day; throughput
               counts those that departed on it, even if they arrived earlier.
             </p>
           </section>
 
           <section
-            className="report-block"
+            className={reportBlockClass}
             aria-labelledby="priority-distribution-report"
           >
-            <div className="report-header">
-              <h3 id="priority-distribution-report">Priority Distribution</h3>
-              <p className="muted">
-                One Urgency Level per Encounter · {reports.priorityDistribution.total}{" "}
-                Encounters
+            <div className={reportHeaderClass}>
+              <h3
+                id="priority-distribution-report"
+                className="text-title-3-medium text-text-primary"
+              >
+                Priority Distribution
+              </h3>
+              <p className={reportStatNoteClass}>
+                One urgency level per encounter ·{" "}
+                {reports.priorityDistribution.total} encounters
               </p>
             </div>
-            <div className="admin-table-wrap">
-              <table className="admin-queue-table report-table">
-                <caption className="admin-table-caption">
-                  The governing Final Decision of each Encounter, including
-                  departed Encounters and re-assessed ones
+            <div className={tableWrapClass}>
+              <table className={tableClass}>
+                <caption className={tableCaptionClass}>
+                  The governing final decision of each encounter, including
+                  departed encounters and re-assessed ones
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Urgency</th>
-                    <th scope="col">Encounters</th>
-                    <th scope="col">Share</th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Urgency
+                    </th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Encounters
+                    </th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Share
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {reports.priorityDistribution.levels.map((level) => (
-                    <tr key={level.urgency_level}>
-                      <td>
-                        <span
-                          className={`urgency-badge ${urgencyClass(level.urgency_level)}`}
-                        >
-                          {level.urgency_level}
-                        </span>
+                    <tr key={level.urgency_level} className={tableRowClass}>
+                      <td
+                        className={cx(
+                          tableCellClass,
+                          "font-medium",
+                          urgencyTextClass(level.urgency_level),
+                        )}
+                      >
+                        {level.urgency_level}
                       </td>
-                      <td className="admin-waiting">{level.encounters}</td>
-                      <td className="admin-waiting">
+                      <td
+                        className={cx(
+                          tableCellClass,
+                          "whitespace-nowrap tabular-nums",
+                        )}
+                      >
+                        {level.encounters}
+                      </td>
+                      <td
+                        className={cx(
+                          tableCellClass,
+                          "whitespace-nowrap tabular-nums",
+                        )}
+                      >
                         {reports.priorityDistribution.total === 0
                           ? "—"
                           : `${Math.round(
@@ -630,57 +758,79 @@ export default function AdministratorReports() {
           </section>
 
           <section
-            className="report-block"
+            className={reportBlockClass}
             aria-labelledby="performance-report"
           >
-            <div className="report-header">
-              <h3 id="performance-report">Performance</h3>
-              <p className="muted">
-                Departed Encounters only · {reports.performance.completed}{" "}
+            <div className={reportHeaderClass}>
+              <h3 id="performance-report" className="text-title-3-medium text-text-primary">
+                Performance
+              </h3>
+              <p className={reportStatNoteClass}>
+                Departed encounters only · {reports.performance.completed}{" "}
                 completed
               </p>
             </div>
-            <dl className="report-stats">
-              <div>
-                <dt>Average waiting</dt>
-                <dd>
+            <dl className={reportStatsClass}>
+              <div className={reportStatClass}>
+                <dt className={reportStatLabelClass}>Average waiting</dt>
+                <dd className={reportStatFigureClass}>
                   {formatWaiting(
                     Math.round(reports.performance.average_waiting_seconds),
                   )}
                 </dd>
-                <span className="muted">arrival to departure</span>
+                <span className={reportStatNoteClass}>arrival to departure</span>
               </div>
-              <div>
-                <dt>Average processing</dt>
-                <dd>
+              <div className={reportStatClass}>
+                <dt className={reportStatLabelClass}>Average processing</dt>
+                <dd className={reportStatFigureClass}>
                   {formatWaiting(
                     Math.round(reports.performance.average_processing_seconds),
                   )}
                 </dd>
-                <span className="muted">assessment to departure</span>
+                <span className={reportStatNoteClass}>
+                  assessment to departure
+                </span>
               </div>
             </dl>
             {reports.performance.entries.length > 0 ? (
-              <div className="admin-table-wrap report-table-wrap">
-                <table className="admin-queue-table report-table">
-                  <caption className="admin-table-caption">
-                    Time waiting and processing for each departed Encounter
+              <div className={cx(tableWrapClass, "max-h-72 overflow-y-auto")}>
+                <table className={tableClass}>
+                  <caption className={tableCaptionClass}>
+                    Time waiting and processing for each departed encounter
                   </caption>
                   <thead>
                     <tr>
-                      <th scope="col">Encounter</th>
-                      <th scope="col">Waiting</th>
-                      <th scope="col">Processing</th>
+                      <th scope="col" className={tableHeadCellClass}>
+                        Encounter
+                      </th>
+                      <th scope="col" className={tableHeadCellClass}>
+                        Waiting
+                      </th>
+                      <th scope="col" className={tableHeadCellClass}>
+                        Processing
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {reports.performance.entries.map((entry) => (
-                      <tr key={entry.encounter_id}>
-                        <td>#{entry.encounter_id}</td>
-                        <td className="admin-waiting">
+                      <tr key={entry.encounter_id} className={tableRowClass}>
+                        <td className={tableCellClass}>
+                          #{entry.encounter_id}
+                        </td>
+                        <td
+                          className={cx(
+                            tableCellClass,
+                            "whitespace-nowrap tabular-nums",
+                          )}
+                        >
                           {formatWaiting(entry.waiting_seconds)}
                         </td>
-                        <td className="admin-waiting">
+                        <td
+                          className={cx(
+                            tableCellClass,
+                            "whitespace-nowrap tabular-nums",
+                          )}
+                        >
                           {formatWaiting(entry.processing_seconds)}
                         </td>
                       </tr>
@@ -689,9 +839,9 @@ export default function AdministratorReports() {
                 </table>
               </div>
             ) : (
-              <p className="muted">
-                No Encounter has departed yet, so there is no waiting or
-                processing time to show.
+              <p className={mutedTextClass}>
+                No encounter has departed yet, so there is no waiting or
+                processing time to show
               </p>
             )}
           </section>

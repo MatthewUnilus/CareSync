@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+import { Select, SelectItem } from "@/components/base/select/select";
+import { toast } from "@/components/base/toast/toast";
+
 import { api, ApiError } from "./api";
 import type { Encounter, Sex } from "./api";
-import IntakeFields from "./IntakeFields";
+import { cardClass } from "./design";
+import IntakeFields, { NumberField } from "./IntakeFields";
 import { buildIntake, intakeFormValues } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
 
@@ -51,11 +57,6 @@ const EMPTY_REASSESS_FORM: IntakeFormValues = {
   notes: "",
 };
 
-interface Notice {
-  kind: "success" | "error";
-  text: string;
-}
-
 function sexLabel(sex: Sex): string {
   return SEX_OPTIONS.find((option) => option.value === sex)?.label ?? sex;
 }
@@ -64,11 +65,20 @@ function formatInstant(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+function errorText(caught: unknown): string {
+  return caught instanceof ApiError
+    ? caught.message
+    : "Unable to reach the server.";
+}
+
+const fieldsetClass = "grid min-w-0 gap-3";
+const legendClass = "pb-1 text-caption-1-medium text-text-tertiary";
+const gridClass = "grid gap-x-4 gap-y-4 sm:grid-cols-2";
+
 export default function IntakeScreen() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [savedEncounter, setSavedEncounter] = useState<Encounter | null>(null);
   const [recent, setRecent] = useState<Encounter[]>([]);
-  const [notice, setNotice] = useState<Notice | null>(null);
   const [pending, setPending] = useState(false);
 
   // A correction to captured intake is expressed as a Re-assessment. The
@@ -101,27 +111,23 @@ export default function IntakeScreen() {
     setForm(EMPTY_FORM);
     setSavedEncounter(null);
     setReassessing(null);
-    setNotice(null);
   }
 
   function startReassessment(encounter: Encounter) {
     setReassessing(encounter);
     setReassessForm(intakeFormValues(encounter.intake));
-    setNotice(null);
   }
 
   function cancelReassessment() {
     setReassessing(null);
-    setNotice(null);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice(null);
     setPending(true);
     try {
       if (form.sex === "") {
-        setNotice({ kind: "error", text: "Select the Patient's sex." });
+        toast.error("Select the Patient's sex.");
         return;
       }
       const { body: patient, status } = await api.registerPatient({
@@ -133,22 +139,14 @@ export default function IntakeScreen() {
       });
       const encounter = await api.openEncounter(patient.id, buildIntake(form));
       setSavedEncounter(encounter);
-      setNotice({
-        kind: "success",
-        text:
-          status === 201
-            ? `New Patient ${patient.full_name} registered — Encounter #${encounter.id} opened.`
-            : `Existing Patient record for ${patient.full_name} reused — Encounter #${encounter.id} opened.`,
-      });
+      toast.success(
+        status === 201
+          ? `New patient ${patient.full_name} registered — encounter #${encounter.id} opened`
+          : `Existing patient record for ${patient.full_name} reused — encounter #${encounter.id} opened`,
+      );
       await refreshRecent();
     } catch (caught) {
-      setNotice({
-        kind: "error",
-        text:
-          caught instanceof ApiError
-            ? caught.message
-            : "Unable to reach the server.",
-      });
+      toast.error(errorText(caught));
     } finally {
       setPending(false);
     }
@@ -159,7 +157,6 @@ export default function IntakeScreen() {
     if (!reassessing) {
       return;
     }
-    setNotice(null);
     setReassessPending(true);
     try {
       const { body: updated } = await api.reassessEncounter(
@@ -168,19 +165,12 @@ export default function IntakeScreen() {
       );
       setReassessing(updated);
       setReassessForm(intakeFormValues(updated.intake));
-      setNotice({
-        kind: "success",
-        text: `Re-assessment recorded for Encounter #${updated.id}. The new Assessment now governs the Queue.`,
-      });
+      toast.success(
+        `Re-assessment recorded for encounter #${updated.id}. The new assessment now governs the queue.`,
+      );
       await refreshRecent();
     } catch (caught) {
-      setNotice({
-        kind: "error",
-        text:
-          caught instanceof ApiError
-            ? caught.message
-            : "Unable to reach the server.",
-      });
+      toast.error(errorText(caught));
     } finally {
       setReassessPending(false);
     }
@@ -188,81 +178,78 @@ export default function IntakeScreen() {
 
   return (
     <>
-      <section className="card">
-        <h2>Register Patient and open Encounter</h2>
-        <p className="muted">
-          Fields marked <span className="required-mark">*</span> are required
-          before an assessment can run. Notes are optional.
+      <section className={cardClass}>
+        <h2 className="text-title-3-medium text-text-primary">
+          Register patient and open encounter
+        </h2>
+        <p className="text-body-regular text-text-secondary">
+          Fields marked <span className="text-text-error-primary">*</span> are
+          required before an assessment can run. Notes are optional.
         </p>
 
-        <form className="stack" onSubmit={handleSubmit}>
-          <fieldset className="intake-fieldset">
-            <legend>Patient</legend>
-            <div className="intake-grid">
-              <label className="span-all">
-                Full name <span className="required-mark">*</span>
-                <input
-                  required
-                  autoComplete="name"
-                  value={form.fullName}
-                  onChange={(event) => update("fullName", event.target.value)}
-                />
-              </label>
-              <label>
-                Age in years <span className="required-mark">*</span>
-                <input
-                  type="number"
-                  required
-                  min={0}
-                  max={120}
-                  step={1}
-                  value={form.age}
-                  onChange={(event) => update("age", event.target.value)}
-                />
-              </label>
-              <label>
-                Sex <span className="required-mark">*</span>
-                <select
-                  required
-                  value={form.sex}
-                  onChange={(event) =>
-                    update("sex", event.target.value as Sex | "")
-                  }
-                >
-                  <option value="" disabled>
-                    Select…
-                  </option>
-                  {SEX_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="span-all">
-                Contact phone <span className="required-mark">*</span>
-                <input
-                  required
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="07700 900123"
-                  value={form.phone}
-                  onChange={(event) => update("phone", event.target.value)}
-                />
-              </label>
-              <label className="span-all">
-                Contact email
-                <input
-                  type="email"
-                  autoComplete="email"
-                  value={form.email}
-                  onChange={(event) => update("email", event.target.value)}
-                />
-              </label>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <fieldset className={fieldsetClass}>
+            <legend className={legendClass}>Patient</legend>
+            <div className={gridClass}>
+              <Input
+                className="col-span-full"
+                label="Full name"
+                isRequired
+                autoComplete="name"
+                value={form.fullName}
+                onChange={(value) => update("fullName", value)}
+              />
+              <NumberField
+                label="Age in years"
+                min={0}
+                max={120}
+                step={1}
+                inputMode="numeric"
+                value={form.age}
+                onChange={(value) => update("age", value)}
+              />
+              <Select
+                label="Sex"
+                isRequired
+                placeholder="Select…"
+                className="w-full"
+                selectedKey={form.sex === "" ? null : form.sex}
+                onSelectionChange={(key) =>
+                  update("sex", (key as Sex | null) ?? "")
+                }
+              >
+                {SEX_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    id={option.value}
+                    textValue={option.label}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </Select>
+              <Input
+                className="col-span-full"
+                label="Contact phone"
+                isRequired
+                type="tel"
+                autoComplete="tel"
+                placeholder="07700 900123"
+                value={form.phone}
+                onChange={(value) => update("phone", value)}
+              />
+              <Input
+                className="col-span-full"
+                label="Contact email"
+                type="email"
+                autoComplete="email"
+                value={form.email}
+                onChange={(value) => update("email", value)}
+              />
             </div>
-            <p className="muted">
+            <p className="text-body-2-regular text-text-secondary">
               Registering the same name and phone number again reuses the
-              existing Patient record.
+              existing patient record
             </p>
           </fieldset>
 
@@ -275,114 +262,122 @@ export default function IntakeScreen() {
             complaintRows={3}
           />
 
-          <div className="row">
-            <button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Open Encounter"}
-            </button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={pending}>
+              {pending ? "Saving…" : "Open encounter"}
+            </Button>
             {savedEncounter ? (
               <>
-                <button
-                  type="button"
-                  className="secondary"
+                <Button
+                  variant="secondary"
                   onClick={() => startReassessment(savedEncounter)}
                 >
-                  Re-assess this Encounter
-                </button>
-                <button type="button" className="secondary" onClick={reset}>
-                  Start a new Encounter
-                </button>
+                  Re-assess this encounter
+                </Button>
+                <Button variant="secondary" onClick={reset}>
+                  Start a new encounter
+                </Button>
               </>
             ) : null}
           </div>
-
-          {notice ? (
-            <p className={`notice notice-${notice.kind}`} role="status">
-              {notice.text}
-            </p>
-          ) : null}
         </form>
       </section>
 
       {reassessing ? (
-        <section className="card">
-          <h2>Re-assess Encounter #{reassessing.id}</h2>
-          <p className="muted">
-            Intake is frozen once its Triage Assessment exists. To correct a
-            typo, record the Encounter&rsquo;s current condition here: this
-            appends a new Assessment and the earlier one stays on record.
+        <section className={cardClass}>
+          <h2 className="text-title-3-medium text-text-primary">
+            Re-assess encounter #{reassessing.id}
+          </h2>
+          <p className="text-body-regular text-text-secondary">
+            Intake is frozen once its triage assessment exists. To correct a
+            typo, record the encounter&rsquo;s current condition here: this
+            appends a new assessment and the earlier one stays on record.
           </p>
-          <dl className="facts">
+          <dl className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-x-4 gap-y-3">
             <div>
-              <dt>Patient</dt>
-              <dd>{reassessing.patient.full_name}</dd>
+              <dt className={legendClass}>Patient</dt>
+              <dd className="text-body-semibold text-text-primary wrap-anywhere">
+                {reassessing.patient.full_name}
+              </dd>
             </div>
             <div>
-              <dt>Age</dt>
-              <dd>{reassessing.patient.age}</dd>
+              <dt className={legendClass}>Age</dt>
+              <dd className="text-body-semibold text-text-primary">
+                {reassessing.patient.age}
+              </dd>
             </div>
             <div>
-              <dt>Sex</dt>
-              <dd>{sexLabel(reassessing.patient.sex)}</dd>
+              <dt className={legendClass}>Sex</dt>
+              <dd className="text-body-semibold text-text-primary">
+                {sexLabel(reassessing.patient.sex)}
+              </dd>
             </div>
             <div>
-              <dt>Arrived</dt>
-              <dd>{formatInstant(reassessing.arrived_at)}</dd>
+              <dt className={legendClass}>Arrived</dt>
+              <dd className="text-body-semibold text-text-primary">
+                {formatInstant(reassessing.arrived_at)}
+              </dd>
             </div>
           </dl>
 
-          <form className="stack" onSubmit={handleReassess}>
+          <form className="flex flex-col gap-4" onSubmit={handleReassess}>
             <IntakeFields
               legend="Current intake"
               form={reassessForm}
               onChange={setReassessForm}
             />
-            <div className="row">
-              <button type="submit" disabled={reassessPending}>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={reassessPending}>
                 {reassessPending ? "Re-assessing…" : "Save and re-assess"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={cancelReassessment}
-              >
+              </Button>
+              <Button variant="secondary" onClick={cancelReassessment}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         </section>
       ) : null}
 
-      <section className="card">
-        <h2>Recent Encounters</h2>
-        <p className="muted">
-          Intake is locked once the Encounter&rsquo;s Triage Assessment exists,
-          which is as soon as the Encounter opens. A correction is therefore an
-          explicit Re-assessment, prefilled with the current intake. This list is
-          by arrival, not the Queue.
+      <section className={cardClass}>
+        <h2 className="text-title-3-medium text-text-primary">
+          Recent encounters
+        </h2>
+        <p className="text-body-regular text-text-secondary">
+          Intake is locked once the encounter&rsquo;s triage assessment exists,
+          which is as soon as the encounter opens. A correction is therefore an
+          explicit re-assessment, prefilled with the current intake. This list
+          is by arrival, not the queue.
         </p>
         {recent.length === 0 ? (
-          <p className="muted">No Encounters yet.</p>
+          <p className="text-body-regular text-text-secondary">
+            No encounters yet
+          </p>
         ) : (
-          <ul className="encounter-list">
+          <ul className="flex flex-col gap-3">
             {recent.map((encounter) => (
-              <li key={encounter.id} className="encounter-item">
-                <div className="encounter-text">
-                  <strong>{encounter.patient.full_name}</strong>
-                  <p className="muted">
+              <li
+                key={encounter.id}
+                className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-separator-border bg-background-secondary-default p-4"
+              >
+                <div className="min-w-0 flex-1 basis-48">
+                  <p className="text-body-medium font-medium text-text-primary">
+                    {encounter.patient.full_name}
+                  </p>
+                  <p className="text-body-2-regular text-text-secondary">
                     Encounter #{encounter.id} · arrived{" "}
                     {formatInstant(encounter.arrived_at)}
                   </p>
-                  <p className="encounter-complaint">
+                  <p className="text-body-regular text-text-primary wrap-anywhere">
                     {encounter.intake.presenting_complaint}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="secondary"
+                <Button
+                  variant="secondary"
+                  size="small"
                   onClick={() => startReassessment(encounter)}
                 >
                   Re-assess
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

@@ -1,8 +1,16 @@
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
+import { RiArrowDownSLine } from "@remixicon/react";
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+import { Toaster } from "@/components/base/toast/toast";
+import { cx } from "@/utils/cx";
+
 import { api, ApiError } from "./api";
 import type { CurrentUser, Role } from "./api";
+import { LogoMark } from "./brand";
+import { cardClass, noticeClass } from "./design";
 
 interface ShellProps {
   user: CurrentUser;
@@ -18,6 +26,9 @@ interface Notice {
 function roleLabel(role: Role): string {
   return role === "clinical" ? "Clinical" : "Administrator";
 }
+
+const summaryClass =
+  "-mx-2 -mt-2 flex cursor-pointer select-none list-none items-center justify-between rounded-lg p-2 text-title-3-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring [&::-webkit-details-marker]:hidden";
 
 export default function Shell({ user, onLogout, children }: ShellProps) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -51,73 +62,80 @@ export default function Shell({ user, onLogout, children }: ShellProps) {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">
-            TA
-          </span>
+    <div className="min-h-dvh bg-background-full text-text-primary">
+      <Toaster />
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-separator-border bg-background-primary-default px-6 py-4">
+        <div className="flex items-center gap-3">
+          <LogoMark />
           <div>
-            <strong>TriageAssist</strong>
-            <p className="muted">Clinical decision support</p>
+            <p className="text-body-medium font-medium text-text-primary">
+              TriageAssist
+            </p>
+            <p className="text-caption-1-regular text-text-secondary">
+              Clinical decision support
+            </p>
           </div>
         </div>
 
-        <div className="identity">
-          <span className={`role-badge role-${user.role}`}>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-body-medium text-text-primary">
+            {user.display_name}
+          </span>
+          <span className="text-caption-1-regular text-text-secondary">
             {roleLabel(user.role)}
           </span>
-          <span className="identity-name">{user.display_name}</span>
-          <button type="button" className="link-button" onClick={onLogout}>
+          <Button variant="secondary" size="small" onClick={onLogout}>
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
 
       <main
-        className={`shell-main${
-          user.role === "administrator" ? " shell-main-wide" : ""
-        }`}
+        className={cx(
+          "mx-auto grid w-full gap-5 px-6 pt-8 pb-12",
+          user.role === "administrator" ? "max-w-7xl" : "max-w-6xl",
+        )}
       >
         {children}
 
-        <section className="card">
-          <h2>Change password</h2>
-          <form onSubmit={handleChangePassword} className="stack">
-            <label>
-              Current password
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-            </label>
-            <label>
-              New password
-              <input
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </label>
-            <button type="submit" disabled={changingPassword}>
-              {changingPassword ? "Changing…" : "Change password"}
-            </button>
+        <details className={cx(cardClass, "group")}>
+          <summary className={summaryClass}>
+            Change password
+            <RiArrowDownSLine className="size-5 text-text-tertiary transition-transform group-open:rotate-180" />
+          </summary>
+          <form
+            onSubmit={handleChangePassword}
+            className="flex flex-col gap-4 pt-2"
+          >
+            <Input
+              label="Current password"
+              type="password"
+              autoComplete="current-password"
+              isRequired
+              value={currentPassword}
+              onChange={setCurrentPassword}
+            />
+            <Input
+              label="New password"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              isRequired
+              value={newPassword}
+              onChange={setNewPassword}
+            />
+            <div>
+              <Button type="submit" disabled={changingPassword}>
+                {changingPassword ? "Changing…" : "Change password"}
+              </Button>
+            </div>
           </form>
           {passwordNotice ? (
-            <p
-              className={`notice notice-${passwordNotice.kind}`}
-              role="status"
-            >
+            <p className={noticeClass[passwordNotice.kind]} role="status">
               {passwordNotice.text}
             </p>
           ) : null}
-        </section>
+        </details>
       </main>
     </div>
   );

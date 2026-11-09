@@ -1,0 +1,55 @@
+/* ---------------------------------------------------------------------------
+ * TriageAssist brand layer
+ *
+ * The one sanctioned re-tint point (the same mechanism BoardUI's accent.ts
+ * uses at runtime): components keep referencing semantic tokens, this file
+ * re-points the accent ramp, the page surfaces and the two font families.
+ *
+ * Accent: deep teal, interactive stops shifted one step darker so white text
+ * on a primary button and accent text on light surfaces clear 4.5:1. The
+ * urgency colours (rose/yellow/lime) are data colour and never appear here —
+ * the chrome stays quiet graphite.
+ * --------------------------------------------------------------------------- */
+
+:root {
+  /* ----- Accent ramp (Tailwind teal, one step darker from 400 up) ---------- */
+  --color-accent-50:  #f0fdfa;
+  --color-accent-100: #ccfbf1;
+  --color-accent-200: #99f6e4;
+  --color-accent-300: #5eead4;
+  --color-accent-400: #14b8a6;
+  --color-accent-500: #0d9488;
+  --color-accent-600: #0f766e;
+  --color-accent-700: #115e59;
+  --color-accent-800: #134e4a;
+  --color-accent-900: #0b3d38;
+  --color-accent-950: #042f2e;
+
+  /* Primary button: teal-700 → teal-800 (white label ≥ 4.5:1 at every stop).
+   * BoardUI's gradient recipe stays; only the stops re-point. */
+  --gradient-button-primary-default:  linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+  --gradient-button-primary-hover:    linear-gradient(180deg, #0d9488 0%, #0f766e 100%);
+  --gradient-button-primary-active:   linear-gradient(180deg, #115e59 0%, #134e4a 100%);
+
+  /* ----- Page surfaces: cool graphite tint, white cards over it ------------ */
+  --color-background-full:              #f1f4f8;
+  --color-background-secondary-default: #f7f9fb;
+  --color-background-secondary-hover:   #edf1f5;
+
+  /* ----- Type: IBM Plex, the instrument voice ------------------------------ */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif,
+               system-ui, "Segoe UI", sans-serif, "Segoe UI Emoji",
+               "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo,
+               Consolas, "Liberation Mono", monospace;
+}
+
+/* The light-surface overrides above sit in `:root`, which ties with `.dark`
+ * on specificity but wins on source order — without this block they would
+ * leak into dark mode. The accent re-tint deliberately carries over (dark
+ * tokens reference the accent vars), only the surfaces go back. */
+.dark {
+  --color-background-full:              var(--color-neutral-925);
+  --color-background-secondary-default: var(--color-neutral-900);
+  --color-background-secondary-hover:   var(--color-neutral-800);
+}

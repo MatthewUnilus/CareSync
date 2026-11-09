@@ -1,8 +1,13 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { AuthCard } from "@/components/application/auth/auth-card";
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+
 import { api, ApiError } from "./api";
 import type { CurrentUser } from "./api";
+import { LogoMark } from "./brand";
 import { isNativePlatform } from "./platform";
 import { detectPlatform } from "./runtime";
 import {
@@ -17,10 +22,10 @@ interface LoginScreenProps {
   onLogin: (user: CurrentUser) => void;
 }
 
+const logo = <LogoMark />;
+
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const platform = detectPlatform();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [serverUrl, setServerUrl] = useState(
@@ -43,12 +48,17 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
     setServerNotice("Saved. The next request uses this address.");
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit(data: FormData) {
+    if (pending) {
+      return;
+    }
     setError(null);
     setPending(true);
     try {
-      const user = await api.login(email.trim(), password);
+      const user = await api.login(
+        String(data.get("email") ?? "").trim(),
+        String(data.get("password") ?? ""),
+      );
       onLogin(user);
     } catch (caught) {
       setError(
@@ -62,86 +72,67 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   }
 
   return (
-    <main className="centered">
-      <section className="login-card">
-        <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">
-            TA
-          </span>
-          <div>
-            <h1>TriageAssist</h1>
-            <p className="muted">Clinical decision support</p>
-          </div>
-        </div>
+    <main className="grid min-h-dvh place-items-center bg-background-full p-6">
+      <div className="flex w-full max-w-[400px] flex-col gap-4">
+        {error ? (
+          <p role="alert" className="text-body-medium text-text-error-primary">
+            {error}
+          </p>
+        ) : null}
 
-        <form onSubmit={handleSubmit} className="stack">
-          <label>
-            Email
-            <input
-              type="email"
-              name="email"
-              autoComplete="username"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-
-          <label>
-            Password
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-
-          {error ? (
-            <p className="notice notice-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          <button type="submit" disabled={pending}>
-            {pending ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+        <AuthCard
+          mode="signin"
+          providers={[]}
+          showRememberMe={false}
+          showForgotPassword={false}
+          showSwitch={false}
+          logo={logo}
+          title="Sign in to TriageAssist"
+          description="Clinical decision support"
+          onSubmit={(data) => void handleSubmit(data)}
+        />
 
         {isNativePlatform(platform) ? (
-          <details className="server-settings">
-            <summary>Server</summary>
-            <form onSubmit={handleSaveServer} className="stack">
-              <label>
-                API base URL
-                <input
-                  type="url"
-                  inputMode="url"
-                  autoComplete="off"
-                  placeholder={defaultApiBaseUrl(platform)}
-                  value={serverUrl}
-                  onChange={(event) => setServerUrl(event.target.value)}
-                />
-              </label>
-              <p className="muted">
+          <details className="rounded-3xl border border-border-button-default bg-background-primary-default p-6">
+            <summary className="cursor-pointer rounded-md text-body-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+              Server
+            </summary>
+            <form
+              onSubmit={handleSaveServer}
+              className="mt-4 flex flex-col gap-4"
+            >
+              <Input
+                label="API base URL"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                inputDir="ltr"
+                placeholder={defaultApiBaseUrl(platform)}
+                value={serverUrl}
+                onChange={setServerUrl}
+              />
+              <p className="text-body-2-regular text-text-secondary">
                 The installed app calls the API cross-origin. Leave this empty
                 for {defaultApiBaseUrl(platform)}, or enter the address the
                 device or emulator can reach.
               </p>
-              <button type="submit" className="secondary">
-                Save server
-              </button>
+              <div>
+                <Button type="submit" variant="secondary">
+                  Save server
+                </Button>
+              </div>
               {serverNotice ? (
-                <p className="notice notice-success" role="status">
+                <p
+                  role="status"
+                  className="text-body-2-regular text-text-secondary"
+                >
                   {serverNotice}
                 </p>
               ) : null}
             </form>
           </details>
         ) : null}
-      </section>
+      </div>
     </main>
   );
 }

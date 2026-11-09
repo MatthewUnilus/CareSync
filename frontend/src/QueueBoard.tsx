@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { RiRefreshLine } from "@remixicon/react";
+import { Chip } from "@/components/base/badges/chip";
+import { Button } from "@/components/base/buttons/button";
+import { Select, SelectItem } from "@/components/base/select/select";
+import { Textarea } from "@/components/base/textarea/textarea";
+import { cx } from "@/utils/cx";
+
 import { api, ApiError } from "./api";
 import type {
   OverrideReason,
@@ -8,10 +15,22 @@ import type {
   QueueSnapshot,
   UrgencyLevel,
 } from "./api";
+import {
+  cardClass,
+  figureClass,
+  mutedTextClass,
+  noticeClass,
+  sectionLabelClass,
+} from "./design";
 import IntakeFields from "./IntakeFields";
 import { buildIntake, intakeFormValues } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
-import { formatArrival, formatWaiting, urgencyClass } from "./queueDisplay";
+import {
+  formatArrival,
+  formatWaiting,
+  urgencyBorderClass,
+  urgencyTextClass,
+} from "./queueDisplay";
 import { usePolling } from "./usePolling";
 
 /*
@@ -56,7 +75,7 @@ function OverrideAction({
       })
       .catch(() => {
         if (active) {
-          setError("Unable to load the Override reasons.");
+          setError("Unable to load the override reasons.");
         }
       });
     return () => {
@@ -91,16 +110,19 @@ function OverrideAction({
   }
 
   return (
-    <div className="queue-override">
-      <p className="queue-detail-label">Override</p>
-      <p className="muted">
-        Machine Recommendation: <strong>{machineRecommendation}</strong>. An
-        Override changes the Final Decision and keeps the recommendation on
+    <div className="flex flex-col gap-3">
+      <p className={sectionLabelClass}>Override</p>
+      <p className={mutedTextClass}>
+        Machine recommendation:{" "}
+        <span className="font-medium text-text-primary">
+          {machineRecommendation}
+        </span>
+        . An override changes the final decision and keeps the recommendation on
         record.
       </p>
       {entry.assessment.override ? (
-        <p className="muted">
-          Final Decision set by{" "}
+        <p className={mutedTextClass}>
+          Final decision set by{" "}
           {entry.assessment.override.performed_by.display_name} —{" "}
           {entry.assessment.override.reason}
           {entry.assessment.override.free_text
@@ -108,65 +130,58 @@ function OverrideAction({
             : "."}
         </p>
       ) : null}
-      <form className="queue-override-form" onSubmit={submit}>
-        <label>
-          Final Decision
-          <select
-            value={finalDecision}
-            onChange={(event) =>
-              setFinalDecision(event.target.value as UrgencyLevel)
-            }
-          >
-            {URGENCY_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Reason
-          <select
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            required
-          >
-            <option value="">Select a reason</option>
-            {reasons.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
+      <form
+        className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] items-end gap-3"
+        onSubmit={submit}
+      >
+        <Select
+          label="Final decision"
+          selectedKey={finalDecision}
+          onSelectionChange={(key) => setFinalDecision(key as UrgencyLevel)}
+        >
+          {URGENCY_LEVELS.map((level) => (
+            <SelectItem key={level} id={level} textValue={level}>
+              {level}
+            </SelectItem>
+          ))}
+        </Select>
+        <Select
+          label="Reason"
+          isRequired
+          placeholder="Select a reason"
+          selectedKey={reason === "" ? null : reason}
+          onSelectionChange={(key) => setReason(key === null ? "" : String(key))}
+        >
+          {reasons.map((value) => (
+            <SelectItem key={value} id={value} textValue={value}>
+              {value}
+            </SelectItem>
+          ))}
+        </Select>
         {reason === "other" ? (
-          <label>
-            Other reason
-            <textarea
-              value={freeText}
-              onChange={(event) => setFreeText(event.target.value)}
-              rows={3}
-              maxLength={2000}
-            />
-          </label>
+          <Textarea
+            className="col-span-full"
+            label="Other reason"
+            value={freeText}
+            onChange={setFreeText}
+            rows={3}
+            maxLength={2000}
+          />
         ) : null}
         {unchanged ? (
-          <p className="muted">
-            Choose a decision different from the Machine Recommendation.
+          <p className={`col-span-full ${mutedTextClass}`}>
+            Choose a decision different from the machine recommendation
           </p>
         ) : null}
         {error ? (
-          <p className="notice notice-error" role="status">
+          <p className={`col-span-full ${noticeClass.error}`} role="status">
             {error}
           </p>
         ) : null}
-        <div className="row">
-          <button
-            type="submit"
-            disabled={saving || reason === "" || unchanged}
-          >
+        <div className="col-span-full">
+          <Button type="submit" disabled={saving || reason === "" || unchanged}>
             {saving ? "Saving…" : "Override"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -206,28 +221,28 @@ function DepartureAction({
   }
 
   return (
-    <div className="queue-departure">
-      <p className="muted">
-        Departing records the departure instant and removes this Encounter from
-        the awaiting board. The Patient, Assessments and Overrides stay on
+    <div className="flex flex-col gap-3">
+      <p className={sectionLabelClass}>Departure</p>
+      <p className={mutedTextClass}>
+        Departing records the departure instant and removes this encounter from
+        the awaiting board. The patient, assessments and overrides stay on
         record.
       </p>
       {error ? (
-        <p className="notice notice-error" role="status">
+        <p className={noticeClass.error} role="status">
           {error}
         </p>
       ) : null}
-      <div className="row">
-        <button
-          type="button"
-          className="secondary"
+      <div>
+        <Button
+          variant="secondary"
+          disabled={saving}
           onClick={() => {
             void depart();
           }}
-          disabled={saving}
         >
           {saving ? "Departing…" : "Depart"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -279,29 +294,29 @@ function ReassessmentAction({
   }
 
   return (
-    <div className="queue-reassessment">
-      <p className="queue-detail-label">Re-assessment</p>
-      <p className="muted">
-        Capture the Encounter&rsquo;s current condition and run the engine
-        again. This appends a new Triage Assessment; the earlier ones, with
-        their Overrides, stay on record, and the newest Final Decision governs
-        the Queue.
+    <div className="flex flex-col gap-3">
+      <p className={sectionLabelClass}>Re-assessment</p>
+      <p className={mutedTextClass}>
+        Capture the encounter&rsquo;s current condition and run the engine
+        again. This appends a new triage assessment; the earlier ones, with
+        their overrides, stay on record, and the newest final decision governs
+        the queue.
       </p>
-      <form className="stack" onSubmit={submit}>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
         <IntakeFields
           legend="Current intake"
           form={form}
           onChange={setForm}
         />
         {error ? (
-          <p className="notice notice-error" role="status">
+          <p className={noticeClass.error} role="status">
             {error}
           </p>
         ) : null}
-        <div className="row">
-          <button type="submit" disabled={saving}>
+        <div>
+          <Button type="submit" disabled={saving}>
             {saving ? "Re-assessing…" : "Re-assess"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -323,75 +338,92 @@ function ExpandedDetail({
   const symptomGroups = entry.assessment.recognised_symptom_groups;
 
   return (
-    <div className="queue-detail">
-      <dl className="facts">
+    <div className="col-span-full flex flex-col gap-5 border-t border-separator-border pt-5">
+      <dl className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-x-4 gap-y-3">
         <div>
-          <dt>Temperature</dt>
-          <dd>{intake.temperature_c} °C</dd>
+          <dt className={sectionLabelClass}>Temperature</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {intake.temperature_c} °C
+          </dd>
         </div>
         <div>
-          <dt>Heart rate</dt>
-          <dd>{intake.heart_rate_bpm} bpm</dd>
+          <dt className={sectionLabelClass}>Heart rate</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {intake.heart_rate_bpm} bpm
+          </dd>
         </div>
         <div>
-          <dt>Blood pressure</dt>
-          <dd>
+          <dt className={sectionLabelClass}>Blood pressure</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
             {intake.blood_pressure.systolic}/{intake.blood_pressure.diastolic}
           </dd>
         </div>
         <div>
-          <dt>Oxygen saturation</dt>
-          <dd>{intake.oxygen_saturation_percent}%</dd>
+          <dt className={sectionLabelClass}>Oxygen saturation</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {intake.oxygen_saturation_percent}%
+          </dd>
         </div>
         <div>
-          <dt>Pain level</dt>
-          <dd>{intake.pain_level} / 10</dd>
+          <dt className={sectionLabelClass}>Pain level</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {intake.pain_level} / 10
+          </dd>
         </div>
         <div>
-          <dt>Illness duration</dt>
-          <dd>{intake.illness_duration_hours} h</dd>
+          <dt className={sectionLabelClass}>Illness duration</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {intake.illness_duration_hours} h
+          </dd>
         </div>
         <div>
-          <dt>Arrived</dt>
-          <dd>{formatArrival(entry.arrived_at)}</dd>
+          <dt className={sectionLabelClass}>Arrived</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            {formatArrival(entry.arrived_at)}
+          </dd>
         </div>
         <div>
-          <dt>Encounter</dt>
-          <dd>#{entry.encounter_id}</dd>
+          <dt className={sectionLabelClass}>Encounter</dt>
+          <dd className={cx("text-body-medium text-text-primary", figureClass)}>
+            #{entry.encounter_id}
+          </dd>
         </div>
       </dl>
 
-      <div>
-        <p className="queue-detail-label">Symptom Groups</p>
+      <div className="flex flex-col gap-1">
+        <p className={sectionLabelClass}>Symptom groups</p>
         {symptomGroups.length > 0 ? (
-          <ul className="symptom-groups">
-            {symptomGroups.map((group) => (
-              <li key={group} className="symptom-group">
-                {group}
-              </li>
-            ))}
-          </ul>
+          <p className="text-body-regular text-text-primary">
+            {symptomGroups.join(" · ")}
+          </p>
         ) : (
-          <p className="muted">None recognised from the complaint text.</p>
+          <p className={mutedTextClass}>
+            None recognised from the complaint text
+          </p>
         )}
         {entry.assessment.unclassified ? (
-          <p className="notice notice-warning">
-            This complaint matched no Symptom Group and the fallback provider
+          <p className={noticeClass.warning}>
+            This complaint matched no symptom group and the fallback provider
             was unavailable or timed out. The recommendation came from the
             safety layer&rsquo;s default level. Review it before relying on it.
           </p>
         ) : null}
       </div>
 
-      <div>
-        <p className="queue-detail-label">Notes</p>
-        <p className={intake.notes ? undefined : "muted"}>
-          {intake.notes ?? "No notes recorded."}
+      <div className="flex flex-col gap-1">
+        <p className={sectionLabelClass}>Notes</p>
+        <p
+          className={
+            intake.notes
+              ? "text-body-regular wrap-anywhere text-text-primary"
+              : mutedTextClass
+          }
+        >
+          {intake.notes ?? "No notes recorded"}
         </p>
       </div>
 
-      <div>
-        <p className="queue-detail-label">Actions</p>
+      <div className="flex flex-col gap-5 border-t border-separator-border pt-5">
         <OverrideAction entry={entry} onOverridden={onOverridden} />
         <ReassessmentAction entry={entry} onReassessed={onReassessed} />
         <DepartureAction entry={entry} onDeparted={onDeparted} />
@@ -427,98 +459,113 @@ export default function QueueBoard() {
   const entries = snapshot?.entries ?? [];
 
   return (
-    <section className="card queue-board">
-      <div className="queue-header">
+    <section className={cardClass}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2>Queue</h2>
-          <p className="muted">
+          <h2 className="text-title-3-medium text-text-primary">Queue</h2>
+          <p className={mutedTextClass}>
             {entries.length === 0
-              ? "No Encounters awaiting"
-              : `${entries.length} awaiting`}{" "}
+              ? "No encounters waiting"
+              : `${entries.length} waiting`}{" "}
             · updates every 5 seconds
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary"
+        <Button
+          variant="secondary"
+          size="small"
+          leadingIcon={RiRefreshLine}
           onClick={() => {
             void load();
           }}
         >
           Refresh now
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <p className="notice notice-error" role="status">
+        <p className={noticeClass.error} role="status">
           {error}
         </p>
       ) : null}
 
       {loading && snapshot === null ? (
-        <p className="muted">Loading the Queue…</p>
+        <p className={mutedTextClass}>Loading the queue…</p>
       ) : null}
 
       {!loading && entries.length === 0 ? (
-        <p className="muted">
-          Open an Encounter from the intake screen and it will appear here.
+        <p className={mutedTextClass}>
+          Open an encounter from the intake screen and it will appear here
         </p>
       ) : null}
 
       {entries.length > 0 ? (
-        <ul className="queue-list">
+        <ul className="flex flex-col gap-3">
           {entries.map((entry) => {
             const expanded = expandedId === entry.encounter_id;
             return (
               <li
                 key={entry.encounter_id}
-                className={`queue-card ${urgencyClass(entry.urgency_level)}`}
+                className={cx(
+                  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-3 rounded-2xl border border-l-4 border-border-button-default bg-background-primary-default p-4 max-sm:grid-cols-1",
+                  urgencyBorderClass(entry.urgency_level),
+                )}
               >
-                <div className="queue-card-main">
-                  <div className="queue-card-heading">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span
-                      className={`urgency-badge ${urgencyClass(entry.urgency_level)}`}
+                      className={cx(
+                        "text-body-medium font-medium",
+                        urgencyTextClass(entry.urgency_level),
+                      )}
                     >
                       {entry.urgency_level}
                     </span>
+                    <span className="text-body-medium font-medium text-text-primary">
+                      {entry.patient.full_name}
+                    </span>
                     {entry.override_flag ? (
-                      <span
-                        className="queue-flag queue-flag-override"
-                        title={`Final Decision ${entry.assessment.final_decision} differs from Machine Recommendation ${entry.assessment.machine_recommendation}`}
+                      <Chip
+                        variant="caption"
+                        color="orange"
+                        title={`Final decision ${entry.assessment.final_decision} differs from machine recommendation ${entry.assessment.machine_recommendation}`}
                       >
                         Override
-                      </span>
+                      </Chip>
                     ) : null}
                     {entry.unclassified_flag ? (
-                      <span
-                        className="queue-flag queue-flag-unclassified"
-                        title="No Symptom Group matched and the fallback provider was unavailable or timed out; this recommendation came from the safety layer's default and needs review."
+                      <Chip
+                        variant="caption"
+                        color="purple"
+                        title="No symptom group matched and the fallback provider was unavailable or timed out; this recommendation came from the safety layer's default and needs review."
                       >
                         Unclassified
-                      </span>
+                      </Chip>
                     ) : null}
-                    <span className="queue-name">{entry.patient.full_name}</span>
                     <span
-                      className="queue-waiting"
+                      className={cx(
+                        "ml-auto text-body-medium text-text-secondary",
+                        figureClass,
+                      )}
                       title={`Waiting ${formatWaiting(entry.waiting_seconds)}`}
                     >
                       {formatWaiting(entry.waiting_seconds)}
                     </span>
                   </div>
-                  <p className="queue-complaint">
+                  <p className="line-clamp-2 wrap-anywhere text-body-regular text-text-primary">
                     {entry.intake.presenting_complaint}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="secondary queue-expand"
+                <Button
+                  variant="secondary"
+                  size="small"
+                  className="max-sm:justify-self-start"
                   aria-expanded={expanded}
                   onClick={() =>
                     setExpandedId(expanded ? null : entry.encounter_id)
                   }
                 >
                   {expanded ? "Hide details" : "Show details"}
-                </button>
+                </Button>
                 {expanded ? (
                   <ExpandedDetail
                     entry={entry}
