@@ -28,7 +28,7 @@ function roleLabel(role: Role): string {
 }
 
 const summaryClass =
-  "-mx-2 -mt-2 flex cursor-pointer select-none list-none items-center justify-between rounded-lg p-2 text-title-3-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring [&::-webkit-details-marker]:hidden";
+  "-mx-2 -mt-2 flex min-h-11 cursor-pointer select-none list-none items-center justify-between rounded-lg p-2 text-title-3-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring [&::-webkit-details-marker]:hidden";
 
 export default function Shell({ user, onLogout, children }: ShellProps) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -84,7 +84,11 @@ export default function Shell({ user, onLogout, children }: ShellProps) {
           <span className="text-caption-1-regular text-text-secondary">
             {roleLabel(user.role)}
           </span>
-          <Button variant="secondary" size="small" onClick={onLogout}>
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onClick={onLogout}
+          >
             Sign out
           </Button>
         </div>
@@ -125,7 +129,7 @@ export default function Shell({ user, onLogout, children }: ShellProps) {
               onChange={setNewPassword}
             />
             <div>
-              <Button type="submit" disabled={changingPassword}>
+              <Button type="submit" className="min-h-11" disabled={changingPassword}>
                 {changingPassword ? "Changing…" : "Change password"}
               </Button>
             </div>

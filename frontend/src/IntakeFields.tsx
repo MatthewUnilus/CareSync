@@ -75,7 +75,7 @@ export default function IntakeFields({
 
   return (
     <fieldset className="grid min-w-0 gap-3">
-      <legend className="pb-1 text-caption-1-medium text-text-tertiary">
+      <legend className="pb-1 text-caption-1-medium text-text-secondary">
         {legend}
       </legend>
       <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">

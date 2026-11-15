@@ -72,7 +72,7 @@ function errorText(caught: unknown): string {
 }
 
 const fieldsetClass = "grid min-w-0 gap-3";
-const legendClass = "pb-1 text-caption-1-medium text-text-tertiary";
+const legendClass = "pb-1 text-caption-1-medium text-text-secondary";
 const gridClass = "grid gap-x-4 gap-y-4 sm:grid-cols-2";
 
 export default function IntakeScreen() {
@@ -184,7 +184,7 @@ export default function IntakeScreen() {
         </h2>
         <p className="text-body-regular text-text-secondary">
           Fields marked <span className="text-text-error-primary">*</span> are
-          required before an assessment can run. Notes are optional.
+          required before a triage assessment can run. Notes are optional.
         </p>
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
@@ -210,6 +210,7 @@ export default function IntakeScreen() {
               />
               <Select
                 label="Sex"
+                triggerClassName="min-h-11"
                 isRequired
                 placeholder="Select…"
                 className="w-full"
@@ -263,18 +264,23 @@ export default function IntakeScreen() {
           />
 
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" className="min-h-11" disabled={pending}>
               {pending ? "Saving…" : "Open encounter"}
             </Button>
             {savedEncounter ? (
               <>
                 <Button
                   variant="secondary"
+                  className="min-h-11"
                   onClick={() => startReassessment(savedEncounter)}
                 >
                   Re-assess this encounter
                 </Button>
-                <Button variant="secondary" onClick={reset}>
+                <Button
+                  variant="secondary"
+                  className="min-h-11"
+                  onClick={reset}
+                >
                   Start a new encounter
                 </Button>
               </>
@@ -327,10 +333,18 @@ export default function IntakeScreen() {
               onChange={setReassessForm}
             />
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={reassessPending}>
+              <Button
+                type="submit"
+                className="min-h-11"
+                disabled={reassessPending}
+              >
                 {reassessPending ? "Re-assessing…" : "Save and re-assess"}
               </Button>
-              <Button variant="secondary" onClick={cancelReassessment}>
+              <Button
+                variant="secondary"
+                className="min-h-11"
+                onClick={cancelReassessment}
+              >
                 Cancel
               </Button>
             </div>
@@ -363,8 +377,16 @@ export default function IntakeScreen() {
                   <p className="text-body-medium font-medium text-text-primary">
                     {encounter.patient.full_name}
                   </p>
+                  {/*
+                   * Age and sex sit beside the name so two patients who share a
+                   * name are still distinguishable at the point of selection.
+                   * There is no medical record number in scope, so this is the
+                   * identity the prototype can honestly show.
+                   */}
                   <p className="text-body-2-regular text-text-secondary">
-                    Encounter #{encounter.id} · arrived{" "}
+                    age {encounter.patient.age} ·{" "}
+                    {sexLabel(encounter.patient.sex)} · encounter #
+                    {encounter.id} · arrived{" "}
                     {formatInstant(encounter.arrived_at)}
                   </p>
                   <p className="text-body-regular text-text-primary wrap-anywhere">
@@ -373,7 +395,7 @@ export default function IntakeScreen() {
                 </div>
                 <Button
                   variant="secondary"
-                  size="small"
+                  className="min-h-11"
                   onClick={() => startReassessment(encounter)}
                 >
                   Re-assess

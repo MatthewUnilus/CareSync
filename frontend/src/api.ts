@@ -96,6 +96,18 @@ export interface OverrideRecord {
   };
 }
 
+export interface RedFlag {
+  id: string;
+  finding: string;
+  citation: string;
+  /**
+   * Intake field names this rule keyed on, e.g. `oxygen_saturation_percent`.
+   * Empty when the rule keyed on a recognised Symptom Group rather than a
+   * measured value. The board marks exactly these fields as abnormal.
+   */
+  vitals: string[];
+}
+
 export interface Assessment {
   id: number;
   assessed_at: string;
@@ -107,6 +119,8 @@ export interface Assessment {
    * provider was unavailable or timed out. Distinct from an Override.
    */
   unclassified: boolean;
+  /** Every red flag that fired, explaining why this reached High. */
+  red_flags: RedFlag[];
   override: OverrideRecord | null;
   snapshot: AssessmentSnapshot;
   /**

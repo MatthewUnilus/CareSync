@@ -117,7 +117,11 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 device or emulator can reach.
               </p>
               <div>
-                <Button type="submit" variant="secondary">
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  className="min-h-11"
+                >
                   Save server
                 </Button>
               </div>

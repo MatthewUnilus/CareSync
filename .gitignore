@@ -5,6 +5,8 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+# pytest's tmpdir base (created when the suite runs without a system temp dir)
+pytest-of-*/
 .ruff_cache/
 .mypy_cache/
 htmlcov/

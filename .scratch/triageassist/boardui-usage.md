@@ -4,6 +4,52 @@ Installed component source lives under frontend/components/. These examples are 
 
 <!-- ============================== adoption decisions (2026-11-05) ============================== -->
 
+## Unreachable BoardUI source pruned (2026-11-10, cleanup)
+
+Sixteen components were installed but reached by nothing; all were companions of templates TriageAssist never adopted (the TanStack `data-table` demo, the `stat-cards` landing band, `patient-info-card`, and their private dependencies). Removed: `application/dashboard/stat-cards`, `application/data-table/data-table`, `application/medical/patient-info-card`, `base/badges/badge`, `base/badges/status-dot`, `base/buttons/icon-button`, `base/dropdown/dropdown`, `base/modal/modal`, `base/pagination/pagination`, `base/skeleton/skeleton`, `base/spinner/spinner`, `base/table/table`, `base/tabs/tabs`, `base/tabs/pill-tab`, `base/tooltip/tooltip`, `foundations/scroll-fade/scroll-fade`.
+
+Kept deliberately: `avatar` and `notification` (reachable via `toast`), `dropdown/menu-styles` and `utils/use-dismiss-on-outside-press` (used by `select`), `utils/directional-icon` (used by `button`), `foundations/direction`, `base/divider`, `base/input-otp`, `base/buttons/link-button`, `base/buttons/close-button`, `base/social-button`, `foundations/template-copy`, `foundations/icons/chevrons`, `utils/cx`.
+
+Consequences, since these were installed source rather than a dependency:
+
+- `@tanstack/react-table` left `frontend/package.json`. `motion` stays — `notification.tsx` imports `motion/react`, and `toast.tsx` depends on it.
+- The `.bui-table` and `.bui-skeleton` blocks (plus the sheen keyframes) and the unused shadow utilities were dropped from `styles/globals.css`; the `.recharts-wrapper` rules went too (`recharts` was never a dependency). Only reachable CSS remains.
+- `public/carousel/*` and `public/avatars/*` deleted: `AuthMediaCarousel` is exported but `LoginScreen` renders `AuthCard` with no `media` prop, and the avatars were used only by the deleted `data-table` demo.
+- Docs in this file still show registry usage for pruned items. Re-add one with `npx boardui@latest add <name>` rather than copying from here.
+- `frontend/AGENTS.md` is generated between `boardui:rules:start/end` markers and still names `scroll-fade`; that is registry guidance, not a local path.
+
+## Queue board: hierarchy, wait escalation and vital flags (2026-11-10)
+
+**The waiting figure now carries the escalation.** Every fact on a card used to be
+14px, so a six-day wait was indistinguishable from a five-minute one. The card is
+now a scan line (urgency badge → patient name 16px → age/sex → flags) above the
+waiting figure, which grows to `text-title-2-semibold` and rose past its band
+(`queueDisplay.ts`: routine < 4h, long ≥ 4h, breach ≥ 12h, critical ≥ 24h) with a
+plain-language label. `formatWaitingLong` renders days rather than `147h 19m`.
+Display only — see `docs/adr/0006`. The card surface is deliberately **not**
+tinted: tinting measurably lowered the contrast of every other word on the card.
+
+**Urgency is a filled badge, not a word.** `urgencyBadgeClass` uses the
+`bg-status-*-background` / `text-status-*-text` pair the Chip component already
+uses, which is the contrast-verified combination. It carries the level name, so
+urgency is never colour-only.
+
+**`text-text-tertiary` fails WCAG AA and is no longer used for content text.**
+Measured on real pixels it is neutral-400 at **1.8–2.6:1** on white; secondary is
+neutral-500 at **4.7:1**. `sectionLabelClass`, the intake legends and the report
+table headers moved to secondary. The distinction matters because these labels
+are load-bearing — they are how a reader tells systolic from diastolic — so they
+must not be treated as decoration. Tertiary survives only on a decorative icon.
+
+**Vital flags are driven by the server, not restated here.** `AssessmentResponse.red_flags`
+carries each fired rule with its citation and the intake fields it keyed on;
+`abnormalVitalFields` marks exactly those. One source of truth, so a threshold
+cannot drift between engine and screen. See `docs/red-flag-safety-layer.md`.
+
+**Touch targets are 44px minimum on every control.** `min-h-11` on Buttons and
+`triggerClassName="min-h-11"` on Selects (the installed control's own `py-2`
+gives 38px). Verified at 390px: no horizontal overflow, 0 controls under 44px.
+
 ## Brand layer (2026-11-05, unslop pass)
 
 **`styles/brand.css` is the one re-tint point.** Imported after `typography.css` in `globals.css`; it re-points the accent ramp (deep teal, interactive stops one step darker so white-on-primary clears 4.5:1), the primary-button gradient stops, the page surfaces (`background-full` → cool graphite `#f1f4f8`, white cards over it) and both font families (IBM Plex Sans variable, IBM Plex Mono) onto `:root`. Components keep using semantic tokens only — no hex, no raw palette classes in components. Dark mode is untouched (unused in this app).

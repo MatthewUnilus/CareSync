@@ -68,7 +68,7 @@ export default function AdministratorDashboard() {
           </div>
           <Button
             variant="secondary"
-            size="small"
+            className="min-h-11"
             leadingIcon={RiRefreshLine}
             onClick={() => {
               void load();
@@ -164,7 +164,7 @@ export default function AdministratorDashboard() {
                         </span>
                       ) : (
                         <span
-                          className="text-caption-1-regular text-text-tertiary"
+                          className="text-caption-1-regular text-text-secondary"
                           title={`Machine recommendation and final decision are both ${entry.final_decision}`}
                         >
                           Same

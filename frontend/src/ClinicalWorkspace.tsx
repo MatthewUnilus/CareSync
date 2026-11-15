@@ -20,6 +20,10 @@ export default function ClinicalWorkspace() {
 
   return (
     <>
+      {/*
+       * min-h-11 keeps the view switch on the 44px touch minimum for bedside
+       * use; the installed control's own py-1 yields a 28px target.
+       */}
       <SegmentedControl
         aria-label="Clinical views"
         className="w-fit justify-self-start"
@@ -31,8 +35,12 @@ export default function ClinicalWorkspace() {
           }
         }}
       >
-        <SegmentedControlItem id="queue">Queue</SegmentedControlItem>
-        <SegmentedControlItem id="intake">Intake</SegmentedControlItem>
+        <SegmentedControlItem id="queue" className="min-h-11 px-4">
+          Queue
+        </SegmentedControlItem>
+        <SegmentedControlItem id="intake" className="min-h-11 px-4">
+          Intake
+        </SegmentedControlItem>
       </SegmentedControl>
 
       {view === "queue" ? <QueueBoard /> : <IntakeScreen />}

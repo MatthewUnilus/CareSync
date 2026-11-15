@@ -59,7 +59,7 @@ const reportNoteClass = "max-w-2xl text-body-2-regular text-text-secondary";
 const matrixCorrectCellClass =
   "bg-status-lime-background text-center font-medium tabular-nums text-status-lime-text";
 const matrixMissCellClass =
-  "text-center tabular-nums text-text-tertiary";
+  "text-center tabular-nums text-text-secondary";
 const matrixTotalCellClass = "text-center font-medium tabular-nums";
 const matrixRowHeaderClass =
   "px-3 py-2 text-left align-middle font-medium whitespace-nowrap text-text-primary";
@@ -613,7 +613,7 @@ export default function AdministratorReports() {
         </p>
         <Button
           variant="secondary"
-          size="small"
+          className="min-h-11"
           leadingIcon={RiRefreshLine}
           onClick={() => {
             void load();

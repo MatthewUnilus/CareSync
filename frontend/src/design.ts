@@ -16,8 +16,16 @@
 export const cardClass =
   "flex min-w-0 flex-col gap-5 rounded-3xl border border-border-button-default bg-background-primary-default p-6";
 
-/** Small section label (legend, detail heading, table column head). */
-export const sectionLabelClass = "text-caption-1-medium text-text-tertiary";
+/**
+ * Small section label (legend, detail heading, table column head).
+ *
+ * `text-text-secondary` rather than `-tertiary`: the tertiary step is
+ * neutral-400, which measures ~2.6:1 on the white card surface and fails WCAG AA
+ * for text this size. Secondary is neutral-500 at ~4.7:1, which passes. The
+ * labels are load-bearing here — they are how a reader tells "systolic" from
+ * "diastolic" — so they must not be decorative.
+ */
+export const sectionLabelClass = "text-caption-1-medium text-text-secondary";
 
 /** Muted supporting copy. */
 export const mutedTextClass = "text-body-regular text-text-secondary";

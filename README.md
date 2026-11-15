@@ -183,6 +183,22 @@ uv run python -m evaluation.train_classifier
 Tickets 07 and 08 add the red-flag safety layer and the cached fallback behind
 the same boundary. Both are now in place.
 
+### Reading the Queue board
+
+The board orders by Final Decision (urgency) and then arrival time, and says so
+in its header: a long-waiting Low legitimately sits below a shorter-waiting
+Medium, which otherwise reads as a bug.
+
+The waiting figure is the loudest element on a card once it passes its band —
+routine under 4h, long at 4h, breach at 12h, critical at 24h — and past a day it
+is expressed in days, because `147h 19m` does not read as six days. Escalation is
+carried by size and weight as well as colour, so it survives colour blindness.
+
+**These bands are presentation only.** They never reorder the Queue and never
+change a stored Urgency Level; automatic re-triage and time-based escalation are
+out of scope. The rationale and the trade-off are in
+[ADR 0006](docs/adr/0006-escalate-wait-display-not-decision.md).
+
 ### Red-flag safety layer
 
 `app.red_flags` is the deterministic layer that runs **after** the classifier
@@ -207,7 +223,14 @@ judgement that the engine does not receive.
 The layer is pure and deterministic like the classifier, and iterating twenty
 predicates is microseconds, so the three-second budget holds. The composed
 result is the Machine Recommendation stored on the Assessment and the level the
-Queue orders by; no client change was needed.
+Queue orders by.
+
+Each rule also names the intake fields it keys on, and the API exposes every
+fired rule on the Assessment. So a Queue card can show **why** a presentation
+reached High — the rule's finding and its citation — and mark the exact vital
+that fired. The flags are re-derived server-side from the Assessment's frozen
+snapshot with the same rules the layer ran, so the explanation can never drift
+from the recommendation; the client holds no copy of the thresholds.
 
 ### Cached fallback for unrecognised complaints
 
@@ -647,7 +670,8 @@ frontend/
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
     AdministratorReports.tsx    Accuracy Evaluation, Daily Queue, Distribution, Performance
     usePolling.ts      shared poll-on-interval and poll-on-focus hook
-    queueDisplay.ts    shared waiting-time and urgency formatting
+    queueDisplay.ts    shared waiting-time and urgency formatting; the wait-escalation
+                       bands, and abnormal-vital marking driven by the server's red flags
     IntakeScreen.tsx   Clinical intake and recent Encounters
     Shell.tsx          post-login shell, role badge, password change
     api.ts             typed fetch wrapper; absolute URL in the native shell
