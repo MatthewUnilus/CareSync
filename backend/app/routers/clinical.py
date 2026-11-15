@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.assessments import create_triage_assessment
+from app.assessments import create_triage_assessment, inputs_from_assessment
 from app.departures import encounter_status, perform_departure
 from app.deps import DbSession, Fallback, require_role
 from app.intake import apply_intake, ensure_intake_editable
@@ -14,6 +14,7 @@ from app.overrides import perform_override
 from app.patients import find_or_create_patient
 from app.queue import awaiting_queue
 from app.reassessments import perform_reassessment
+from app.red_flags import fired_rules
 from app.schemas import (
     AssessmentResponse,
     AssessmentSnapshot,
@@ -29,6 +30,7 @@ from app.schemas import (
     PatientResponse,
     QueueEntryResponse,
     QueueResponse,
+    RedFlagResponse,
 )
 from app.timeutils import utc_now
 
@@ -323,6 +325,10 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
         for group in assessment.recognised_symptom_groups.split(",")
         if group
     ]
+    # Re-derived from the frozen snapshot with the same cited rules the safety
+    # layer ran, so the explanation shown can never disagree with the stored
+    # Machine Recommendation.
+    fired = fired_rules(inputs_from_assessment(assessment))
     return AssessmentResponse(
         id=assessment.id,
         assessed_at=assessment.assessed_at,
@@ -330,6 +336,15 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
         final_decision=assessment.final_decision,
         recognised_symptom_groups=groups,
         unclassified=assessment.unclassified,
+        red_flags=[
+            RedFlagResponse(
+                id=rule.id,
+                finding=rule.finding,
+                citation=rule.citation,
+                vitals=list(rule.vitals),
+            )
+            for rule in fired
+        ],
         override=_override_response(
             assessment.overrides[-1] if assessment.overrides else None
         ),

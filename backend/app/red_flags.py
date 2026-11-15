@@ -62,12 +62,21 @@ if TYPE_CHECKING:  # pragma: no cover - only needed by type checkers
 
 @dataclass(frozen=True)
 class RedFlagRule:
-    """One red flag, the finding it keys on, and its clinical citation."""
+    """One red flag, the finding it keys on, and its clinical citation.
+
+    ``vitals`` names the captured intake fields this rule keys on, using the
+    names in :class:`app.schemas.IntakePayload`. It is empty for the rules that
+    key on recognised Symptom Groups instead of a measured value. The board uses
+    it to mark the exact abnormal value a rule fired on, so what the clinician
+    sees highlighted is derived from these thresholds rather than restated in
+    the client.
+    """
 
     id: str
     finding: str
     citation: str
     fires: Callable[["PrioritisationInputs"], bool]
+    vitals: tuple[str, ...] = ()
 
 
 def _any_group(*groups: str) -> Callable[["PrioritisationInputs"], bool]:
@@ -93,6 +102,7 @@ RULES: tuple[RedFlagRule, ...] = (
             "esi_1_hypoxaemia"
         ),
         fires=lambda inputs: inputs.oxygen_saturation_percent < 90,
+        vitals=("oxygen_saturation_percent",),
     ),
     RedFlagRule(
         id="adult_hypoxaemia",
@@ -104,6 +114,7 @@ RULES: tuple[RedFlagRule, ...] = (
         fires=lambda inputs: (
             inputs.age >= 8 and inputs.oxygen_saturation_percent < 92
         ),
+        vitals=("oxygen_saturation_percent",),
     ),
     RedFlagRule(
         id="infant_tachycardia",
@@ -114,6 +125,7 @@ RULES: tuple[RedFlagRule, ...] = (
             "the under-3-months and 3-months-to-3-years bands)"
         ),
         fires=lambda inputs: inputs.age < 3 and inputs.heart_rate_bpm > 160,
+        vitals=("heart_rate_bpm",),
     ),
     RedFlagRule(
         id="child_tachycardia",
@@ -125,6 +137,7 @@ RULES: tuple[RedFlagRule, ...] = (
         fires=lambda inputs: (
             3 <= inputs.age < 8 and inputs.heart_rate_bpm > 140
         ),
+        vitals=("heart_rate_bpm",),
     ),
     RedFlagRule(
         id="adult_tachycardia",
@@ -134,6 +147,7 @@ RULES: tuple[RedFlagRule, ...] = (
             "RUBRIC.md rule esi_2_danger_zone_vitals"
         ),
         fires=lambda inputs: inputs.age >= 8 and inputs.heart_rate_bpm > 100,
+        vitals=("heart_rate_bpm",),
     ),
     RedFlagRule(
         id="infant_fever",
@@ -145,6 +159,7 @@ RULES: tuple[RedFlagRule, ...] = (
         fires=lambda inputs: (
             inputs.age < 1 and inputs.temperature_c > 38.0
         ),
+        vitals=("temperature_c",),
     ),
     RedFlagRule(
         id="adult_hypotension",
@@ -159,6 +174,7 @@ RULES: tuple[RedFlagRule, ...] = (
         fires=lambda inputs: (
             inputs.age >= 8 and inputs.systolic_bp < 90
         ),
+        vitals=("blood_pressure",),
     ),
     RedFlagRule(
         id="adult_severe_hypertension",
@@ -175,6 +191,7 @@ RULES: tuple[RedFlagRule, ...] = (
             inputs.age >= 8
             and (inputs.systolic_bp >= 210 or inputs.diastolic_bp >= 120)
         ),
+        vitals=("blood_pressure",),
     ),
     RedFlagRule(
         id="chest_pain",

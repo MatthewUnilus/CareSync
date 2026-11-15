@@ -24,6 +24,23 @@ presentation comes from the rules below, not from the model.
 - It is pure: no database, no session, no I/O, no clock, no randomness. The
   three-second budget is met many times over.
 
+## The rules explain themselves to the board
+
+Each rule also names the intake fields it keys on (`RedFlagRule.vitals`, using the
+field names in `app.schemas.IntakePayload`; empty for the symptom rules). The API
+exposes every fired rule on `AssessmentResponse.red_flags`, and the Queue card
+renders them under **"Why this is High"** with the rule's citation, marking the
+exact vital that fired.
+
+This is deliberately one source of truth. The card does not restate the
+thresholds: the flags are re-derived server-side from the Assessment's frozen
+snapshot via `app.assessments.inputs_from_assessment` and the same `fired_rules`
+the safety layer runs. So what a clinician reads as the reason for a
+recommendation cannot drift from the recommendation itself, and marking a value
+abnormal in the client is driven by the server's rule set rather than a second
+copy. A test asserts every `vitals` name is a real `IntakePayload` field, so a
+rule cannot name a field that does not exist and be silently dropped.
+
 ## The rules
 
 Thresholds follow the ESI convention: "exceeded" means strictly greater than

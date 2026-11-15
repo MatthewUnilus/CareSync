@@ -168,6 +168,23 @@ class OverrideRecordResponse(BaseModel):
     performed_by: OverrideActorResponse
 
 
+class RedFlagResponse(BaseModel):
+    """One red-flag rule that fired for an Assessment's captured inputs.
+
+    Exposed so the board can show *why* a presentation reached High, and mark
+    the abnormal vital it keyed on. Derived from the same cited rule set the
+    safety layer runs (``app.red_flags``); it is a read-only explanation, not a
+    new decision.
+    """
+
+    id: str
+    finding: str
+    citation: str
+    # Intake field names this rule keyed on (empty when it keyed on a
+    # recognised Symptom Group instead of a measured value).
+    vitals: list[str]
+
+
 class AssessmentResponse(BaseModel):
     id: int
     assessed_at: UtcDatetime
@@ -178,6 +195,8 @@ class AssessmentResponse(BaseModel):
     # provider was unavailable or timed out. A separate signal from an
     # Override, which is represented by ``override`` and ``override_flag``.
     unclassified: bool = False
+    # Every red flag that fired on this Assessment's frozen inputs.
+    red_flags: list[RedFlagResponse] = Field(default_factory=list)
     override: OverrideRecordResponse | None = None
     snapshot: AssessmentSnapshot
     # Set by a Re-assessment: the governing Assessment it replaced. Null on a

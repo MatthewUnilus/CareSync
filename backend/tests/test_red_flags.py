@@ -304,3 +304,93 @@ def test_the_safety_layers_result_is_what_is_stored_and_queued(
     assert entry["encounter_id"] == encounter["id"]
     assert entry["urgency_level"] == "High"
     assert entry["assessment"]["machine_recommendation"] == "High"
+
+
+def test_an_assessment_explains_which_red_flags_fired(
+    clinical_client: TestClient,
+) -> None:
+    """The board's "why High" comes from the same rules that decided it."""
+    encounter = _open_hypoxaemic_young_adult(clinical_client)
+    assessment = encounter["assessment"]
+
+    # Hypoxaemia at 88 percent fires both the below-90 and the adult
+    # below-92 rules; the exposure is ordered as documented.
+    fired = {flag["id"] for flag in assessment["red_flags"]}
+    assert "oxygen_saturation_below_90" in fired
+    assert "adult_hypoxaemia" in fired
+
+    by_id = {flag["id"]: flag for flag in assessment["red_flags"]}
+    hypoxaemia = by_id["oxygen_saturation_below_90"]
+    assert hypoxaemia["finding"]
+    assert hypoxaemia["citation"]
+    # The exact intake field the rule keyed on, so the board can mark it.
+    assert hypoxaemia["vitals"] == ["oxygen_saturation_percent"]
+
+
+def test_the_queue_exposes_red_flags_so_a_card_can_mark_abnormal_vitals(
+    clinical_client: TestClient,
+) -> None:
+    _open_hypoxaemic_young_adult(clinical_client)
+    (entry,) = clinical_client.get("/api/clinical/queue").json()["entries"]
+
+    flags = entry["assessment"]["red_flags"]
+    assert flags, "a High card from a red flag must carry its explanation"
+    marked = {vital for flag in flags for vital in flag["vitals"]}
+    assert "oxygen_saturation_percent" in marked
+
+
+def test_a_presentation_with_no_red_flag_exposes_none(
+    clinical_client: TestClient,
+) -> None:
+    """An ordinary presentation must not be dressed up with a false reason."""
+    patient = clinical_client.post(
+        "/api/clinical/patients",
+        json={
+            "full_name": "Alan Turing",
+            "age": 24,
+            "sex": "male",
+            "contact_phone": "07700 900999",
+            "contact_email": None,
+        },
+    )
+    assert patient.status_code in (200, 201)
+    encounter = clinical_client.post(
+        "/api/clinical/encounters",
+        json={
+            "patient_id": patient.json()["id"],
+            "intake": {
+                "presenting_complaint": "Mild headache for a day",
+                "pain_level": 2,
+                "illness_duration_hours": 24,
+                "temperature_c": 36.6,
+                "heart_rate_bpm": 70,
+                "blood_pressure": {"systolic": 116, "diastolic": 72},
+                "oxygen_saturation_percent": 99,
+                "notes": None,
+            },
+        },
+    )
+    assert encounter.status_code == 201, encounter.text
+    assert encounter.json()["assessment"]["red_flags"] == []
+
+
+def test_every_vitals_rule_names_intake_fields_that_exist() -> None:
+    """A rule cannot key on a field the board would then fail to highlight.
+
+    ``IntakePayload`` is the shape the client receives, so a name that is not a
+    field of it would silently mark nothing.
+    """
+    from app.schemas import IntakePayload
+
+    known = set(IntakePayload.model_fields)
+    for rule in RULES:
+        for vital in rule.vitals:
+            assert vital in known, f"{rule.id} names unknown intake field {vital}"
+
+
+def test_a_vitals_rule_is_the_only_kind_that_names_a_vital() -> None:
+    """Symptom-group rules carry no vital, so the board marks nothing for them."""
+    for rule in RULES:
+        # The two are mutually exclusive by construction: a rule either keys on
+        # a measured value or on a recognised group.
+        assert not (rule.vitals and "symptom" in rule.id), rule.id

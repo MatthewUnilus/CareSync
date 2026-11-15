@@ -36,6 +36,34 @@ def build_inputs(encounter: Encounter) -> PrioritisationInputs:
     )
 
 
+def inputs_from_assessment(assessment: TriageAssessment) -> PrioritisationInputs:
+    """Rebuild the engine inputs from an Assessment's frozen snapshot.
+
+    The snapshot is the durable record of what the recommendation was made from
+    (the Encounter's intake is a separate, later-editable row only while no
+    Assessment exists). Rebuilding from it lets a reader re-derive the red flags
+    for a stored Assessment, so what the board shows as "why this is High" is
+    computed from the same thresholds the recommendation used and cannot drift
+    from it.
+    """
+    return PrioritisationInputs(
+        presenting_complaint=assessment.presenting_complaint,
+        age=assessment.patient_age,
+        pain_level=assessment.pain_level,
+        illness_duration_hours=assessment.illness_duration_hours,
+        temperature_c=assessment.temperature_c,
+        heart_rate_bpm=assessment.heart_rate_bpm,
+        systolic_bp=assessment.systolic_bp,
+        diastolic_bp=assessment.diastolic_bp,
+        oxygen_saturation_percent=assessment.oxygen_saturation_percent,
+        recognised_symptom_groups=tuple(
+            group
+            for group in assessment.recognised_symptom_groups.split(",")
+            if group
+        ),
+    )
+
+
 def create_triage_assessment(
     session: Session,
     encounter: Encounter,
