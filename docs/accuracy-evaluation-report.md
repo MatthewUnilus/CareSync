@@ -135,6 +135,24 @@ resolved cases. **Unclassified rate** is the subset the fallback could not
 classify. Neither enters the accuracy figure. A fallback-disabled run shows
 coverage as "not exercised", not as zero.
 
+## Reading the per-tier figures
+
+Medium is expected to be the weakest tier, and a reader should not read that as
+a defect in the model. The engine's Medium is ESI 3 exactly, and ESI separates
+ESI 3 from ESI 4–5 only by *projected resource need* — the two bands have stable
+vitals by definition. The engine collects no resource information, so a stable
+ESI-3 and a stable ESI-4 encounter present it with identical inputs, and the
+tier is not separable from what the engine can see. The rubric that supplies
+ground truth models resource projection (`evaluation/rubric.py`'s `EsiResource`
+and `resource_units`); the engine does not. The asymmetry is deliberate and
+recorded in `docs/prioritisation-in-context.md`.
+
+The practical consequence is that a low Medium recall and a scattered Medium
+row in the confusion matrix are the expected shape of the result, not a sign the
+run went wrong. High recall and the False Low-Priority rate carry the
+safety-relevant signal; Medium's figures should be read as measuring the limit
+of the feature set rather than the skill of the classifier.
+
 ## Run mode
 
 Two mode facts are displayed separately and never inferred from Assessment

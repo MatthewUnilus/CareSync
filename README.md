@@ -152,6 +152,14 @@ taking a `PrioritisationInputs` and returning exactly one `UrgencyLevel`, with n
 session and no database. It is called directly by
 `backend/tests/test_prioritisation.py`.
 
+Measured against the Emergency Severity Index it is scored on, the engine
+implements three of ESI's four decision points — A (life-saving need) and B
+(high-risk presentation) through the safety layer and the classifier's features,
+and D (danger-zone vitals) through the cited red flags — and substitutes the
+trained classifier for **C (projected resource categories)**, which it does not
+collect. That substitution is why the middle tier is the hardest to get right;
+the reasoning is in [`docs/prioritisation-in-context.md`](docs/prioritisation-in-context.md).
+
 Since ticket 06 the boundary is backed by a **trained supervised classifier**, a
 multinomial logistic regression over a structured feature vector. The vector is
 built by `app.features.build_feature_vector` from recognised Symptom Groups,
