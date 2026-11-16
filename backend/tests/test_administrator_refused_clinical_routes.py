@@ -47,6 +47,18 @@ CLINICAL_ROUTE_CASES: list[tuple[str, str, str, dict[str, Any] | None]] = [
         "/api/clinical/encounters",
         None,
     ),
+    (
+        "GET",
+        "/api/clinical/patients",
+        "/api/clinical/patients?q=ada",
+        None,
+    ),
+    (
+        "GET",
+        "/api/clinical/patients/{patient_id}/encounters",
+        "/api/clinical/patients/1/encounters",
+        None,
+    ),
     ("GET", "/api/clinical/queue", "/api/clinical/queue", None),
     (
         "GET",

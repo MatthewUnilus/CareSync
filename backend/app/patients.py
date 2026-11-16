@@ -25,7 +25,7 @@ concurrent double submission cannot create two rows either.
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -82,6 +82,49 @@ def find_or_create_patient(
             raise
         return existing, False
     return patient, True
+
+
+def search_patients(
+    session: Session, *, query: str, limit: int
+) -> list[Patient]:
+    """Find Patients by a fragment of their name or their contact number.
+
+    This is a discovery aid, deliberately looser than the matching rule above.
+    ``find_or_create_patient`` treats two records as one person only when the
+    whole normalised name **and** the whole normalised phone are both equal;
+    that rule is untouched, and nothing here decides identity. A search may
+    match part of a name, or part of a number, and returns several candidates
+    for a human to choose between — collapsing the two would let a partial
+    name merge two people, which is exactly what the matching rule forbids.
+
+    A blank or whitespace-only query returns nothing rather than every Patient,
+    so the search cannot be used as a bulk export of the table.
+
+    The query is normalised the same way stored values are, so ``"  ADA "``
+    and ``"ada"`` search alike, and a number typed with spaces or dashes still
+    matches the digits as stored. Each predicate is applied only when its
+    normalised form is non-empty: a query with no digits must not run an empty
+    contact ``LIKE``, which would match every row.
+    """
+    name_key = normalise_name(query)
+    if not name_key:
+        return []
+
+    conditions = [Patient.name_key.contains(name_key, autoescape=True)]
+    contact_key = normalise_contact(query)
+    if contact_key:
+        conditions.append(
+            Patient.contact_key.contains(contact_key, autoescape=True)
+        )
+
+    return list(
+        session.scalars(
+            select(Patient)
+            .where(or_(*conditions))
+            .order_by(Patient.name_key, Patient.id)
+            .limit(limit)
+        ).all()
+    )
 
 
 def _find(session: Session, name_key: str, contact_key: str) -> Patient | None:

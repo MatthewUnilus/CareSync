@@ -11,7 +11,7 @@ from app.intake import apply_intake, ensure_intake_editable
 from app.models import Encounter, Override, Patient, Role, TriageAssessment, User
 from app.override_reasons import OVERRIDE_REASONS
 from app.overrides import perform_override
-from app.patients import find_or_create_patient
+from app.patients import find_or_create_patient, search_patients as patient_search
 from app.queue import awaiting_queue
 from app.reassessments import perform_reassessment
 from app.red_flags import fired_rules
@@ -26,8 +26,10 @@ from app.schemas import (
     OverrideRecordResponse,
     OverrideReasonsResponse,
     OverrideRequest,
+    PatientHistoryResponse,
     PatientRegistrationRequest,
     PatientResponse,
+    PatientSearchResponse,
     QueueEntryResponse,
     QueueResponse,
     RedFlagResponse,
@@ -104,6 +106,67 @@ def open_encounter(
     assessment = create_triage_assessment(db, encounter, fallback=fallback)
     db.commit()
     return _encounter_response(encounter, assessment)
+
+
+@router.get("/patients", response_model=PatientSearchResponse)
+def search_patients(
+    db: DbSession,
+    user: ClinicalUser,
+    q: Annotated[str, Query()] = "",
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+) -> PatientSearchResponse:
+    """Find Patients by a fragment of their name or contact number.
+
+    This is not identity resolution. ``app.patients`` matches an identity only
+    when the whole name and the whole phone are both equal; a search matches
+    part of either and returns candidates for a human to choose between. A
+    blank query returns nothing, so the route is never a bulk export.
+    """
+    patients = patient_search(db, query=q, limit=limit)
+    return PatientSearchResponse(
+        patients=[PatientResponse.model_validate(patient) for patient in patients]
+    )
+
+
+@router.get(
+    "/patients/{patient_id}/encounters",
+    response_model=PatientHistoryResponse,
+)
+def get_patient_history(
+    patient_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> PatientHistoryResponse:
+    """One Patient's Encounters over time, oldest first.
+
+    Every visit is rendered through the same helper the rest of the API uses,
+    so it shows the same Urgency Level and Final Decision. Encounters carrying
+    an ``evaluation_run_id`` are excluded, exactly as the Queue excludes them,
+    so a corpus row never reads as a real visit. An unknown Patient is a 404,
+    consistent with the encounter lookup.
+    """
+    patient = db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    encounters = db.scalars(
+        select(Encounter)
+        .where(Encounter.patient_id == patient.id)
+        .where(Encounter.evaluation_run_id.is_(None))
+        .order_by(Encounter.arrived_at, Encounter.id)
+        .options(
+            selectinload(Encounter.assessments).selectinload(
+                TriageAssessment.overrides
+            )
+        )
+    ).all()
+    return PatientHistoryResponse(
+        patient=PatientResponse.model_validate(patient),
+        encounters=[_encounter_response(encounter) for encounter in encounters],
+    )
 
 
 @router.get("/encounters", response_model=EncounterListResponse)
