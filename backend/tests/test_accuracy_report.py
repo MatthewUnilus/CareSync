@@ -1028,12 +1028,16 @@ def test_the_committed_harness_artefact_is_consumed_as_is(client: TestClient) ->
     assert pipeline["total"] == 27
     assert pipeline["sample"]["labelled_cases"] == 27
     assert pipeline["sample"]["resolved_assessments"] == 27
-    assert pipeline["accuracy"] == pytest.approx(0.592592592593)
+    # Re-anchored when respiratory rate became a captured vital: the corpus now
+    # carries a real rate and the tachypnoea red flags fire on it, so more cases
+    # are correctly raised to High. This is the safety layer doing work, not the
+    # classifier learning — the cross-validated figures above are unchanged.
+    assert pipeline["accuracy"] == pytest.approx(0.666666666667)
     assert pipeline["fallback"]["coverage"] is None
 
     assert fallback["total"] == 27
-    assert fallback["accuracy"] == pytest.approx(0.481481481481)
-    assert fallback["majority_baseline"]["model_minus_baseline"] == pytest.approx(-0.074074074074)
+    assert fallback["accuracy"] == pytest.approx(0.555555555556)
+    assert fallback["majority_baseline"]["model_minus_baseline"] == pytest.approx(0.0)
     assert fallback["majority_baseline"]["beats_baseline"] is False
     assert fallback["fallback"]["coverage"] == pytest.approx(0.37037037037)
     assert fallback["fallback"]["fallback_used"] == 10

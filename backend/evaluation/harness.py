@@ -332,6 +332,9 @@ def prioritisation_inputs_from_features(
         systolic_bp=int(features.systolic_bp),
         diastolic_bp=int(features.diastolic_bp),
         oxygen_saturation_percent=int(features.oxygen_saturation_percent),
+        # A training row that records no respiratory rate carries the sentinel,
+        # which is below every tachypnoea threshold and so fires no rule.
+        respiratory_rate_bpm=int(features.respiratory_rate_bpm),
         recognised_symptom_groups=tuple(features.recognised_symptom_groups),
     )
 
@@ -349,6 +352,7 @@ def pipeline_inputs(encounter: LabelledEncounter) -> PrioritisationInputs:
         systolic_bp=intake.systolic_bp,
         diastolic_bp=intake.diastolic_bp,
         oxygen_saturation_percent=intake.oxygen_saturation_percent,
+        respiratory_rate_bpm=intake.respiratory_rate_bpm,
         recognised_symptom_groups=recognise(intake.presenting_complaint),
     )
 

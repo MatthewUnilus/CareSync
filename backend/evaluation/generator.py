@@ -35,6 +35,7 @@ class EncounterIntake:
     illness_duration_hours: float
     temperature_c: float
     heart_rate_bpm: int
+    respiratory_rate_bpm: int
     systolic_bp: int
     diastolic_bp: int
     oxygen_saturation_percent: int
@@ -47,6 +48,7 @@ class EncounterIntake:
             "illness_duration_hours": self.illness_duration_hours,
             "temperature_c": self.temperature_c,
             "heart_rate_bpm": self.heart_rate_bpm,
+            "respiratory_rate_bpm": self.respiratory_rate_bpm,
             "systolic_bp": self.systolic_bp,
             "diastolic_bp": self.diastolic_bp,
             "oxygen_saturation_percent": self.oxygen_saturation_percent,
@@ -61,6 +63,7 @@ class EncounterIntake:
             illness_duration_hours=float(data["illness_duration_hours"]),  # type: ignore[arg-type]
             temperature_c=float(data["temperature_c"]),  # type: ignore[arg-type]
             heart_rate_bpm=int(data["heart_rate_bpm"]),  # type: ignore[arg-type]
+            respiratory_rate_bpm=int(data["respiratory_rate_bpm"]),  # type: ignore[arg-type]
             systolic_bp=int(data["systolic_bp"]),  # type: ignore[arg-type]
             diastolic_bp=int(data["diastolic_bp"]),  # type: ignore[arg-type]
             oxygen_saturation_percent=int(data["oxygen_saturation_percent"]),  # type: ignore[arg-type]
@@ -833,6 +836,7 @@ def _to_encounter(
         illness_duration_hours=presentation.illness_duration_hours,
         temperature_c=presentation.temperature_c,
         heart_rate_bpm=presentation.heart_rate_bpm,
+        respiratory_rate_bpm=presentation.respiratory_rate_bpm,
         systolic_bp=presentation.systolic_bp,
         diastolic_bp=presentation.diastolic_bp,
         oxygen_saturation_percent=presentation.oxygen_saturation_percent,

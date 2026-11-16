@@ -96,6 +96,7 @@ def materialise_corpus(
             illness_duration_hours=intake.illness_duration_hours,
             temperature_c=intake.temperature_c,
             heart_rate_bpm=intake.heart_rate_bpm,
+            respiratory_rate_bpm=intake.respiratory_rate_bpm,
             systolic_bp=intake.systolic_bp,
             diastolic_bp=intake.diastolic_bp,
             oxygen_saturation_percent=intake.oxygen_saturation_percent,

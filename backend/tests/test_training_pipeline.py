@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 
 from app.classifier import load_model
-from app.features import FEATURE_NAMES, FeatureInputs
+from app.features import (
+    FEATURE_NAMES,
+    MISSING_RESPIRATORY_RATE_BPM,
+    FeatureInputs,
+)
 from app.prioritisation import UrgencyLevel
 from evaluation import triage_datasets as datasets
 from evaluation.train_classifier import (
@@ -57,6 +61,7 @@ def constructed_records() -> list[datasets.TrainingEncounter]:
                     systolic_bp=120,
                     diastolic_bp=80,
                     oxygen_saturation_percent=saturation,
+                    respiratory_rate_bpm=MISSING_RESPIRATORY_RATE_BPM,
                 ),
             )
         )

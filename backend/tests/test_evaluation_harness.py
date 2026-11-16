@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from app.classifier import ARTEFACT_PATH
-from app.features import FeatureInputs
+from app.features import MISSING_RESPIRATORY_RATE_BPM, FeatureInputs
 from app.prioritisation import UrgencyLevel, assess
 from app.symptom_groups import recognise
 from evaluation import harness
@@ -78,6 +78,7 @@ def constructed_records() -> list[datasets.TrainingEncounter]:
                     systolic_bp=120,
                     diastolic_bp=80,
                     oxygen_saturation_percent=saturation,
+                    respiratory_rate_bpm=MISSING_RESPIRATORY_RATE_BPM,
                 ),
             )
         )

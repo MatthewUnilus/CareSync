@@ -24,7 +24,7 @@ from app.features import FEATURE_NAMES
 from app.prioritisation import UrgencyLevel
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
-ARTEFACT_PATH = BACKEND_ROOT / "models" / "urgency-classifier-v1.0.0.json"
+ARTEFACT_PATH = BACKEND_ROOT / "models" / "urgency-classifier-v1.1.0.json"
 ARTEFACT_SCHEMA_VERSION = 1
 
 

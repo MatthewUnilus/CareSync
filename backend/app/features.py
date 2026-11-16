@@ -3,14 +3,14 @@
 One definition, used by both the Training step and Seam B, so a model can never
 be trained on a different vector from the one it is asked to score. The vector
 is built only from recognised Symptom Groups, pain level, illness duration, age
-and the four vitals; the free-text complaint never enters it.
+and the five vitals; the free-text complaint never enters it.
 
 Dimensions, in order:
 
 - one multi-hot dimension per Symptom Group in the vocabulary's authored order
 - ``pain_level``, ``illness_duration_hours``, ``age``
 - ``temperature_c``, ``heart_rate_bpm``, ``systolic_bp``, ``diastolic_bp``,
-  ``oxygen_saturation_percent``
+  ``oxygen_saturation_percent``, ``respiratory_rate_bpm``
 
 The vector is a plain tuple of floats. It has no notion of a database, a session
 or a data source, which is what lets the same function serve the engine and the
@@ -33,6 +33,10 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only matters to type checke
 # on them can still learn from the value where it *is* recorded.
 MISSING_PAIN_LEVEL = -1.0
 MISSING_ILLNESS_DURATION_HOURS = -1.0
+# The Hoseini source records no respiratory rate, so training uses the sentinel
+# rather than a plausible-looking rate. A rate of zero would be indistinguishable
+# from a patient who could not be measured; the sentinel is not.
+MISSING_RESPIRATORY_RATE_BPM = -1.0
 
 SCALAR_FEATURE_NAMES: tuple[str, ...] = (
     "pain_level",
@@ -43,6 +47,7 @@ SCALAR_FEATURE_NAMES: tuple[str, ...] = (
     "systolic_bp",
     "diastolic_bp",
     "oxygen_saturation_percent",
+    "respiratory_rate_bpm",
 )
 
 
@@ -59,6 +64,7 @@ class FeatureInputs:
     systolic_bp: float
     diastolic_bp: float
     oxygen_saturation_percent: float
+    respiratory_rate_bpm: float
 
     def vector(self) -> tuple[float, ...]:
         """Return the feature vector, in :data:`FEATURE_NAMES` order."""
@@ -100,6 +106,7 @@ def build_feature_vector(inputs: "PrioritisationInputs") -> tuple[float, ...]:
         systolic_bp=inputs.systolic_bp,
         diastolic_bp=inputs.diastolic_bp,
         oxygen_saturation_percent=inputs.oxygen_saturation_percent,
+        respiratory_rate_bpm=inputs.respiratory_rate_bpm,
     ).vector()
 
 
@@ -107,6 +114,7 @@ __all__ = [
     "FEATURE_NAMES",
     "MISSING_ILLNESS_DURATION_HOURS",
     "MISSING_PAIN_LEVEL",
+    "MISSING_RESPIRATORY_RATE_BPM",
     "SCALAR_FEATURE_NAMES",
     "FeatureInputs",
     "build_feature_vector",

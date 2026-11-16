@@ -26,6 +26,7 @@ from pathlib import Path
 from app.features import (
     MISSING_ILLNESS_DURATION_HOURS,
     MISSING_PAIN_LEVEL,
+    MISSING_RESPIRATORY_RATE_BPM,
     FeatureInputs,
 )
 from app.prioritisation import UrgencyLevel
@@ -33,7 +34,7 @@ from app.prioritisation import UrgencyLevel
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = BACKEND_ROOT / "data" / "datasets"
 PROVENANCE_PATH = Path("evaluation") / "datasets" / "provenance.json"
-ARTEFACT_PATH = BACKEND_ROOT / "models" / "urgency-classifier-v1.0.0.json"
+ARTEFACT_PATH = BACKEND_ROOT / "models" / "urgency-classifier-v1.1.0.json"
 
 DATAVERSE_SOURCE_ID = "hoseini-2022-triage-levels"
 
@@ -190,6 +191,7 @@ def load_dataverse(path: Path) -> tuple[TrainingEncounter, ...]:
                         systolic_bp=systolic,
                         diastolic_bp=diastolic,
                         oxygen_saturation_percent=ratio * fio2 / 100.0,
+                        respiratory_rate_bpm=MISSING_RESPIRATORY_RATE_BPM,
                     ),
                 )
             )

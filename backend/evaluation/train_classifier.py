@@ -8,7 +8,7 @@ It downloads the published datasets if they are not cached (verifying their
 SHA-256 against ``evaluation/datasets/provenance.json``), trains a multinomial
 logistic regression on the same feature vector the engine builds, computes
 stratified k-fold cross-validated scores, and writes a small JSON artefact plus
-the dataset identity to ``models/urgency-classifier-v1.0.0.json``.
+the dataset identity to ``models/urgency-classifier-v1.1.0.json``.
 
 Training is deterministic: one seed, one fold split, no sampling. Running the
 command twice on the same data produces byte-identical output, which is what
@@ -44,7 +44,7 @@ from evaluation.triage_datasets import DatasetIdentity, TrainingEncounter
 
 ARTEFACT_PATH = datasets.ARTEFACT_PATH
 SCHEMA_VERSION = 1
-ARTEFACT_VERSION = "urgency-classifier-v1.0.0"
+ARTEFACT_VERSION = "urgency-classifier-v1.1.0"
 MODEL_FAMILY = "multinomial logistic regression (L2 penalty, class_weight=balanced)"
 CLASS_ORDER: tuple[str, ...] = (
     UrgencyLevel.high.value,

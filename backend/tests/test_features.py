@@ -46,8 +46,8 @@ def test_the_vector_has_one_dimension_per_vocabulary_group_plus_the_scalars() ->
     assert group_features == [
         f"symptom_group:{group}" for group in vocabulary().groups
     ]
-    # 49 Symptom Groups, pain, illness duration, age and five vital numbers.
-    assert len(FEATURE_NAMES) == len(vocabulary().groups) + 8
+    # 49 Symptom Groups, pain, illness duration, age and six vital numbers.
+    assert len(FEATURE_NAMES) == len(vocabulary().groups) + 9
 
 
 @pytest.mark.parametrize(

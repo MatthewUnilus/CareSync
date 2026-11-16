@@ -5,15 +5,15 @@
     "Low"
   ],
   "engine": {
-    "artefact_path": "models/urgency-classifier-v1.0.0.json",
-    "artefact_sha256": "67e26155e4cc3bc5285aef36a0d248466a6c76628817163c74148874a2cd4a29",
-    "artefact_version": "urgency-classifier-v1.0.0",
+    "artefact_path": "models/urgency-classifier-v1.1.0.json",
+    "artefact_sha256": "3bde44e15a51c4615cb6ee158de317dc257c7a6f9c056c1a54b5d19d321c4d6b",
+    "artefact_version": "urgency-classifier-v1.1.0",
     "classes": [
       "High",
       "Medium",
       "Low"
     ],
-    "feature_count": 57,
+    "feature_count": 58,
     "model_family": "multinomial logistic regression (L2 penalty, class_weight=balanced)",
     "training": {
       "constant_features": [
@@ -67,7 +67,8 @@
         "symptom_group:allergic reaction",
         "symptom_group:swelling",
         "pain_level",
-        "illness_duration_hours"
+        "illness_duration_hours",
+        "respiratory_rate_bpm"
       ],
       "datasets": [
         {
@@ -234,9 +235,9 @@
       },
       "description": "the composed engine — out-of-fold classifier plus the deterministic red-flag safety layer — scored on the published training dataset; the primary metrics are Machine Recommendations",
       "engine_artefact": {
-        "artefact_path": "models/urgency-classifier-v1.0.0.json",
-        "artefact_sha256": "67e26155e4cc3bc5285aef36a0d248466a6c76628817163c74148874a2cd4a29",
-        "artefact_version": "urgency-classifier-v1.0.0",
+        "artefact_path": "models/urgency-classifier-v1.1.0.json",
+        "artefact_sha256": "3bde44e15a51c4615cb6ee158de317dc257c7a6f9c056c1a54b5d19d321c4d6b",
+        "artefact_version": "urgency-classifier-v1.1.0",
         "note": "cross-validation refits the shipped artefact's training procedure; the shipped artefact's identity is recorded so the reproduction can be checked",
         "scored_by": "fold_refit"
       },
@@ -338,7 +339,7 @@
     },
     {
       "dataset": {
-        "corpus_sha256": "f00c78e8be6a2329a71fd1f8c0b69087f2512b892530f3f3690b112046925711",
+        "corpus_sha256": "2aa317c29a752fc066f92d5bd9634cc2c962d4acfba3097512bc348d28410ab3",
         "encounter_count": 27,
         "generator_version": "1.0.0",
         "kind": "rubric_labelled_synthetic_corpus",
@@ -356,9 +357,9 @@
       },
       "description": "every rubric-labelled synthetic Encounter taken from intake inputs to Machine Recommendation, with the fallback disabled",
       "engine_artefact": {
-        "artefact_path": "models/urgency-classifier-v1.0.0.json",
-        "artefact_sha256": "67e26155e4cc3bc5285aef36a0d248466a6c76628817163c74148874a2cd4a29",
-        "artefact_version": "urgency-classifier-v1.0.0",
+        "artefact_path": "models/urgency-classifier-v1.1.0.json",
+        "artefact_sha256": "3bde44e15a51c4615cb6ee158de317dc257c7a6f9c056c1a54b5d19d321c4d6b",
+        "artefact_version": "urgency-classifier-v1.1.0",
         "note": "the committed classifier artefact and safety layer",
         "scored_by": "shipped_artefact"
       },
@@ -374,7 +375,7 @@
       },
       "id": "pipeline",
       "metrics": {
-        "accuracy": 0.592592592593,
+        "accuracy": 0.666666666667,
         "confusion_matrix": {
           "labels": [
             "High",
@@ -383,9 +384,9 @@
           ],
           "rows": [
             [
-              9,
+              11,
               1,
-              5
+              3
             ],
             [
               0,
@@ -406,32 +407,32 @@
           "rate": 0.0
         },
         "false_low_priority": {
-          "count": 10,
+          "count": 8,
           "denominator": 20,
-          "rate": 0.5
+          "rate": 0.4
         },
         "high_class_recall": {
-          "count": 9,
+          "count": 11,
           "denominator": 15,
-          "rate": 0.6
+          "rate": 0.733333333333
         },
-        "macro_f1": 0.444444444444,
+        "macro_f1": 0.494172494172,
         "majority_baseline": {
           "accuracy": 0.555555555556,
           "beats_baseline": true,
           "class": "High",
-          "model_minus_baseline": 0.037037037037
+          "model_minus_baseline": 0.111111111111
         },
         "per_class": {
           "High": {
-            "f1": 0.75,
+            "f1": 0.846153846154,
             "precision": 1.0,
-            "recall": 0.6,
+            "recall": 0.733333333333,
             "support": 15
           },
           "Low": {
-            "f1": 0.583333333333,
-            "precision": 0.411764705882,
+            "f1": 0.636363636364,
+            "precision": 0.466666666667,
             "recall": 1.0,
             "support": 7
           },
@@ -516,7 +517,7 @@
           "encounter_id": "syn-008",
           "fallback_used": false,
           "ground_truth": "High",
-          "machine_recommendation": "Low",
+          "machine_recommendation": "High",
           "recognised_symptom_groups": [],
           "unclassified": false
         },
@@ -582,7 +583,7 @@
           "encounter_id": "syn-015",
           "fallback_used": false,
           "ground_truth": "High",
-          "machine_recommendation": "Low",
+          "machine_recommendation": "High",
           "recognised_symptom_groups": [],
           "unclassified": false
         },
@@ -722,7 +723,7 @@
         "unclassified_rate": 0.37037037037
       },
       "dataset": {
-        "corpus_sha256": "f00c78e8be6a2329a71fd1f8c0b69087f2512b892530f3f3690b112046925711",
+        "corpus_sha256": "2aa317c29a752fc066f92d5bd9634cc2c962d4acfba3097512bc348d28410ab3",
         "encounter_count": 27,
         "generator_version": "1.0.0",
         "kind": "rubric_labelled_synthetic_corpus",
@@ -740,9 +741,9 @@
       },
       "description": "the same whole-pipeline run with the fallback enabled; its accuracy is not the primary score",
       "engine_artefact": {
-        "artefact_path": "models/urgency-classifier-v1.0.0.json",
-        "artefact_sha256": "67e26155e4cc3bc5285aef36a0d248466a6c76628817163c74148874a2cd4a29",
-        "artefact_version": "urgency-classifier-v1.0.0",
+        "artefact_path": "models/urgency-classifier-v1.1.0.json",
+        "artefact_sha256": "3bde44e15a51c4615cb6ee158de317dc257c7a6f9c056c1a54b5d19d321c4d6b",
+        "artefact_version": "urgency-classifier-v1.1.0",
         "note": "the committed classifier artefact, safety layer and the deterministic degraded fallback",
         "scored_by": "shipped_artefact"
       },
@@ -758,7 +759,7 @@
       },
       "id": "pipeline_fallback_enabled",
       "metrics": {
-        "accuracy": 0.481481481481,
+        "accuracy": 0.555555555556,
         "confusion_matrix": {
           "labels": [
             "High",
@@ -767,8 +768,8 @@
           ],
           "rows": [
             [
-              9,
-              3,
+              11,
+              1,
               3
             ],
             [
@@ -795,22 +796,22 @@
           "rate": 0.35
         },
         "high_class_recall": {
-          "count": 9,
+          "count": 11,
           "denominator": 15,
-          "rate": 0.6
+          "rate": 0.733333333333
         },
-        "macro_f1": 0.418929110106,
+        "macro_f1": 0.460304401481,
         "majority_baseline": {
           "accuracy": 0.555555555556,
           "beats_baseline": false,
           "class": "High",
-          "model_minus_baseline": -0.074074074074
+          "model_minus_baseline": 0.0
         },
         "per_class": {
           "High": {
-            "f1": 0.75,
+            "f1": 0.846153846154,
             "precision": 1.0,
-            "recall": 0.6,
+            "recall": 0.733333333333,
             "support": 15
           },
           "Low": {
@@ -820,8 +821,8 @@
             "support": 7
           },
           "Medium": {
-            "f1": 0.153846153846,
-            "precision": 0.125,
+            "f1": 0.181818181818,
+            "precision": 0.166666666667,
             "recall": 0.2,
             "support": 5
           }
@@ -900,7 +901,7 @@
           "encounter_id": "syn-008",
           "fallback_used": true,
           "ground_truth": "High",
-          "machine_recommendation": "Medium",
+          "machine_recommendation": "High",
           "recognised_symptom_groups": [],
           "unclassified": true
         },
@@ -966,7 +967,7 @@
           "encounter_id": "syn-015",
           "fallback_used": true,
           "ground_truth": "High",
-          "machine_recommendation": "Medium",
+          "machine_recommendation": "High",
           "recognised_symptom_groups": [],
           "unclassified": true
         },

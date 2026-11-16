@@ -11,7 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from app.features import MISSING_ILLNESS_DURATION_HOURS, MISSING_PAIN_LEVEL
+from app.features import (
+    MISSING_ILLNESS_DURATION_HOURS,
+    MISSING_PAIN_LEVEL,
+    MISSING_RESPIRATORY_RATE_BPM,
+)
 from app.prioritisation import UrgencyLevel
 from evaluation import triage_datasets as datasets
 
@@ -83,6 +87,11 @@ def test_fields_the_source_does_not_record_are_marked_not_guessed(
         assert record.inputs.pain_level == MISSING_PAIN_LEVEL
         assert (
             record.inputs.illness_duration_hours == MISSING_ILLNESS_DURATION_HOURS
+        )
+        # The source records no respiratory rate, so it too is marked rather
+        # than given a plausible-looking value.
+        assert (
+            record.inputs.respiratory_rate_bpm == MISSING_RESPIRATORY_RATE_BPM
         )
         assert record.inputs.recognised_symptom_groups == ()
 
