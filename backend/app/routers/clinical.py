@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.assessments import create_triage_assessment, inputs_from_assessment
+from app.audit import record_audit_entry
+from app.audit_actions import AuditAction
 from app.departures import encounter_status, perform_departure
 from app.deps import DbSession, Fallback, require_role
 from app.intake import apply_intake, ensure_intake_editable
@@ -65,6 +67,11 @@ def register_patient(
 
     ``201 Created`` when a new Patient is registered, ``200 OK`` when an
     existing record is reused.
+
+    The route commits, so the Patient row and its audit entry land in one
+    transaction. ``find_or_create_patient`` no longer commits internally for
+    exactly this reason: a re-registration reuses a record, so it is not a
+    mutation and writes no audit entry.
     """
     patient, created = find_or_create_patient(
         db,
@@ -76,6 +83,14 @@ def register_patient(
     )
     if not created:
         response.status_code = status.HTTP_200_OK
+    else:
+        record_audit_entry(
+            db,
+            actor=user,
+            action=AuditAction.register_patient,
+            patient=patient,
+        )
+    db.commit()
     return patient
 
 
@@ -102,6 +117,14 @@ def open_encounter(
     db.add(encounter)
     db.flush()
     assessment = create_triage_assessment(db, encounter, fallback=fallback)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.open_encounter,
+        patient=patient,
+        encounter=encounter,
+        assessment=assessment,
+    )
     db.commit()
     return _encounter_response(encounter, assessment)
 
@@ -192,7 +215,7 @@ def override_final_decision(
     read because it sorts on Final Decision.
     """
     encounter = _get_encounter(db, encounter_id)
-    perform_override(
+    assessment = perform_override(
         db,
         encounter,
         assessment_id=payload.assessment_id,
@@ -200,6 +223,14 @@ def override_final_decision(
         reason=payload.reason,
         free_text=payload.free_text,
         actor=user,
+    )
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.override,
+        patient=encounter.patient,
+        encounter=encounter,
+        assessment=assessment,
     )
     db.commit()
     return _encounter_response(encounter)
@@ -224,6 +255,13 @@ def depart_encounter(
     """
     encounter = _get_encounter(db, encounter_id)
     perform_departure(db, encounter)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.departure,
+        patient=encounter.patient,
+        encounter=encounter,
+    )
     db.commit()
     return _encounter_response(encounter)
 
@@ -249,7 +287,17 @@ def reassess_encounter(
     governs the Encounter's Queue position on the next read.
     """
     encounter = _get_encounter(db, encounter_id)
-    perform_reassessment(db, encounter, intake=payload, fallback=fallback)
+    assessment = perform_reassessment(
+        db, encounter, intake=payload, fallback=fallback
+    )
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.reassessment,
+        patient=encounter.patient,
+        encounter=encounter,
+        assessment=assessment,
+    )
     db.commit()
     return _encounter_response(encounter)
 
@@ -265,6 +313,13 @@ def correct_intake(
     encounter = _get_encounter(db, encounter_id)
     ensure_intake_editable(db, encounter)
     apply_intake(encounter, payload)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.correct_intake,
+        patient=encounter.patient,
+        encounter=encounter,
+    )
     db.commit()
     return _encounter_response(encounter)
 

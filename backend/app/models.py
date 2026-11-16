@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.audit_actions import AuditAction
 from app.db import Base
 from app.override_reasons import OverrideReason
 from app.timeutils import utc_now
@@ -22,6 +23,10 @@ from app.timeutils import utc_now
 
 _OVERRIDE_REASON_VALUES = ", ".join(
     f"'{reason.value}'" for reason in OverrideReason
+)
+
+_AUDIT_ACTION_VALUES = ", ".join(
+    f"'{action.value}'" for action in AuditAction
 )
 
 
@@ -402,6 +407,80 @@ class Override(Base):
         back_populates="overrides"
     )
     actor: Mapped[User] = relationship(lazy="joined")
+
+
+class AuditEntry(Base):
+    """One attributable record of a clinical mutation.
+
+    Every state-changing clinical act appends exactly one of these: registration,
+    opening an Encounter, correcting intake, an Override, a Re-assessment and a
+    Departure. The entry names the actor as a foreign key rather than a copied
+    name, so a renamed account is reported consistently everywhere, and exposes
+    the name through the ``actor`` relationship exactly as ``Override`` does.
+
+    The subject references are nullable because the six actions do not all have
+    the same scope: registration touches only a Patient, while opening an
+    Encounter also produces its first Assessment. Keeping one column per subject
+    — rather than a polymorphic pair — means a filter to one Encounter is a plain
+    indexed lookup and the row stays reconstructable without a join through
+    whatever type it happened to point at.
+
+    Rows are append-only, enforced in the application layer (see the guard
+    below), because ADR 0001 forbids database triggers. An audit record that can
+    be silently edited after the fact is not an audit record.
+    """
+
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        CheckConstraint(
+            f"action IN ({_AUDIT_ACTION_VALUES})",
+            name="ck_audit_log_action",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(64))
+    detail: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+
+    # The subjects this act touched. Nullable because not every action reaches
+    # every subject; indexed because "one Encounter's history" is the read the
+    # Administrator surface offers. The relationships are set rather than the
+    # ids so an entry can reference a subject that is still pending in the same
+    # flush (registration and open-encounter both stage one), exactly as
+    # ``Override`` sets ``assessment`` rather than ``assessment_id``.
+    patient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("patients.id"), nullable=True, index=True
+    )
+    encounter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("encounters.id"), nullable=True, index=True
+    )
+    assessment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("triage_assessments.id"), nullable=True, index=True
+    )
+
+    actor: Mapped[User] = relationship(lazy="joined")
+    patient: Mapped[Patient | None] = relationship()
+    encounter: Mapped[Encounter | None] = relationship()
+    assessment: Mapped[TriageAssessment | None] = relationship()
+
+
+@event.listens_for(AuditEntry, "before_update")
+def _refuse_editing_an_audit_entry(_mapper, _connection, _target) -> None:
+    """Application-layer append-only guarantee (ADR 0001, no DB triggers).
+
+    The guard refuses *any* in-place change, not a fixed field list: an audit
+    entry has no field that is ever legitimately updated, so the whole row is
+    frozen rather than a chosen subset of it.
+    """
+    raise ValueError(
+        "An Audit Entry is append-only; it cannot be edited after it is written"
+    )
 
 
 class UserSession(Base):
