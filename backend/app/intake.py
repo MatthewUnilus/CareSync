@@ -59,6 +59,7 @@ def apply_intake(encounter: Encounter, intake: IntakePayload) -> None:
     encounter.illness_duration_hours = intake.illness_duration_hours
     encounter.temperature_c = intake.temperature_c
     encounter.heart_rate_bpm = intake.heart_rate_bpm
+    encounter.respiratory_rate_bpm = intake.respiratory_rate_bpm
     encounter.systolic_bp = intake.blood_pressure.systolic
     encounter.diastolic_bp = intake.blood_pressure.diastolic
     encounter.oxygen_saturation_percent = intake.oxygen_saturation_percent

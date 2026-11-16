@@ -275,9 +275,11 @@ def test_rubric_inputs_are_strictly_broader_than_the_engine_feature_set() -> Non
 
     assert engine_features < rubric_features
     assert RUBRIC_INPUT_FIELDS == rubric_features
+    # These are the rubric's inputs the engine still does not capture. Respiratory
+    # rate was on this list until ticket 17 made it an intake vital sign, so it is
+    # now shared with the engine and no longer belongs here.
     assert {
         "onset",
-        "respiratory_rate_bpm",
         "mental_status",
         "new_onset_altered_mental_status",
         "associated_symptoms",

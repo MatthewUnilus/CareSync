@@ -125,6 +125,9 @@ class IntakePayload(BaseModel):
     illness_duration_hours: float = Field(ge=0, le=8760)
     temperature_c: float = Field(ge=30, le=45)
     heart_rate_bpm: int = Field(ge=20, le=300)
+    # The bound matches ``evaluation.rubric.Presentation``, which is the existing
+    # clinical source of truth for this range; intake must not invent a second.
+    respiratory_rate_bpm: int = Field(ge=0, le=80)
     blood_pressure: BloodPressure
     oxygen_saturation_percent: int = Field(ge=50, le=100)
     notes: _OPTIONAL_TEXT | None = None
@@ -149,6 +152,7 @@ class AssessmentSnapshot(BaseModel):
     illness_duration_hours: float
     temperature_c: float
     heart_rate_bpm: int
+    respiratory_rate_bpm: int
     blood_pressure: BloodPressure
     oxygen_saturation_percent: int
     notes: str | None

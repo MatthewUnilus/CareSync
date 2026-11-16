@@ -18,6 +18,7 @@ LOW_INTAKE = {
     "illness_duration_hours": 24,
     "temperature_c": 36.8,
     "heart_rate_bpm": 78,
+    "respiratory_rate_bpm": 16,
     "blood_pressure": {"systolic": 120, "diastolic": 80},
     "oxygen_saturation_percent": 98,
     "notes": None,

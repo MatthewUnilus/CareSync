@@ -56,6 +56,7 @@ export interface Intake {
   illness_duration_hours: number;
   temperature_c: number;
   heart_rate_bpm: number;
+  respiratory_rate_bpm: number;
   blood_pressure: BloodPressure;
   oxygen_saturation_percent: number;
   notes: string | null;
@@ -81,6 +82,7 @@ export interface AssessmentSnapshot {
   illness_duration_hours: number;
   temperature_c: number;
   heart_rate_bpm: number;
+  respiratory_rate_bpm: number;
   blood_pressure: BloodPressure;
   oxygen_saturation_percent: number;
   notes: string | null;

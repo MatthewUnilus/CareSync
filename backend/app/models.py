@@ -142,6 +142,10 @@ class Encounter(Base):
             name="ck_encounters_heart_rate",
         ),
         CheckConstraint(
+            "respiratory_rate_bpm >= 0 AND respiratory_rate_bpm <= 80",
+            name="ck_encounters_respiratory_rate",
+        ),
+        CheckConstraint(
             "systolic_bp >= 50 AND systolic_bp <= 300",
             name="ck_encounters_systolic",
         ),
@@ -181,6 +185,13 @@ class Encounter(Base):
     illness_duration_hours: Mapped[float] = mapped_column(Float)
     temperature_c: Mapped[float] = mapped_column(Float)
     heart_rate_bpm: Mapped[int] = mapped_column(Integer)
+    # Live intake always writes this (``apply_intake``), and the Assessment
+    # snapshot always carries it. The default is a bridge for callers ticket 18
+    # owns (``evaluation/materialise.py``, which builds an Encounter straight
+    # from a corpus that does not record respiratory rate yet). Zero fires no
+    # tachypnoea rule, so an evaluation row's recommendation is unchanged until
+    # ticket 18 wires the real value through.
+    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
     systolic_bp: Mapped[int] = mapped_column(Integer)
     diastolic_bp: Mapped[int] = mapped_column(Integer)
     oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
@@ -250,6 +261,10 @@ class TriageAssessment(Base):
     illness_duration_hours: Mapped[float] = mapped_column(Float)
     temperature_c: Mapped[float] = mapped_column(Float)
     heart_rate_bpm: Mapped[int] = mapped_column(Integer)
+    # Carried on every snapshot the engine factory writes; the default mirrors
+    # ``Encounter.respiratory_rate_bpm`` and exists only for the evaluation
+    # bridge described there.
+    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
     systolic_bp: Mapped[int] = mapped_column(Integer)
     diastolic_bp: Mapped[int] = mapped_column(Integer)
     oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
@@ -304,6 +319,7 @@ _ASSESSMENT_FROZEN_FIELDS = (
     "illness_duration_hours",
     "temperature_c",
     "heart_rate_bpm",
+    "respiratory_rate_bpm",
     "systolic_bp",
     "diastolic_bp",
     "oxygen_saturation_percent",

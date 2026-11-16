@@ -11,6 +11,7 @@ export interface IntakeFormValues {
   durationHours: string;
   temperatureC: string;
   heartRate: string;
+  respiratoryRate: string;
   systolic: string;
   diastolic: string;
   oxygenSaturation: string;
@@ -24,6 +25,7 @@ export function intakeFormValues(intake: Intake): IntakeFormValues {
     durationHours: String(intake.illness_duration_hours),
     temperatureC: String(intake.temperature_c),
     heartRate: String(intake.heart_rate_bpm),
+    respiratoryRate: String(intake.respiratory_rate_bpm),
     systolic: String(intake.blood_pressure.systolic),
     diastolic: String(intake.blood_pressure.diastolic),
     oxygenSaturation: String(intake.oxygen_saturation_percent),
@@ -38,6 +40,7 @@ export function buildIntake(form: IntakeFormValues): Intake {
     illness_duration_hours: Number(form.durationHours),
     temperature_c: Number(form.temperatureC),
     heart_rate_bpm: Number(form.heartRate),
+    respiratory_rate_bpm: Number(form.respiratoryRate),
     blood_pressure: {
       systolic: Number(form.systolic),
       diastolic: Number(form.diastolic),

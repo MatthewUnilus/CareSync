@@ -310,6 +310,7 @@ def _intake_payload(encounter: Encounter) -> IntakePayload:
         illness_duration_hours=encounter.illness_duration_hours,
         temperature_c=encounter.temperature_c,
         heart_rate_bpm=encounter.heart_rate_bpm,
+        respiratory_rate_bpm=encounter.respiratory_rate_bpm,
         blood_pressure={
             "systolic": encounter.systolic_bp,
             "diastolic": encounter.diastolic_bp,
@@ -356,6 +357,7 @@ def _assessment_response(assessment: TriageAssessment) -> AssessmentResponse:
             illness_duration_hours=assessment.illness_duration_hours,
             temperature_c=assessment.temperature_c,
             heart_rate_bpm=assessment.heart_rate_bpm,
+            respiratory_rate_bpm=assessment.respiratory_rate_bpm,
             blood_pressure={
                 "systolic": assessment.systolic_bp,
                 "diastolic": assessment.diastolic_bp,
