@@ -94,7 +94,7 @@ its own three-level triage category; `ground_truth.rubric_version` is therefore
 layer. It is a secondary diagnostic, explicitly not a Machine Recommendation;
 its `matches_recorded_artefact` is true when those figures reproduce the
 `cross_validation` block already stored in
-`models/urgency-classifier-v1.0.0.json`. Accuracy can be lower for the composed
+`models/urgency-classifier-v1.1.0.json`. Accuracy can be lower for the composed
 engine because the safety layer may over-triage; that is the engine's real
 behaviour and is shown, not hidden.
 

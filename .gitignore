@@ -40,3 +40,7 @@ Thumbs.db
 
 # Agent worktrees (resolve outside the repo lack a writable ACE)
 .worktrees/
+
+# Desktop agent scratch (machine-local)
+AGENTS-DESKTOP-*.md
+.zcode/

@@ -5,26 +5,15 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { toast } from "@/components/base/toast/toast";
 
-import { api, ApiError } from "./api";
+import { api, errorText } from "./api";
 import type { Encounter, Patient } from "./api";
 import { cardClass, figureClass, mutedTextClass, sectionLabelClass } from "./design";
-import { urgencyBadgeClass, urgencyBorderClass } from "./queueDisplay";
-
-function errorText(caught: unknown): string {
-  return caught instanceof ApiError
-    ? caught.message
-    : "Unable to reach the server.";
-}
-
-function formatInstant(value: string): string {
-  return new Date(value).toLocaleString();
-}
-
-function sexLabel(sex: Patient["sex"]): string {
-  return sex === "unspecified"
-    ? "Unspecified"
-    : sex.charAt(0).toUpperCase() + sex.slice(1);
-}
+import {
+  formatInstant,
+  sexLabel,
+  urgencyBadgeClass,
+  urgencyBorderClass,
+} from "./queueDisplay";
 
 /**
  * Find a Patient and read one Patient's Encounters over time.

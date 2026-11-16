@@ -33,9 +33,12 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle only matters to type checke
 # on them can still learn from the value where it *is* recorded.
 MISSING_PAIN_LEVEL = -1.0
 MISSING_ILLNESS_DURATION_HOURS = -1.0
-# The Hoseini source records no respiratory rate, so training uses the sentinel
-# rather than a plausible-looking rate. A rate of zero would be indistinguishable
-# from a patient who could not be measured; the sentinel is not.
+# The Hoseini source records no respiratory rate, so the loader marks the
+# dimension rather than inventing a rate for it, exactly as it does for pain
+# level and illness duration. (Live intake never needs this: it always records a
+# real rate. The engine's `respiratory_rate_bpm` default of 0 is a separate
+# convenience for direct construction, and 0 is inert — it is below every
+# tachypnoea threshold — rather than a claimed measurement.)
 MISSING_RESPIRATORY_RATE_BPM = -1.0
 
 SCALAR_FEATURE_NAMES: tuple[str, ...] = (

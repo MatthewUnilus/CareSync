@@ -364,6 +364,19 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A caught error as a sentence a user can act on.
+ *
+ * A server refusal carries its own message; anything else means the request
+ * never reached the server, which the reader is told plainly rather than shown
+ * a stack or a blank.
+ */
+export function errorText(caught: unknown): string {
+  return caught instanceof ApiError
+    ? caught.message
+    : "Unable to reach the server.";
+}
+
 async function requestDetailed<T>(
   path: string,
   init?: RequestInit,

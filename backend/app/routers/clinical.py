@@ -24,7 +24,7 @@ from app.schemas import (
     EncounterListResponse,
     EncounterResponse,
     IntakePayload,
-    OverrideActorResponse,
+    ActorResponse,
     OverrideRecordResponse,
     OverrideReasonsResponse,
     OverrideRequest,
@@ -493,7 +493,7 @@ def _override_response(override: Override | None) -> OverrideRecordResponse | No
         reason=override.reason,
         free_text=override.free_text,
         performed_at=override.performed_at,
-        performed_by=OverrideActorResponse(
+        performed_by=ActorResponse(
             id=override.actor.id,
             display_name=override.actor.display_name,
         ),

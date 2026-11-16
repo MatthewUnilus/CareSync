@@ -22,7 +22,7 @@ Three things had to be decided, and each has a real alternative:
 
 ## Decision
 
-A single `audit_entries` table records every clinical mutation. Each row carries
+A single `audit_log` table records every clinical mutation. Each row carries
 the actor (a foreign key to `users`, loaded with joined fetch as the Override's
 actor is), a validated action from a fixed set, a timezone-aware timestamp
 defaulting to `utc_now`, an optional free-text detail, and nullable subject

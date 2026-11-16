@@ -1,4 +1,27 @@
-import type { Intake, RedFlag, UrgencyLevel } from "./api";
+import type { Intake, RedFlag, Sex, UrgencyLevel } from "./api";
+
+/**
+ * The Sex labels, in the order a form offers them.
+ *
+ * One definition so the intake select and any read-only view of a Patient's
+ * sex cannot disagree about what a stored value is called.
+ */
+export const SEX_OPTIONS: { value: Sex; label: string }[] = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "other", label: "Other" },
+  { value: "unspecified", label: "Unspecified" },
+];
+
+/** A stored Sex value as it is shown to a reader. */
+export function sexLabel(sex: Sex): string {
+  return SEX_OPTIONS.find((option) => option.value === sex)?.label ?? sex;
+}
+
+/** An instant as a reader's local date and time. */
+export function formatInstant(value: string): string {
+  return new Date(value).toLocaleString();
+}
 
 export function formatWaiting(seconds: number): string {
   if (seconds < 60) {

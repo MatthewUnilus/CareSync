@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, inspect as sa_inspect, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import record_audit_entry
@@ -390,9 +390,22 @@ def test_registration_shares_the_route_transaction(
         assert session.get(Patient, patient_id) is None
 
 
-def test_the_actor_relationship_is_joined() -> None:
-    """The actor is fetched with the entry, as the Override's actor is."""
-    assert sa_inspect(AuditEntry).relationships["actor"].lazy == "joined"
+def test_an_entry_names_the_actor_who_performed_the_mutation(
+    clinical_client: TestClient,
+) -> None:
+    """The read responses carry the actor's name, not just an id.
+
+    Reading the log through the Administrator route is the only way the tests
+    observe the actor, so the name arriving there is the behaviour that matters;
+    how the row is fetched (joined versus lazy) is an implementation detail the
+    response must not expose.
+    """
+    register_patient(clinical_client)
+    entries = audit_log(clinical_client)
+
+    assert len(entries) == 1
+    assert entries[0]["actor"]["display_name"] == "Clinical Demo User"
+    assert entries[0]["actor"]["id"] > 0
 
 
 def _encounter_without_assessment(client: TestClient, patient_id: int) -> int:

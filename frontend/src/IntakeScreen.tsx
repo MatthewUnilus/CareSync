@@ -6,19 +6,13 @@ import { Input } from "@/components/base/input/input";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { toast } from "@/components/base/toast/toast";
 
-import { api, ApiError } from "./api";
+import { api, errorText } from "./api";
 import type { Encounter, Sex } from "./api";
 import { cardClass } from "./design";
 import IntakeFields, { NumberField } from "./IntakeFields";
 import { buildIntake, intakeFormValues } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
-
-const SEX_OPTIONS: { value: Sex; label: string }[] = [
-  { value: "female", label: "Female" },
-  { value: "male", label: "Male" },
-  { value: "other", label: "Other" },
-  { value: "unspecified", label: "Unspecified" },
-];
+import { SEX_OPTIONS, formatInstant, sexLabel } from "./queueDisplay";
 
 interface FormState extends IntakeFormValues {
   fullName: string;
@@ -58,20 +52,6 @@ const EMPTY_REASSESS_FORM: IntakeFormValues = {
   oxygenSaturation: "",
   notes: "",
 };
-
-function sexLabel(sex: Sex): string {
-  return SEX_OPTIONS.find((option) => option.value === sex)?.label ?? sex;
-}
-
-function formatInstant(value: string): string {
-  return new Date(value).toLocaleString();
-}
-
-function errorText(caught: unknown): string {
-  return caught instanceof ApiError
-    ? caught.message
-    : "Unable to reach the server.";
-}
 
 const fieldsetClass = "grid min-w-0 gap-3";
 const legendClass = "pb-1 text-caption-1-medium text-text-secondary";

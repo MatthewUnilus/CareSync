@@ -61,3 +61,8 @@ Two roles, and only two:
 ### Report
 A read-only view derived on demand from Triage Assessment records — never a stored snapshot, never computed from mutable queue state.
 
+### Audit Entry
+An append-only record that one clinical mutation happened: who performed it, which action it was, which Patient, Encounter or Triage Assessment it touched, and when. Written in the same transaction as the change it describes, so a change cannot exist without its record and a rolled-back change leaves none. Unlike an Override, which is the human act behind one Final Decision, an Audit Entry is not itself a decision — it is the durable account of an action that was taken.
+
+The **Audit Log** is the ordering of Audit Entries, read by an Administrator. It is neither a Report (it is not derived from Triage Assessments) nor a clinical action.
+

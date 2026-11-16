@@ -171,10 +171,10 @@ three-second budget is met many times over.
 
 Training data is the CC0 Harvard Dataverse three-level triage dataset
 (DOI 10.7910/DVN/7SOYC7). It is an **interim development artefact**: the source
-records no pain level, illness duration or complaint, so those dimensions carry
-a zero coefficient, and 5-fold accuracy (0.42) is below the majority-class
-baseline (0.53). The credentialed primary dataset the spec names supplies
-exactly those dimensions.
+records no pain level, illness duration, complaint or respiratory rate, so those
+dimensions carry a zero coefficient, and 5-fold accuracy (0.42) is below the
+majority-class baseline (0.53). The credentialed primary dataset the spec names
+supplies exactly those dimensions.
 Provenance, licences, the fetch command and the known gaps are in
 `backend/evaluation/datasets/README.md`; regenerate the artefact with:
 

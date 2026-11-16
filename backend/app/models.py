@@ -190,12 +190,12 @@ class Encounter(Base):
     illness_duration_hours: Mapped[float] = mapped_column(Float)
     temperature_c: Mapped[float] = mapped_column(Float)
     heart_rate_bpm: Mapped[int] = mapped_column(Integer)
-    # Live intake always writes this (``apply_intake``), and the Assessment
-    # snapshot always carries it. The default is a bridge for callers ticket 18
-    # owns (``evaluation/materialise.py``, which builds an Encounter straight
-    # from a corpus that does not record respiratory rate yet). Zero fires no
-    # tachypnoea rule, so an evaluation row's recommendation is unchanged until
-    # ticket 18 wires the real value through.
+    # Live intake always writes this (``apply_intake``), the Assessment snapshot
+    # always carries it, and ``evaluation/materialise.py`` writes the corpus's
+    # real rate. The default exists only so a direct construction that omits it
+    # (a test, say) need not repeat it; the engine treats zero as a rate below
+    # every tachypnoea threshold, so an omitted value is inert rather than
+    # dangerous.
     respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
     systolic_bp: Mapped[int] = mapped_column(Integer)
     diastolic_bp: Mapped[int] = mapped_column(Integer)
@@ -267,8 +267,8 @@ class TriageAssessment(Base):
     temperature_c: Mapped[float] = mapped_column(Float)
     heart_rate_bpm: Mapped[int] = mapped_column(Integer)
     # Carried on every snapshot the engine factory writes; the default mirrors
-    # ``Encounter.respiratory_rate_bpm`` and exists only for the evaluation
-    # bridge described there.
+    # ``Encounter.respiratory_rate_bpm`` and exists only for a direct
+    # construction that omits it.
     respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
     systolic_bp: Mapped[int] = mapped_column(Integer)
     diastolic_bp: Mapped[int] = mapped_column(Integer)

@@ -27,7 +27,7 @@ from app.schemas import (
     AuditEntryResponse,
     AuditLogResponse,
     DailyQueueReportResponse,
-    OverrideActorResponse,
+    ActorResponse,
     PerformanceEntryResponse,
     PerformanceReportResponse,
     UrgencyDistributionReportResponse,
@@ -106,7 +106,7 @@ def get_audit_log(
                 action=entry.action,
                 detail=entry.detail,
                 recorded_at=entry.recorded_at,
-                actor=OverrideActorResponse(
+                actor=ActorResponse(
                     id=entry.actor.id,
                     display_name=entry.actor.display_name,
                 ),

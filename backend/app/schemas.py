@@ -159,7 +159,13 @@ class AssessmentSnapshot(BaseModel):
     notes: str | None
 
 
-class OverrideActorResponse(BaseModel):
+class ActorResponse(BaseModel):
+    """A User as an actor, wherever an action's performer is shown.
+
+    The same shape serves an Override's ``performed_by`` and an Audit Entry's
+    ``actor``, so a name reads identically wherever it appears.
+    """
+
     id: int
     display_name: str
 
@@ -170,7 +176,7 @@ class OverrideRecordResponse(BaseModel):
     reason: OverrideReason
     free_text: str | None
     performed_at: UtcDatetime
-    performed_by: OverrideActorResponse
+    performed_by: ActorResponse
 
 
 class RedFlagResponse(BaseModel):
@@ -348,7 +354,7 @@ class AuditEntryResponse(BaseModel):
     action: AuditAction
     detail: str | None
     recorded_at: UtcDatetime
-    actor: OverrideActorResponse
+    actor: ActorResponse
     patient_id: int | None
     encounter_id: int | None
     assessment_id: int | None
