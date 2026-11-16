@@ -103,6 +103,7 @@ in the form:
 | Illness duration           | 0–8760 hours                   |
 | Temperature                | 30–45 °C                       |
 | Heart rate                 | 20–300 bpm                     |
+| Respiratory rate           | 0–80 breaths/min               |
 | Blood pressure             | systolic 50–300, diastolic 20–200, systolic above diastolic |
 | Oxygen saturation          | 50–100 %                       |
 | Notes                      | optional, up to 2000 characters |
@@ -154,17 +155,19 @@ session and no database. It is called directly by
 Since ticket 06 the boundary is backed by a **trained supervised classifier**, a
 multinomial logistic regression over a structured feature vector. The vector is
 built by `app.features.build_feature_vector` from recognised Symptom Groups,
-pain level, illness duration, age and the four vitals; the free-text complaint
+pain level, illness duration, age and the five vitals; the free-text complaint
 is never a feature. One definition of the vector serves both training and
 inference, so a model can never be trained on a different vector from the one it
 is asked to score.
 
-The artefact is `backend/models/urgency-classifier-v1.0.0.json` — standardisation
+The artefact is `backend/models/urgency-classifier-v1.1.0.json` — standardisation
 constants, one coefficient row per Urgency Level, the dataset identity, the
 vocabulary version and the cross-validated scores, all in one small, readable
-file. Inference is a softmax over six non-zero coefficients per class (age and
-the five vital numbers): deterministic, microseconds, no I/O after the first
-call (the loader is cached), so the three-second budget is met many times over.
+file. Inference is a softmax over the non-zero coefficients per class: the
+training source records no pain level, illness duration, complaint or respiratory
+rate, so only age and four of the vitals carry weight — deterministic,
+microseconds, no I/O after the first call (the loader is cached), so the
+three-second budget is met many times over.
 
 Training data is the CC0 Harvard Dataverse three-level triage dataset
 (DOI 10.7910/DVN/7SOYC7). It is an **interim development artefact**: the source
@@ -580,6 +583,8 @@ also read.
 | GET    | `/api/roles`                            | Public        |
 | GET    | `/api/clinical/access`                  | Clinical      |
 | POST   | `/api/clinical/patients`                | Clinical      |
+| GET    | `/api/clinical/patients`                | Clinical      |
+| GET    | `/api/clinical/patients/{id}/encounters` | Clinical     |
 | POST   | `/api/clinical/encounters`              | Clinical      |
 | GET    | `/api/clinical/encounters`              | Clinical      |
 | GET    | `/api/clinical/queue`                   | Clinical      |
@@ -591,6 +596,7 @@ also read.
 | POST   | `/api/clinical/encounters/{id}/reassessment` | Clinical |
 | GET    | `/api/administrator/access`             | Administrator |
 | GET    | `/api/administrator/queue`              | Administrator |
+| GET    | `/api/administrator/audit-log`          | Administrator |
 | GET    | `/api/administrator/reports/daily-queue` | Administrator |
 | GET    | `/api/administrator/reports/priority-distribution` | Administrator |
 | GET    | `/api/administrator/reports/performance` | Administrator |
@@ -603,6 +609,19 @@ receives `403`; an unauthenticated request receives `401`.
 `GET /api/clinical/encounters` is a recency list for reviewing a saved intake —
 newest arrival first, `?limit=` up to 100. It is not the Queue: it is not
 ordered by Urgency Level and does not filter awaiting versus departed.
+
+`GET /api/clinical/patients` searches Patients by name or contact number,
+`?q=` plus `?limit=` up to 100. A blank or whitespace-only query returns
+nothing, so the view cannot be used to list every Patient. Search is a
+discovery aid and is deliberately looser than the identity rule
+`find_or_create_patient` applies: a name is enough to *find* a Patient, never
+to *match* one. `GET /api/clinical/patients/{id}/encounters` returns one
+Patient's Encounters over time, excluding evaluation-run rows as the Queue does.
+
+`GET /api/administrator/audit-log` is the append-only record of clinical
+mutations — registration, opening an Encounter, intake correction, Override,
+Re-assessment and Departure — each naming its actor, `?encounter_id=` narrows
+it to one Encounter. See ADR 0007.
 
 ## Security behaviour
 
@@ -628,7 +647,7 @@ backend/
     config.py          Settings (TRIAGEASSIST_* env vars)
     db.py              engine and session factory
     models.py          User, UserSession, Role, Patient, Encounter,
-                       TriageAssessment, Override, Sex
+                       TriageAssessment, Override, AuditEntry, Sex
     schemas.py         request/response models
     patients.py        Patient matching rule and find-or-create
     intake.py          whether an Encounter's intake may still be corrected
@@ -641,6 +660,8 @@ backend/
     assessments.py     captures inputs, runs the engine, appends the Assessment
     override_reasons.py  the fixed Override Reason set (one source of truth)
     overrides.py       performing an Override and its guards
+    audit_actions.py   the fixed Audit action set (one source of truth)
+    audit.py           appending audit entries and reading the log
     departures.py      performing a Departure and the awaiting-Encounter guard
     reassessments.py   performing a Re-assessment and recording supersession
     queue.py           the Queue as a sort over awaiting Encounters
@@ -665,8 +686,9 @@ frontend/
     App.tsx            session check, Role landing route, surface switch
     LoginScreen.tsx    login form; native Server setting
     routing.ts         Role landing paths and path routing
-    ClinicalWorkspace.tsx  Queue / Intake switch for the Clinical role
+    ClinicalWorkspace.tsx  Queue / Intake / History switch for the Clinical role
     QueueBoard.tsx     live Queue cards, expansion, Override and Depart actions
+    PatientHistoryScreen.tsx  Patient search and one Patient's Encounters over time
     AdministratorDashboard.tsx  dense Queue table, Reports mount point
     AdministratorReports.tsx    Accuracy Evaluation, Daily Queue, Distribution, Performance
     usePolling.ts      shared poll-on-interval and poll-on-focus hook

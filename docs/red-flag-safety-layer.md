@@ -5,8 +5,8 @@ classifier and the Machine Recommendation. It is layer (2) of the Prioritization
 Engine described in `spec.md`; ticket 08's cached fallback is layer (3).
 
 The layer exists because the shipped interim classifier is trained on a source
-with no pain level, illness duration or complaint, reacts only to age and the
-four vitals, and scores below the majority baseline
+with no pain level, illness duration, complaint or respiratory rate, reacts only
+to age and four of the vitals, and scores below the majority baseline
 (`backend/evaluation/datasets/README.md`). On its own it can call an otherwise
 quiet, hypoxaemic young adult Low. Every red flag that raises such a
 presentation comes from the rules below, not from the model.
@@ -90,13 +90,15 @@ thresholds above agree with it.
 ## The boundary is deliberate
 
 This is not a full ESI rule engine. It does not count expected resources, which
-is the core of ESI levels 3-5. It does not assess AVPU or mental status,
-respiratory rate, onset, pain needing intervention beyond triage, mechanism of
-injury, past history, pregnancy status, immunocompromise or medications: none of
-those is a structured engine input. It does not interpret free text; it sees
-only the Symptom Groups recognised from it, and that recognition does not
-understand negation ("no chest pain" is still *chest pain*). It does not assign
-an ESI level, and it does not replace the Clinical user's judgement.
+is the core of ESI levels 3-5. It does not assess AVPU or mental status, onset,
+pain needing intervention beyond triage, mechanism of injury, past history,
+pregnancy status, immunocompromise or medications: none of those is a structured
+engine input. Respiratory rate *is* a structured input, and since ticket 17 the
+layer assesses it for tachypnoea, but it cannot separate the under-3-months and
+3-months-to-3-years bands because age is whole years. It does not interpret free
+text; it sees only the Symptom Groups recognised from it, and that recognition
+does not understand negation ("no chest pain" is still *chest pain*). It does
+not assign an ESI level, and it does not replace the Clinical user's judgement.
 
 Over-triage is the accepted cost. A safety layer that misses a critical
 presentation is worse than one that asks a clinician to look sooner.

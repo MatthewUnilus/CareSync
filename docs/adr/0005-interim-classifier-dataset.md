@@ -16,7 +16,9 @@ Two open candidates were examined.
 
 Ship the classifier trained on Hoseini, and say plainly what it is.
 
-The consequence is material: the dataset records **no pain level, no illness duration and no complaint**, so 51 of 57 features are constant in training and carry zero coefficient. The model is effectively a six-coefficient age-and-vitals model. Five-fold cross-validated accuracy is **0.422 against a 0.533 majority-class baseline**; macro F1 0.358.
+The consequence is material: the dataset records **no pain level, no illness duration, no complaint and no respiratory rate**, so 52 of 58 features are constant in training and carry zero coefficient. The model is effectively a six-coefficient age-and-vitals model. Five-fold cross-validated accuracy is **0.422 against a 0.533 majority-class baseline**; macro F1 0.358.
+
+(Respiratory rate joined the feature vector in ticket 18 and the artefact moved to `urgency-classifier-v1.1.0`. It is constant in training for the same reason as the other three, so the cross-validated figures above are unchanged — the retrain kept the contract honest, it did not improve the score.)
 
 This is recorded in the artefact's own metadata, in `backend/evaluation/datasets/README.md`, and in the rejected-candidate notes, so the search is auditable rather than looking like an oversight.
 

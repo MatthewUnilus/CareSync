@@ -14,8 +14,8 @@ The system must recommend one of three Urgency Levels and must not miss a critic
 
 Option 3. The Prioritization Engine is layered, in this order:
 
-1. a supervised classifier over a structured feature vector (recognised Symptom Groups, pain level, illness duration, age, four vitals)
-2. a deterministic red-flag layer of twenty cited rules, which can raise the output to High and can never lower it
+1. a supervised classifier over a structured feature vector (recognised Symptom Groups, pain level, illness duration, age, five vitals)
+2. a deterministic red-flag layer of cited rules (twenty when written; twenty-three since respiratory rate was captured in ticket 18), which can raise the output to High and can never lower it
 3. a cached fallback for complaints matching no Symptom Group (ADR 0004)
 
 The whole composition sits behind one pure function, callable with constructed inputs and no database.
