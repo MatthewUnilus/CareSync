@@ -37,3 +37,6 @@ models/artifacts/
 Thumbs.db
 .idea/
 .vscode/
+
+# Agent worktrees (resolve outside the repo lack a writable ACE)
+.worktrees/
