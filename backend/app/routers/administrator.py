@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 
 from app import accuracy, reports
+from app.audit import read_audit_log
 from app.deps import DbSession, require_role
 from app.models import Role, User
 from app.queue import administrator_queue
@@ -23,7 +24,10 @@ from app.schemas import (
     AccuracyRunVariantResponse,
     AdministratorQueueEntryResponse,
     AdministratorQueueResponse,
+    AuditEntryResponse,
+    AuditLogResponse,
     DailyQueueReportResponse,
+    OverrideActorResponse,
     PerformanceEntryResponse,
     PerformanceReportResponse,
     UrgencyDistributionReportResponse,
@@ -70,6 +74,48 @@ def get_administrator_queue(
             )
             for row in administrator_queue(db, now)
         ],
+    )
+
+
+@router.get(
+    "/audit-log",
+    response_model=AuditLogResponse,
+)
+def get_audit_log(
+    db: DbSession,
+    user: AdministratorUser,
+    encounter_id: Annotated[
+        int | None,
+        Query(
+            gt=0,
+            description="Narrow the log to one Encounter's history",
+        ),
+    ] = None,
+) -> AuditLogResponse:
+    """The append-only log of clinical mutations, oldest first.
+
+    Read-only, like the Reports beside it: oversight stays separate from care,
+    so this route offers no action and is refusable to a Clinical user. One
+    Encounter may be named, which reconstructs a single visit; entries that
+    touch no Encounter (registration) are excluded by that filter.
+    """
+    return AuditLogResponse(
+        entries=[
+            AuditEntryResponse(
+                id=entry.id,
+                action=entry.action,
+                detail=entry.detail,
+                recorded_at=entry.recorded_at,
+                actor=OverrideActorResponse(
+                    id=entry.actor.id,
+                    display_name=entry.actor.display_name,
+                ),
+                patient_id=entry.patient_id,
+                encounter_id=entry.encounter_id,
+                assessment_id=entry.assessment_id,
+            )
+            for entry in read_audit_log(db, encounter_id=encounter_id)
+        ]
     )
 
 

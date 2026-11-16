@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from app.accuracy import FallbackMode, RunSource
+from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
 from app.models import Role, Sex
 from app.override_reasons import OverrideReason, allows_free_text
@@ -332,6 +333,31 @@ class AdministratorQueueEntryResponse(BaseModel):
 class AdministratorQueueResponse(BaseModel):
     as_of: UtcDatetime
     entries: list[AdministratorQueueEntryResponse]
+
+
+class AuditEntryResponse(BaseModel):
+    """One attributable record of a clinical mutation.
+
+    The subject ids are nullable because the six actions do not all reach the
+    same subjects: registration names only a Patient. ``actor`` is the same
+    shape the Override response uses, so an actor reads the same wherever it
+    appears.
+    """
+
+    id: int
+    action: AuditAction
+    detail: str | None
+    recorded_at: UtcDatetime
+    actor: OverrideActorResponse
+    patient_id: int | None
+    encounter_id: int | None
+    assessment_id: int | None
+
+
+class AuditLogResponse(BaseModel):
+    """The log oldest-first, optionally narrowed to one Encounter."""
+
+    entries: list[AuditEntryResponse]
 
 
 class DailyQueueReportResponse(BaseModel):

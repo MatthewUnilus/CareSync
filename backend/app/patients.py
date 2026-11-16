@@ -53,7 +53,18 @@ def find_or_create_patient(
     contact_phone: str,
     contact_email: str | None,
 ) -> tuple[Patient, bool]:
-    """Return the matching Patient, or create one. The flag says which happened."""
+    """Return the matching Patient, or stage one for insertion.
+
+    The flag says which happened. This function deliberately does **not** commit:
+    the caller does, so a registration and its audit entry share one transaction
+    (see ``app.audit``). It flushes only, because the flush is what surfaces the
+    unique-constraint race below.
+
+    A concurrent double submission is still handled here: when two requests pass
+    the lookup together, the unique constraint on ``(name_key, contact_key)``
+    rejects the second insert at flush time, so this rolls back its own attempt
+    and reuses the row the winner created.
+    """
     name_key = normalise_name(full_name)
     contact_key = normalise_contact(contact_phone)
 
@@ -72,7 +83,7 @@ def find_or_create_patient(
     )
     session.add(patient)
     try:
-        session.commit()
+        session.flush()
     except IntegrityError:
         # Another request registered the same person between the lookup and
         # the insert; the unique constraint caught it, so reuse that row.
