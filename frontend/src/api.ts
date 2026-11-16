@@ -150,6 +150,25 @@ export interface QueueSnapshot {
   entries: QueueEntry[];
 }
 
+/**
+ * Patients matching a search fragment. A discovery result, not an identity
+ * decision: several records may come back for one query, and the caller
+ * chooses. The server never treats a name alone as an identity match.
+ */
+export interface PatientSearchResults {
+  patients: Patient[];
+}
+
+/**
+ * One Patient's Encounters over time, oldest first. Corpus rows (Encounters
+ * carrying an evaluation run id) are absent, so a measurement row never reads
+ * as a real visit.
+ */
+export interface PatientHistory {
+  patient: Patient;
+  encounters: Encounter[];
+}
+
 export interface AdministratorQueueEntry {
   encounter_id: number;
   arrived_at: string;
@@ -421,6 +440,17 @@ export const api = {
     request<{ encounters: Encounter[] }>(
       `/api/clinical/encounters?limit=${limit}`,
     ),
+  /*
+   * Patient search is a discovery aid. The caller must not send a blank query
+   * (the server returns nothing for one), and should not debounce it into a
+   * bulk list: the view deliberately fires no request until something is typed.
+   */
+  searchPatients: (query: string, limit = 20) =>
+    request<PatientSearchResults>(
+      `/api/clinical/patients?q=${encodeURIComponent(query)}&limit=${limit}`,
+    ),
+  patientHistory: (patientId: number) =>
+    request<PatientHistory>(`/api/clinical/patients/${patientId}/encounters`),
   queue: () => request<QueueSnapshot>("/api/clinical/queue"),
   overrideReasons: () =>
     request<{ reasons: OverrideReason[] }>("/api/clinical/override-reasons"),

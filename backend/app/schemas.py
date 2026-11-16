@@ -270,6 +270,30 @@ class EncounterListResponse(BaseModel):
     encounters: list[EncounterResponse]
 
 
+class PatientSearchResponse(BaseModel):
+    """Patients matching a search fragment.
+
+    A discovery result, not an identity decision: several records may come
+    back for one query, and the caller chooses. ``app.patients`` documents why
+    a name alone never matches an identity, and that rule is untouched here.
+    """
+
+    patients: list[PatientResponse]
+
+
+class PatientHistoryResponse(BaseModel):
+    """One Patient's Encounters over time, oldest first.
+
+    Each Encounter is rendered exactly as anywhere else, so a visit shows the
+    same Urgency Level and Final Decision it does on the Queue. Encounters
+    carrying an ``evaluation_run_id`` are absent: corpus rows are measurement
+    scaffolding, not visits.
+    """
+
+    patient: PatientResponse
+    encounters: list[EncounterResponse]
+
+
 class QueueEntryResponse(BaseModel):
     """One compact card's worth of data, plus everything the expansion shows."""
 
