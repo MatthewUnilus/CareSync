@@ -4,7 +4,7 @@
 
 **Blocked by:** none.
 
-**Status:** open
+**Status:** done
 
 - [ ] A new table records the actor, a validated action from a fixed set, a timezone-aware timestamp, an optional detail, and nullable subject references to the Patient, Encounter and Assessment involved.
 - [ ] The action column is constrained to a fixed set of values using the same pattern as the Override Reason constraint (validated string, application-layer enforcement, no database triggers — per ADR 0001).
@@ -26,3 +26,5 @@
 - The Administrator surface is the natural home for the read view; add it under ticket 21's documentation pass if a UI section is included.
 
 ## Comments
+
+Resolved on `proposal-gaps`. Suite green: 435 passed.

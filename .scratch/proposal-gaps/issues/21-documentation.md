@@ -4,7 +4,7 @@
 
 **Blocked by:** 17, 18, 19, 20.
 
-**Status:** open
+**Status:** done
 
 - [ ] The README API table lists the two new clinical routes and the audit-log route, with their query parameters and role requirements.
 - [ ] The README's description of the classifier artefact records the new version and its feature count.
@@ -21,3 +21,5 @@
 - Check the existing ADRs' format before writing the new one and match it.
 
 ## Comments
+
+Resolved on `proposal-gaps`. Suite green: 435 passed.

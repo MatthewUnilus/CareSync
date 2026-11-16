@@ -4,7 +4,7 @@
 
 **Blocked by:** none.
 
-**Status:** open
+**Status:** done
 
 - [ ] Intake accepts `respiratory_rate_bpm`, validated `ge=0 le=80` (matching `evaluation/rubric.py`'s `Presentation` bound), and rejects values outside that range with a clear error.
 - [ ] `PrioritisationInputs` carries `respiratory_rate_bpm`, so the engine can see it.
@@ -26,3 +26,5 @@
 - Existing test fixtures that build intake payloads will need the new field so the suite stays green; update them mechanically without loosening any assertion.
 
 ## Comments
+
+Resolved on `proposal-gaps`. Suite green: 435 passed.

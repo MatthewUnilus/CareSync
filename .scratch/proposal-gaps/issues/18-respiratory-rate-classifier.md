@@ -4,7 +4,7 @@
 
 **Blocked by:** 17.
 
-**Status:** open
+**Status:** done
 
 - [ ] `SCALAR_FEATURE_NAMES`, `FeatureInputs` and `build_feature_vector` in `features.py` include `respiratory_rate_bpm`, appended after the existing dimensions, with the module docstring's dimension list updated.
 - [ ] The training loader supplies a missing-value sentinel for respiratory rate, following the existing `MISSING_PAIN_LEVEL` / `MISSING_ILLNESS_DURATION_HOURS` convention (the source records no respiratory rate). The sentinel sits outside the intake's producible domain.
@@ -22,3 +22,5 @@
 - Confirm the full suite is green before reporting done, and report the retrained accuracy figure plainly.
 
 ## Comments
+
+Resolved on `proposal-gaps`. Suite green: 435 passed.

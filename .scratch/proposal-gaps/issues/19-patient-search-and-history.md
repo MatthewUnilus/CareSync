@@ -4,7 +4,7 @@
 
 **Blocked by:** none.
 
-**Status:** open
+**Status:** done
 
 - [ ] `GET /api/clinical/patients?q=&limit=` returns Patients whose name or contact number matches the query, capped by `limit` following the existing `GET /encounters` pattern.
 - [ ] A blank or whitespace-only query returns an empty list, not the whole Patient table, so the view cannot be used as a bulk export.
@@ -24,3 +24,5 @@
 - Add the new endpoints to the README API table under ticket 21, not here.
 
 ## Comments
+
+Resolved on `proposal-gaps`. Suite green: 435 passed.
