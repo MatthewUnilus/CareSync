@@ -124,6 +124,15 @@ export default function IntakeFields({
           onChange={(value) => update("heartRate", value)}
         />
         <NumberField
+          label="Respiratory rate (bpm)"
+          min={0}
+          max={80}
+          step={1}
+          inputMode="numeric"
+          value={form.respiratoryRate}
+          onChange={(value) => update("respiratoryRate", value)}
+        />
+        <NumberField
           label="Blood pressure systolic"
           min={50}
           max={300}

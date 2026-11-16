@@ -28,6 +28,7 @@ BASE_INPUTS = PrioritisationInputs(
     illness_duration_hours=24.0,
     temperature_c=36.6,
     heart_rate_bpm=70,
+    respiratory_rate_bpm=16,
     systolic_bp=116,
     diastolic_bp=72,
     oxygen_saturation_percent=99,

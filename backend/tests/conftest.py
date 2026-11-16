@@ -17,6 +17,7 @@ LOW_INTAKE = {
     "illness_duration_hours": 24,
     "temperature_c": 36.6,
     "heart_rate_bpm": 70,
+    "respiratory_rate_bpm": 16,
     "blood_pressure": {"systolic": 116, "diastolic": 72},
     "oxygen_saturation_percent": 99,
     "notes": None,
@@ -29,6 +30,7 @@ MEDIUM_INTAKE = {
     "illness_duration_hours": 12,
     "temperature_c": 36.8,
     "heart_rate_bpm": 80,
+    "respiratory_rate_bpm": 18,
     "blood_pressure": {"systolic": 110, "diastolic": 70},
     "oxygen_saturation_percent": 94,
 }
@@ -40,6 +42,7 @@ HIGH_INTAKE = {
     "illness_duration_hours": 2,
     "temperature_c": 38.4,
     "heart_rate_bpm": 130,
+    "respiratory_rate_bpm": 24,
     "blood_pressure": {"systolic": 95, "diastolic": 58},
     "oxygen_saturation_percent": 88,
 }

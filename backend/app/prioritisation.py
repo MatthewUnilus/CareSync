@@ -72,6 +72,12 @@ class PrioritisationInputs:
     systolic_bp: int
     diastolic_bp: int
     oxygen_saturation_percent: int
+    # Bridge default for the evaluation adapters ticket 18 owns: ``harness.py``
+    # and ``materialise.py`` build these inputs from a feature row that does not
+    # carry respiratory rate yet. Zero is inside the intake domain and fires no
+    # tachypnoea rule, so the composed evaluation output is unchanged until
+    # ticket 18 wires the real value through. Live intake always supplies it.
+    respiratory_rate_bpm: int = 0
     recognised_symptom_groups: tuple[str, ...] = ()
 
 

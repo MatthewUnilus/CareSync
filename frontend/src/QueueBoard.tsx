@@ -425,6 +425,11 @@ function ExpandedDetail({
           value={`${intake.heart_rate_bpm} bpm`}
         />
         <Vital
+          label="Respiratory rate"
+          field="respiratory_rate_bpm"
+          value={`${intake.respiratory_rate_bpm} bpm`}
+        />
+        <Vital
           label="Blood pressure"
           field="blood_pressure"
           value={`${intake.blood_pressure.systolic}/${intake.blood_pressure.diastolic}`}

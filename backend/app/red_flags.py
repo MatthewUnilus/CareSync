@@ -18,16 +18,15 @@ not from the model.
 
 The rule set is deliberately bounded
 ------------------------------------
-This is *not* a full ESI rule engine. It implements twenty documented red-flag
-rules drawn from ESI version 4; each carries a clinical citation, and the same
-rules and citations are written out in ``docs/red-flag-safety-layer.md``. It
-does not:
+This is *not* a full ESI rule engine. It implements twenty-three documented
+red-flag rules drawn from ESI version 4; each carries a clinical citation, and
+the same rules and citations are written out in
+``docs/red-flag-safety-layer.md``. It does not:
 
 - count expected resources, which is the core of ESI levels 3-5;
-- assess AVPU / mental status, respiratory rate, onset, pain needing
-  intervention beyond triage, mechanism of injury, past history, pregnancy
-  status, immunocompromise or medications — none of these is a structured
-  input;
+- assess AVPU / mental status, onset, pain needing intervention beyond triage,
+  mechanism of injury, past history, pregnancy status, immunocompromise or
+  medications — none of these is a structured input;
 - interpret the free-text complaint; it sees only the Symptom Groups recognised
   from it, and recognition does not understand negation;
 - assign an ESI level or replace clinical judgement. Raising a presentation is
@@ -38,8 +37,11 @@ Bounded consequences worth knowing:
 
 - ``age`` is whole years, so the ESI danger-zone bands "under 3 months" and
   "3 months to under 3 years" cannot be distinguished. The layer applies the
-  more sensitive heart-rate threshold (160) to every patient under 3, and the
-  lower of the two infant fever bands to every patient under 1.
+  more sensitive heart-rate threshold (160) and the more sensitive respiratory
+  threshold (40) to every patient under 3, and the lower of the two infant
+  fever bands to every patient under 1. The respiratory coarsening over-triages
+  a six-month-old recorded as age 0, which is the deliberate trade the whole
+  layer makes.
 - ESI's danger-zone box does not include blood pressure. Two adult-only rules
   (hypotension and severe hypertension) are documented operationalisations of
   high-risk situations in the handbook's own text, not danger-zone entries.
@@ -47,8 +49,9 @@ Bounded consequences worth knowing:
   as a rule that raises to High and is deliberately omitted.
 
 The layer is pure: it takes the same ``PrioritisationInputs`` the classifier
-takes, touches no database or session, and is deterministic. Iterating twenty
-predicates is a few microseconds, well inside the three-second budget.
+takes, touches no database or session, and is deterministic. Iterating
+twenty-three predicates is a few microseconds, well inside the three-second
+budget.
 """
 
 from __future__ import annotations
@@ -148,6 +151,44 @@ RULES: tuple[RedFlagRule, ...] = (
         ),
         fires=lambda inputs: inputs.age >= 8 and inputs.heart_rate_bpm > 100,
         vitals=("heart_rate_bpm",),
+    ),
+    RedFlagRule(
+        id="infant_tachypnoea",
+        finding="Respiratory rate above 40 bpm under age 3",
+        citation=(
+            "ESI v4, Chapter 5, Figure 5-1, p. 35; "
+            "RUBRIC.md rule esi_2_danger_zone_vitals (the more sensitive of "
+            "the under-3-months, above 50, and 3-months-to-3-years, above 40, "
+            "bands; age is whole years, so the two cannot be told apart)"
+        ),
+        fires=lambda inputs: (
+            inputs.age < 3 and inputs.respiratory_rate_bpm > 40
+        ),
+        vitals=("respiratory_rate_bpm",),
+    ),
+    RedFlagRule(
+        id="child_tachypnoea",
+        finding="Respiratory rate above 30 bpm from age 3 to under 8",
+        citation=(
+            "ESI v4, Chapter 5, Figure 5-1, p. 35; "
+            "RUBRIC.md rule esi_2_danger_zone_vitals"
+        ),
+        fires=lambda inputs: (
+            3 <= inputs.age < 8 and inputs.respiratory_rate_bpm > 30
+        ),
+        vitals=("respiratory_rate_bpm",),
+    ),
+    RedFlagRule(
+        id="adult_tachypnoea",
+        finding="Respiratory rate above 20 bpm at age 8 or over",
+        citation=(
+            "ESI v4, Chapter 5, Figure 5-1, p. 35, and p. 36; "
+            "RUBRIC.md rule esi_2_danger_zone_vitals"
+        ),
+        fires=lambda inputs: (
+            inputs.age >= 8 and inputs.respiratory_rate_bpm > 20
+        ),
+        vitals=("respiratory_rate_bpm",),
     ),
     RedFlagRule(
         id="infant_fever",

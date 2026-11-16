@@ -91,6 +91,8 @@ def test_the_assessment_captures_an_immutable_snapshot_of_the_inputs(
 
     snapshot = body["assessment"]["snapshot"]
     assert snapshot == {**HIGH_INTAKE, "age": HIGH_AGE}
+    # The respiratory rate recorded at intake is the one frozen for review.
+    assert snapshot["respiratory_rate_bpm"] == HIGH_INTAKE["respiratory_rate_bpm"]
 
 
 def test_intake_cannot_be_corrected_once_an_assessment_exists(

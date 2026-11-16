@@ -36,6 +36,7 @@ BASE = PrioritisationInputs(
     illness_duration_hours=24.0,
     temperature_c=36.6,
     heart_rate_bpm=70,
+    respiratory_rate_bpm=16,
     systolic_bp=116,
     diastolic_bp=72,
     oxygen_saturation_percent=99,
@@ -67,6 +68,9 @@ FIRING_CASES: dict[str, PrioritisationInputs] = {
     "infant_tachycardia": inputs(age=1, heart_rate_bpm=165),
     "child_tachycardia": inputs(age=5, heart_rate_bpm=145),
     "adult_tachycardia": inputs(age=40, heart_rate_bpm=101),
+    "infant_tachypnoea": inputs(age=1, respiratory_rate_bpm=41),
+    "child_tachypnoea": inputs(age=5, respiratory_rate_bpm=31),
+    "adult_tachypnoea": inputs(age=40, respiratory_rate_bpm=21),
     "infant_fever": inputs(age=0, temperature_c=38.1),
     "adult_hypotension": inputs(age=40, systolic_bp=89, diastolic_bp=60),
     "adult_severe_hypertension": inputs(
@@ -97,6 +101,9 @@ BOUNDARY_CASES: dict[str, PrioritisationInputs] = {
     "infant_tachycardia": inputs(age=1, heart_rate_bpm=160),
     "child_tachycardia": inputs(age=5, heart_rate_bpm=140),
     "adult_tachycardia": inputs(age=40, heart_rate_bpm=100),
+    "infant_tachypnoea": inputs(age=1, respiratory_rate_bpm=40),
+    "child_tachypnoea": inputs(age=5, respiratory_rate_bpm=30),
+    "adult_tachypnoea": inputs(age=40, respiratory_rate_bpm=20),
     "infant_fever": inputs(age=0, temperature_c=38.0),
     "adult_hypotension": inputs(age=40, systolic_bp=90, diastolic_bp=61),
     "adult_severe_hypertension": inputs(
@@ -176,7 +183,7 @@ def test_every_rule_has_both_a_firing_and_a_boundary_case() -> None:
 
 
 def test_the_rule_set_is_deliberately_bounded_and_cited() -> None:
-    assert 15 <= len(RULES) <= 20
+    assert 15 <= len(RULES) <= 25
     assert len({rule.id for rule in RULES}) == len(RULES)
     for rule in RULES:
         assert rule.finding
@@ -184,17 +191,39 @@ def test_the_rule_set_is_deliberately_bounded_and_cited() -> None:
 
 
 def test_the_danger_zone_bands_meet_at_their_documented_ages() -> None:
-    at_three = inputs(age=3, heart_rate_bpm=150)
+    at_three = inputs(age=3, heart_rate_bpm=150, respiratory_rate_bpm=35)
     assert "infant_tachycardia" not in fired_ids(at_three)
     assert "child_tachycardia" in fired_ids(at_three)
+    assert "infant_tachypnoea" not in fired_ids(at_three)
+    assert "child_tachypnoea" in fired_ids(at_three)
 
-    at_eight = inputs(age=8, heart_rate_bpm=120)
+    at_eight = inputs(age=8, heart_rate_bpm=120, respiratory_rate_bpm=25)
     assert "child_tachycardia" not in fired_ids(at_eight)
     assert "adult_tachycardia" in fired_ids(at_eight)
+    assert "child_tachypnoea" not in fired_ids(at_eight)
+    assert "adult_tachypnoea" in fired_ids(at_eight)
 
     # RUBRIC.md treats exactly 8 years as the adult band for saturation too.
     at_eight_hypoxaemic = inputs(age=8, oxygen_saturation_percent=91)
     assert "adult_hypoxaemia" in fired_ids(at_eight_hypoxaemic)
+
+
+def test_the_under_three_months_band_is_coarsened_into_the_under_three_year_one() -> None:
+    """``age`` is whole years, so the two infant bands cannot be told apart.
+
+    The ESI danger-zone box gives a more sensitive respiratory threshold (>50)
+    for under 3 months and >40 up to 3 years. With ages as whole years a
+    six-month-old is recorded as 0, so the layer applies the more sensitive
+    threshold to every patient under 3 — the same coarsening the heart-rate
+    rules already make, and stated in the module docstring rather than hidden.
+    """
+    at_birth = inputs(age=0, respiratory_rate_bpm=45)
+    assert "infant_tachypnoea" in fired_ids(at_birth)
+
+    # Above the under-3-months threshold either way, so the coarsening is a
+    # deliberate over-triage rather than a missed flag.
+    at_birth_fast = inputs(age=0, respiratory_rate_bpm=51)
+    assert "infant_tachypnoea" in fired_ids(at_birth_fast)
 
 
 def test_an_otherwise_quiet_hypoxaemic_young_adult_is_raised_to_high() -> None:
@@ -279,6 +308,7 @@ def _open_hypoxaemic_young_adult(client: TestClient) -> dict[str, object]:
                 "illness_duration_hours": 24,
                 "temperature_c": 36.6,
                 "heart_rate_bpm": 70,
+                "respiratory_rate_bpm": 16,
                 "blood_pressure": {"systolic": 116, "diastolic": 72},
                 "oxygen_saturation_percent": 88,
                 "notes": None,
@@ -339,6 +369,50 @@ def test_the_queue_exposes_red_flags_so_a_card_can_mark_abnormal_vitals(
     assert "oxygen_saturation_percent" in marked
 
 
+def test_a_tachypnoeic_presentation_names_the_respiratory_field(
+    clinical_client: TestClient,
+) -> None:
+    """The board marks the exact vital a tachypnoea rule fired on."""
+    patient = clinical_client.post(
+        "/api/clinical/patients",
+        json={
+            "full_name": "Grace Hopper",
+            "age": 24,
+            "sex": "female",
+            "contact_phone": "07700 900555",
+            "contact_email": None,
+        },
+    )
+    assert patient.status_code in (200, 201)
+    encounter = clinical_client.post(
+        "/api/clinical/encounters",
+        json={
+            "patient_id": patient.json()["id"],
+            "intake": {
+                "presenting_complaint": "Mild headache for a day",
+                "pain_level": 2,
+                "illness_duration_hours": 24,
+                "temperature_c": 36.6,
+                "heart_rate_bpm": 70,
+                "respiratory_rate_bpm": 24,
+                "blood_pressure": {"systolic": 116, "diastolic": 72},
+                "oxygen_saturation_percent": 99,
+                "notes": None,
+            },
+        },
+    )
+    assert encounter.status_code == 201, encounter.text
+
+    assessment = encounter.json()["assessment"]
+    assert assessment["machine_recommendation"] == "High"
+    # The snapshot carries the value the flag was derived from.
+    assert assessment["snapshot"]["respiratory_rate_bpm"] == 24
+
+    by_id = {flag["id"]: flag for flag in assessment["red_flags"]}
+    tachypnoea = by_id["adult_tachypnoea"]
+    assert tachypnoea["vitals"] == ["respiratory_rate_bpm"]
+
+
 def test_a_presentation_with_no_red_flag_exposes_none(
     clinical_client: TestClient,
 ) -> None:
@@ -364,6 +438,7 @@ def test_a_presentation_with_no_red_flag_exposes_none(
                 "illness_duration_hours": 24,
                 "temperature_c": 36.6,
                 "heart_rate_bpm": 70,
+                "respiratory_rate_bpm": 16,
                 "blood_pressure": {"systolic": 116, "diastolic": 72},
                 "oxygen_saturation_percent": 99,
                 "notes": None,

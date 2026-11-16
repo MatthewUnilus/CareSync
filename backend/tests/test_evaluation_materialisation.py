@@ -122,6 +122,7 @@ def test_evaluation_rows_stay_off_the_queue_and_activity_reports(
         illness_duration_hours=2,
         temperature_c=37.0,
         heart_rate_bpm=120,
+        respiratory_rate_bpm=20,
         systolic_bp=110,
         diastolic_bp=70,
         oxygen_saturation_percent=96,
