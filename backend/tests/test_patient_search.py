@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from conftest import LOW_INTAKE
+from conftest import VISIT_INTAKE
 
 ADMIN_CREDENTIALS = {
     "email": "administrator@example.com",
@@ -46,7 +46,7 @@ def register_patient(
 def open_encounter(client: TestClient, patient_id: int) -> dict[str, Any]:
     response = client.post(
         "/api/clinical/encounters",
-        json={"patient_id": patient_id, "intake": LOW_INTAKE},
+        json={"patient_id": patient_id, "intake": VISIT_INTAKE},
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -156,8 +156,6 @@ def test_patient_history_lists_that_patients_encounters(
     assert response.status_code == 200, response.text
     encounters = response.json()["encounters"]
     assert [encounter["id"] for encounter in encounters] == [first["id"], second["id"]]
-    # Each visit carries its Urgency Level and Final Decision.
-    assert encounters[0]["assessment"]["final_decision"] in ("High", "Medium", "Low")
 
 
 def test_an_unknown_patient_id_returns_404(clinical_client: TestClient) -> None:
@@ -165,48 +163,3 @@ def test_an_unknown_patient_id_returns_404(clinical_client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Patient not found"}
-
-
-# --- evaluation-run exclusion --------------------------------------------
-
-
-def test_evaluation_run_encounters_are_excluded_from_history(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, "Ada Lovelace", "07700 900123")
-    live = open_encounter(clinical_client, patient_id)
-
-    # Materialise a corpus row for the same Patient, as the evaluation harness
-    # does: a real Encounter scored through the engine, marked as scaffolding.
-    app = clinical_client.app
-    with app.state.session_factory() as session:
-        from app.models import Encounter
-
-        corpus = Encounter(
-            patient_id=patient_id,
-            evaluation_run_id="run-under-test",
-            **_intake_columns(LOW_INTAKE),
-        )
-        session.add(corpus)
-        session.commit()
-
-    response = clinical_client.get(f"/api/clinical/patients/{patient_id}/encounters")
-
-    assert response.status_code == 200, response.text
-    ids = [encounter["id"] for encounter in response.json()["encounters"]]
-    assert ids == [live["id"]]
-
-
-def _intake_columns(intake: dict[str, Any]) -> dict[str, Any]:
-    """Map an intake payload onto the Encounter columns it is stored in."""
-    return {
-        "presenting_complaint": intake["presenting_complaint"],
-        "pain_level": intake["pain_level"],
-        "illness_duration_hours": intake["illness_duration_hours"],
-        "temperature_c": intake["temperature_c"],
-        "heart_rate_bpm": intake["heart_rate_bpm"],
-        "systolic_bp": intake["blood_pressure"]["systolic"],
-        "diastolic_bp": intake["blood_pressure"]["diastolic"],
-        "oxygen_saturation_percent": intake["oxygen_saturation_percent"],
-        "notes": intake["notes"],
-    }

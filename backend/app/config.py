@@ -50,14 +50,6 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     seed_demo_users: bool = False
 
-    # Runtime fallback provider (layer 3 of the engine). No URL means no
-    # provider: an unmatched complaint degrades to the safety layer's default
-    # and is marked unclassified, rather than blocking the patient. Nothing in
-    # the build or the test suite requires a key, a network or a paid service.
-    fallback_provider_url: str | None = None
-    fallback_provider_api_key: str | None = None
-    fallback_timeout_seconds: float = 2.0
-
     # Comma-separated. The native shell has its own WebView origin, so it calls
     # the API cross-origin; these are the only origins granted credentials.
     cors_origins: str = (

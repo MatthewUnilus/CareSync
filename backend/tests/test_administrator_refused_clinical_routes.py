@@ -1,8 +1,11 @@
 """An Administrator is refused every Clinical route, at the API boundary.
 
-Hiding buttons is not enforcement. These cases drive each Clinical route that
-exists today with a valid request body and an Administrator session, and assert
-that the role guard refuses it before the handler can run.
+Hiding buttons is not enforcement. These cases drive every Clinical route the
+router exposes with a valid request body and an Administrator session, and
+assert that the role guard refuses it before the handler can run.
+
+The case list is derived from the router rather than hard-coded, so a route that
+is added, renamed or removed cannot drift out of this test's coverage.
 """
 
 from typing import Any
@@ -12,17 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.routers import clinical
 
-LOW_INTAKE = {
-    "presenting_complaint": "Mild headache for a day",
-    "pain_level": 2,
-    "illness_duration_hours": 24,
-    "temperature_c": 36.8,
-    "heart_rate_bpm": 78,
-    "respiratory_rate_bpm": 16,
-    "blood_pressure": {"systolic": 120, "diastolic": 80},
-    "oxygen_saturation_percent": 98,
-    "notes": None,
-}
+from conftest import VISIT_INTAKE
 
 PATIENT = {
     "full_name": "Ada Lovelace",
@@ -32,85 +25,52 @@ PATIENT = {
     "contact_email": None,
 }
 
-# (HTTP method, route template, concrete path, JSON body)
-CLINICAL_ROUTE_CASES: list[tuple[str, str, str, dict[str, Any] | None]] = [
-    ("GET", "/api/clinical/access", "/api/clinical/access", None),
-    ("POST", "/api/clinical/patients", "/api/clinical/patients", PATIENT),
-    (
-        "POST",
-        "/api/clinical/encounters",
-        "/api/clinical/encounters",
-        {"patient_id": 1, "intake": LOW_INTAKE},
-    ),
-    (
-        "GET",
-        "/api/clinical/encounters",
-        "/api/clinical/encounters",
-        None,
-    ),
-    (
-        "GET",
-        "/api/clinical/patients",
-        "/api/clinical/patients?q=ada",
-        None,
-    ),
-    (
-        "GET",
-        "/api/clinical/patients/{patient_id}/encounters",
-        "/api/clinical/patients/1/encounters",
-        None,
-    ),
-    ("GET", "/api/clinical/queue", "/api/clinical/queue", None),
-    (
-        "GET",
-        "/api/clinical/encounters/{encounter_id}",
-        "/api/clinical/encounters/1",
-        None,
-    ),
-    (
-        "PUT",
-        "/api/clinical/encounters/{encounter_id}/intake",
-        "/api/clinical/encounters/1/intake",
-        LOW_INTAKE,
-    ),
-    (
-        "POST",
-        "/api/clinical/encounters/{encounter_id}/override",
-        "/api/clinical/encounters/1/override",
-        {
-            "assessment_id": 1,
-            "final_decision": "High",
-            "reason": "clinical gestalt",
-        },
-    ),
-    (
-        "POST",
-        "/api/clinical/encounters/{encounter_id}/departure",
-        "/api/clinical/encounters/1/departure",
-        None,
-    ),
-    (
-        "POST",
-        "/api/clinical/encounters/{encounter_id}/reassessment",
-        "/api/clinical/encounters/1/reassessment",
-        LOW_INTAKE,
-    ),
-    ("GET", "/api/clinical/override-reasons", "/api/clinical/override-reasons", None),
-]
+ADMINISTRATOR_CREDENTIALS = {
+    "email": "administrator@example.com",
+    "password": "administrator-password",
+}
+
+# A valid body per body-bearing route, keyed by (method, path template). A route
+# not listed here takes no body, so the guard is exercised with ``None``.
+_BODIES: dict[tuple[str, str], dict[str, Any]] = {
+    ("POST", "/api/clinical/patients"): PATIENT,
+    ("POST", "/api/clinical/encounters"): {
+        "patient_id": 1,
+        "intake": VISIT_INTAKE,
+    },
+    ("PUT", "/api/clinical/encounters/{encounter_id}/intake"): VISIT_INTAKE,
+}
+
+_PATH_PARAMS = {"patient_id": "1", "encounter_id": "1"}
 
 
-def _clinical_route_methods() -> set[tuple[str, str]]:
-    return {
-        (method, route.path)
-        for route in clinical.router.routes
-        for method in getattr(route, "methods", set())
-    }
+def _concrete_path(template: str) -> str:
+    path = template
+    for name, value in _PATH_PARAMS.items():
+        path = path.replace("{" + name + "}", value)
+    return path
 
 
-def test_the_cases_cover_every_clinical_route_that_exists_today() -> None:
-    covered = {(method, template) for method, template, _, _ in CLINICAL_ROUTE_CASES}
+def _clinical_route_cases() -> list[tuple[str, str, str, dict[str, Any] | None]]:
+    cases: list[tuple[str, str, str, dict[str, Any] | None]] = []
+    for route in clinical.router.routes:
+        methods = getattr(route, "methods", set()) or set()
+        for method in methods:
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            template = route.path
+            cases.append(
+                (
+                    method,
+                    template,
+                    _concrete_path(template),
+                    _BODIES.get((method, template)),
+                )
+            )
+    return sorted(cases, key=lambda case: (case[1], case[0]))
 
-    assert covered == _clinical_route_methods()
+
+CLINICAL_ROUTE_CASES = _clinical_route_cases()
 
 
 @pytest.mark.parametrize(
@@ -125,13 +85,7 @@ def test_an_administrator_is_refused_every_clinical_route(
     path: str,
     body: dict[str, Any] | None,
 ) -> None:
-    login = client.post(
-        "/api/auth/login",
-        json={
-            "email": "administrator@example.com",
-            "password": "administrator-password",
-        },
-    )
+    login = client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS)
     assert login.status_code == 200
 
     response = client.request(method, path, json=body)
@@ -139,4 +93,35 @@ def test_an_administrator_is_refused_every_clinical_route(
     assert response.status_code == 403, (
         f"{method} {template} should refuse an Administrator"
     )
+    assert response.json() == {"detail": "Role not permitted"}
+
+
+def test_the_removed_triage_routes_are_gone() -> None:
+    """The Queue, Override and Re-assessment routes left with the engine."""
+    removed_suffixes = (
+        "/queue",
+        "/override",
+        "/override-reasons",
+        "/departure",
+        "/reassessment",
+    )
+    paths = {route.path for route in clinical.router.routes}
+    assert not [path for path in paths if path.endswith(removed_suffixes)]
+
+
+def test_the_end_visit_route_refuses_an_administrator(
+    client: TestClient,
+) -> None:
+    """Ending a visit is a Clinical action, refused to an Administrator.
+
+    The parametrized cases above cover every route the router exposes; this pins
+    the end-of-visit contract explicitly, so a rename or a dropped route guard
+    fails here rather than silently reducing coverage.
+    """
+    login = client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS)
+    assert login.status_code == 200
+
+    response = client.post("/api/clinical/encounters/1/end")
+
+    assert response.status_code == 403
     assert response.json() == {"detail": "Role not permitted"}

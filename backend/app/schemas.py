@@ -15,8 +15,6 @@ from pydantic import (
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
 from app.models import Role, Sex
-from app.override_reasons import OverrideReason, allows_free_text
-from app.prioritisation import UrgencyLevel
 from app.timeutils import as_utc
 
 _NAME = Annotated[
@@ -125,10 +123,14 @@ class BloodPressure(BaseModel):
 
 
 class IntakePayload(BaseModel):
-    """The intake captured for an Encounter, as sent and as returned.
+    """The full intake an Observation is charted from, kept for ticket 30.
 
-    Every field except ``notes`` is required: these are the inputs a Triage
-    Assessment runs on, so an Encounter cannot be opened without them.
+    A visit no longer holds vital signs; every set of vitals is its own
+    Observation (ADR 0008). This is the validated shape and the bounds the
+    Observation chart will accept (pain 1-10, temperature 30-45, heart rate
+    20-300, respiratory rate 0-80, systolic 50-300, diastolic 20-200 and greater
+    than diastolic, saturation 50-100). No visit route accepts it yet, so a
+    visit's own payload is the reason-only ``VisitReasonPayload`` below.
     """
 
     presenting_complaint: _TEXT
@@ -136,8 +138,6 @@ class IntakePayload(BaseModel):
     illness_duration_hours: float = Field(ge=0, le=8760)
     temperature_c: float = Field(ge=30, le=45)
     heart_rate_bpm: int = Field(ge=20, le=300)
-    # The bound matches ``evaluation.rubric.Presentation``, which is the existing
-    # clinical source of truth for this range; intake must not invent a second.
     respiratory_rate_bpm: int = Field(ge=0, le=80)
     blood_pressure: BloodPressure
     oxygen_saturation_percent: int = Field(ge=50, le=100)
@@ -149,138 +149,59 @@ class IntakePayload(BaseModel):
         return value or None
 
 
+class VisitReasonPayload(BaseModel):
+    """The reason for a visit, as sent when a visit is opened or corrected.
+
+    Vital signs and notes are refused rather than ignored: before the Observation
+    chart (ticket 30) a visit has nowhere to keep them, and silently accepting a
+    posted set of vitals would let the client believe they were recorded.
+    ``extra='forbid'`` turns that into a ``422``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    presenting_complaint: _TEXT
+
+
 class EncounterCreateRequest(BaseModel):
+    """Open a visit: the Patient, and the reason for the visit.
+
+    The reason travels under the ``intake`` wrapper the client already sends, but
+    its shape is reason-only, so vitals posted here are refused until the
+    Observation chart exists.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     patient_id: int = Field(gt=0)
-    intake: IntakePayload
-
-
-class AssessmentSnapshot(BaseModel):
-    """The immutable inputs captured when the Assessment ran."""
-
-    presenting_complaint: str
-    age: int
-    pain_level: int
-    illness_duration_hours: float
-    temperature_c: float
-    heart_rate_bpm: int
-    respiratory_rate_bpm: int
-    blood_pressure: BloodPressure
-    oxygen_saturation_percent: int
-    notes: str | None
+    intake: VisitReasonPayload
 
 
 class ActorResponse(BaseModel):
     """A User as an actor, wherever an action's performer is shown.
 
-    The same shape serves an Override's ``performed_by`` and an Audit Entry's
-    ``actor``, so a name reads identically wherever it appears.
+    The same shape serves an Audit Entry's ``actor``, so a name reads identically
+    wherever it appears.
     """
 
     id: int
     display_name: str
 
 
-class OverrideRecordResponse(BaseModel):
-    """The human act behind a Final Decision that differs from the machine's."""
-
-    reason: OverrideReason
-    free_text: str | None
-    performed_at: UtcDatetime
-    performed_by: ActorResponse
-
-
-class RedFlagResponse(BaseModel):
-    """One red-flag rule that fired for an Assessment's captured inputs.
-
-    Exposed so the board can show *why* a presentation reached High, and mark
-    the abnormal vital it keyed on. Derived from the same cited rule set the
-    safety layer runs (``app.red_flags``); it is a read-only explanation, not a
-    new decision.
-    """
-
-    id: str
-    finding: str
-    citation: str
-    # Intake field names this rule keyed on (empty when it keyed on a
-    # recognised Symptom Group instead of a measured value).
-    vitals: list[str]
-
-
-class AssessmentResponse(BaseModel):
-    id: int
-    assessed_at: UtcDatetime
-    machine_recommendation: UrgencyLevel
-    final_decision: UrgencyLevel
-    recognised_symptom_groups: list[str]
-    # True when the complaint matched no Symptom Group and the fallback
-    # provider was unavailable or timed out. A separate signal from an
-    # Override, which is represented by ``override`` and ``override_flag``.
-    unclassified: bool = False
-    # Every red flag that fired on this Assessment's frozen inputs.
-    red_flags: list[RedFlagResponse] = Field(default_factory=list)
-    override: OverrideRecordResponse | None = None
-    snapshot: AssessmentSnapshot
-    # Set by a Re-assessment: the governing Assessment it replaced. Null on a
-    # first Assessment, so the history reconstructs the whole sequence.
-    supersedes_assessment_id: int | None = None
-
-
-class OverrideRequest(BaseModel):
-    """Set a Final Decision different from the Machine Recommendation.
-
-    ``machine_recommendation`` is deliberately not a field, and unknown fields
-    are refused, so this path cannot be used to write the engine's output.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    assessment_id: int = Field(gt=0)
-    final_decision: UrgencyLevel
-    reason: OverrideReason
-    free_text: _OPTIONAL_TEXT | None = None
-
-    @field_validator("free_text")
-    @classmethod
-    def _blank_free_text_is_absent(cls, value: str | None) -> str | None:
-        return value or None
-
-    @model_validator(mode="after")
-    def _free_text_only_for_other(self) -> "OverrideRequest":
-        if not allows_free_text(self.reason) and self.free_text is not None:
-            raise ValueError(
-                "free_text is accepted only when reason is 'other'"
-            )
-        return self
-
-
-class OverrideReasonsResponse(BaseModel):
-    """The fixed Override Reason set, in glossary order."""
-
-    reasons: list[OverrideReason]
-
-
 class EncounterResponse(BaseModel):
-    """One Encounter, awaiting or departed.
+    """One Encounter, open or ended.
 
-    ``status`` is derived from ``departed_at`` rather than stored: awaiting
-    while the instant is null, departed once it is set. A departed Encounter
-    is still returned in full, with its Patient, intake, Assessment and
-    Override intact.
-
-    ``assessment`` is the governing (most recent) Assessment. ``assessments``
-    is the whole history oldest-first, so a Re-assessed Encounter stays
-    readable back to its first decision; the earlier rows keep their own
-    snapshots and Overrides.
+    ``status`` is derived from ``ended_at`` rather than stored: open while the
+    instant is null, ended once it is set. An ended Encounter is still returned
+    in full, with its Patient and the reason for the visit.
     """
 
     id: int
     arrived_at: UtcDatetime
-    departed_at: UtcDatetime | None = None
+    ended_at: UtcDatetime | None = None
     status: EncounterStatus
     patient: PatientResponse
-    intake: IntakePayload
-    assessment: AssessmentResponse | None = None
-    assessments: list[AssessmentResponse] = Field(default_factory=list)
+    reason_for_visit: str
 
 
 class EncounterListResponse(BaseModel):
@@ -301,65 +222,23 @@ class PatientSearchResponse(BaseModel):
 class PatientHistoryResponse(BaseModel):
     """One Patient's Encounters over time, oldest first.
 
-    Each Encounter is rendered exactly as anywhere else, so a visit shows the
-    same Urgency Level and Final Decision it does on the Queue. Encounters
-    carrying an ``evaluation_run_id`` are absent: corpus rows are measurement
-    scaffolding, not visits.
+    Each Encounter is rendered exactly as anywhere else, so a visit reads the
+    same in a history as it does from a lookup.
     """
 
     patient: PatientResponse
     encounters: list[EncounterResponse]
 
 
-class QueueEntryResponse(BaseModel):
-    """One compact card's worth of data, plus everything the expansion shows."""
-
-    encounter_id: int
-    arrived_at: UtcDatetime
-    waiting_seconds: int
-    urgency_level: UrgencyLevel
-    patient: PatientResponse
-    intake: IntakePayload
-    assessment: AssessmentResponse
-    override_flag: bool
-    # Its own state, not a reuse of override_flag: the fallback provider could
-    # not classify the complaint, so the recommendation needs clinical review.
-    unclassified_flag: bool
-
-
-class QueueResponse(BaseModel):
-    as_of: UtcDatetime
-    entries: list[QueueEntryResponse]
-
-
-class AdministratorQueueEntryResponse(BaseModel):
-    """One row of the Administrator's dense Queue table."""
-
-    encounter_id: int
-    arrived_at: UtcDatetime
-    waiting_seconds: int
-    urgency_level: UrgencyLevel
-    patient_name: str
-    presenting_complaint: str
-    machine_recommendation: UrgencyLevel
-    final_decision: UrgencyLevel
-    final_decision_differs: bool
-
-
-class AdministratorQueueResponse(BaseModel):
-    as_of: UtcDatetime
-    entries: list[AdministratorQueueEntryResponse]
-
-
 class AuditEntryResponse(BaseModel):
     """One attributable record of a clinical mutation.
 
-    The subject ids are nullable because the six actions do not all reach the
-    same subjects: registration names only a Patient. ``actor`` is the same
-    shape the Override response uses, so an actor reads the same wherever it
-    appears. ``action`` is the machine key the log filters on; ``action_label``
-    is its human read, computed server-side beside the enum so the client holds
-    no copy of the mapping.
+    The subject ids are nullable because the actions do not all reach the same
+    subjects: registration names only a Patient, while opening an Encounter also
+    names that Encounter. ``actor`` is a shared shape, so an actor reads the same
+    wherever it appears. ``action`` is the machine key the log filters on;
+    ``action_label`` is its human read, computed server-side beside the enum so
+    the client holds no copy of the mapping.
     """
 
     id: int
@@ -370,7 +249,6 @@ class AuditEntryResponse(BaseModel):
     actor: ActorResponse
     patient_id: int | None
     encounter_id: int | None
-    assessment_id: int | None
 
 
 class AuditLogResponse(BaseModel):
@@ -380,7 +258,7 @@ class AuditLogResponse(BaseModel):
 
 
 class DailyVisitsReportResponse(BaseModel):
-    """One UTC day's arrival volume, departure throughput, and backlog."""
+    """One UTC day's arrival volume, end-of-visit throughput, and backlog."""
 
     day: date
     starts_at: UtcDatetime
@@ -390,20 +268,10 @@ class DailyVisitsReportResponse(BaseModel):
     awaiting: int
 
 
-class UrgencyLevelCountResponse(BaseModel):
-    urgency_level: UrgencyLevel
-    encounters: int
-
-
-class UrgencyDistributionReportResponse(BaseModel):
-    total: int
-    levels: list[UrgencyLevelCountResponse]
-
-
 class PerformanceEntryResponse(BaseModel):
     encounter_id: int
     arrived_at: UtcDatetime
-    departed_at: UtcDatetime
+    ended_at: UtcDatetime
     waiting_seconds: int
 
 

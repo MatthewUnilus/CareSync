@@ -18,16 +18,13 @@ class AuditAction(str, Enum):
     """One state-changing clinical act, named in the glossarist's terms.
 
     Values are snake_case identifiers rather than prose, because an action is a
-    machine-readable key used for filtering and counting, unlike an Override
-    Reason which is a reportable clinical dimension rendered to a human.
+    machine-readable key used for filtering and counting.
     """
 
     register_patient = "register_patient"
     open_encounter = "open_encounter"
-    correct_intake = "correct_intake"
-    override = "override"
-    reassessment = "reassessment"
-    departure = "departure"
+    correct_visit_reason = "correct_visit_reason"
+    end_encounter = "end_encounter"
 
 
 AUDIT_ACTIONS: tuple[AuditAction, ...] = tuple(AuditAction)
@@ -36,9 +33,7 @@ AUDIT_ACTIONS: tuple[AuditAction, ...] = tuple(AuditAction)
 # The human read of every action, in the same module as the enum so the two
 # cannot drift. The key stays the machine identifier (tests and filters match on
 # it, and changing it would rewrite the log's stored values); the label is what
-# an Administrator reads. A label is the reportable dimension the enum docstring
-# contrasts the key with, so it belongs here as a second table rather than
-# replacing the values. Served with every entry by
+# an Administrator reads. Served with every entry by
 # ``GET /api/administrator/audit-log`` (ADR 0007, amended by ticket 24).
 #
 # Every member of the enum must appear here: ``test_audit_log`` asserts the
@@ -47,10 +42,8 @@ AUDIT_ACTIONS: tuple[AuditAction, ...] = tuple(AuditAction)
 AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.register_patient: "Patient registered",
     AuditAction.open_encounter: "Encounter opened",
-    AuditAction.correct_intake: "Intake corrected",
-    AuditAction.override: "Final decision overridden",
-    AuditAction.reassessment: "Re-assessment recorded",
-    AuditAction.departure: "Patient departed",
+    AuditAction.correct_visit_reason: "Visit reason corrected",
+    AuditAction.end_encounter: "Encounter ended",
 }
 
 # What to show for a value the table does not name. Deliberate and readable: the
@@ -72,4 +65,3 @@ def label_for(action: AuditAction | str) -> str:
     except ValueError:
         return UNKNOWN_ACTION_LABEL
     return AUDIT_ACTION_LABELS[known]
-

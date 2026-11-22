@@ -1,4 +1,12 @@
-from datetime import datetime, timezone
+"""Opening and correcting a visit's reason, at the API boundary.
+
+A visit carries a reason, not vital signs: until the Observation chart lands
+(ticket 30) a visit has nowhere to keep vitals, so the visit payload is
+reason-only and vitals posted to it are refused with ``422`` rather than
+silently dropped.
+"""
+
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -9,17 +17,20 @@ ADMINISTRATOR_CREDENTIALS = {
     "password": "administrator-password",
 }
 
-INTAKE = {
-    "presenting_complaint": "Crushing chest pain since this morning",
-    "pain_level": 8,
-    "illness_duration_hours": 6,
-    "temperature_c": 37.2,
-    "heart_rate_bpm": 104,
-    "respiratory_rate_bpm": 20,
-    "blood_pressure": {"systolic": 148, "diastolic": 92},
-    "oxygen_saturation_percent": 94,
-    "notes": "Diabetic, on metformin",
-}
+REASON = "Crushing chest pain since this morning"
+
+# One non-reason field at a time: every vital sign, plus notes, must be refused
+# by a visit route until the Observation chart exists.
+VITALS = [
+    {"pain_level": 8},
+    {"illness_duration_hours": 6},
+    {"temperature_c": 37.2},
+    {"heart_rate_bpm": 104},
+    {"respiratory_rate_bpm": 20},
+    {"blood_pressure": {"systolic": 148, "diastolic": 92}},
+    {"oxygen_saturation_percent": 94},
+    {"notes": "Diabetic, on metformin"},
+]
 
 
 def register_patient(
@@ -41,154 +52,45 @@ def register_patient(
     return response.json()["id"]
 
 
-def open_encounter(
-    client: TestClient,
-    patient_id: int,
-    **intake_overrides: Any,
-):
+def open_visit(client: TestClient, patient_id: int, **reason_overrides: Any):
     return client.post(
         "/api/clinical/encounters",
         json={
             "patient_id": patient_id,
-            "intake": {**INTAKE, **intake_overrides},
+            "intake": {"presenting_complaint": REASON, **reason_overrides},
         },
     )
 
 
-def test_clinical_user_opens_an_encounter_with_intake(
+def correct_reason(client: TestClient, encounter_id: int, **overrides: Any):
+    return client.put(
+        f"/api/clinical/encounters/{encounter_id}/intake",
+        json={"presenting_complaint": REASON, **overrides},
+    )
+
+
+def test_clinical_user_opens_a_visit_with_a_reason(
     clinical_client: TestClient,
 ) -> None:
     patient_id = register_patient(clinical_client)
 
-    response = open_encounter(clinical_client, patient_id)
+    response = open_visit(clinical_client, patient_id)
 
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
     body = response.json()
     assert body["id"] > 0
     assert body["patient"]["id"] == patient_id
     assert body["patient"]["full_name"] == "Ada Lovelace"
-    assert body["intake"] == INTAKE
+    # The reason is kept on the visit; there is no intake/vitals block.
+    assert body["reason_for_visit"] == REASON
+    assert body["status"] == "open"
 
 
-def test_arrival_instant_is_recorded_at_creation_and_never_editable(
-    clinical_client: TestClient,
-) -> None:
+def test_a_patient_may_hold_many_visits(clinical_client: TestClient) -> None:
     patient_id = register_patient(clinical_client)
 
-    before = datetime.now(timezone.utc)
-    created = open_encounter(clinical_client, patient_id)
-    after = datetime.now(timezone.utc)
-    assert created.status_code == 201
-
-    arrived_at = datetime.fromisoformat(created.json()["arrived_at"])
-    assert arrived_at.tzinfo is not None
-    assert before <= arrived_at <= after
-
-    corrected = clinical_client.put(
-        f"/api/clinical/encounters/{created.json()['id']}/intake",
-        json={**INTAKE, "pain_level": 6, "arrived_at": "1999-01-01T00:00:00Z"},
-    )
-    assert corrected.status_code == 409
-
-    fetched = clinical_client.get(f"/api/clinical/encounters/{created.json()['id']}")
-    assert datetime.fromisoformat(fetched.json()["arrived_at"]) == arrived_at
-
-    no_update = clinical_client.put(
-        f"/api/clinical/encounters/{created.json()['id']}",
-        json={"arrived_at": "1999-01-01T00:00:00Z"},
-    )
-    assert no_update.status_code == 405
-
-    assert (
-        datetime.fromisoformat(
-            clinical_client.get(
-                f"/api/clinical/encounters/{created.json()['id']}"
-            ).json()["arrived_at"]
-        )
-        == arrived_at
-    )
-
-
-def test_intake_correction_is_refused_once_an_assessment_exists(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client)
-    created = open_encounter(clinical_client, patient_id)
-    encounter_id = created.json()["id"]
-
-    corrected_intake = {
-        **INTAKE,
-        "presenting_complaint": "Chest tightness, worse on exertion",
-        "pain_level": 5,
-        "temperature_c": 36.8,
-        "heart_rate_bpm": 88,
-        "respiratory_rate_bpm": 18,
-        "blood_pressure": {"systolic": 132, "diastolic": 84},
-        "oxygen_saturation_percent": 97,
-        "notes": None,
-    }
-
-    response = clinical_client.put(
-        f"/api/clinical/encounters/{encounter_id}/intake",
-        json=corrected_intake,
-    )
-
-    assert response.status_code == 409
-
-    fetched = clinical_client.get(f"/api/clinical/encounters/{encounter_id}")
-    assert fetched.json()["intake"] == INTAKE
-    assert fetched.json()["patient"]["id"] == patient_id
-
-
-def test_a_corrected_intake_is_recorded_as_a_reassessment(
-    clinical_client: TestClient,
-) -> None:
-    """The correction intent is reachable through Re-assessment, not PUT intake.
-
-    Opening an Encounter creates its first Assessment, so the correction route
-    is always refused. A typo is corrected by capturing the current intake as a
-    new Assessment: the earlier snapshot stays frozen, and the new one governs.
-    """
-    patient_id = register_patient(clinical_client)
-    encounter_id = open_encounter(clinical_client, patient_id).json()["id"]
-
-    corrected_intake = {
-        **INTAKE,
-        "pain_level": 5,
-        "temperature_c": 36.8,
-        "heart_rate_bpm": 88,
-        "respiratory_rate_bpm": 18,
-        "blood_pressure": {"systolic": 132, "diastolic": 84},
-        "oxygen_saturation_percent": 97,
-    }
-
-    refused = clinical_client.put(
-        f"/api/clinical/encounters/{encounter_id}/intake",
-        json=corrected_intake,
-    )
-    assert refused.status_code == 409
-
-    response = clinical_client.post(
-        f"/api/clinical/encounters/{encounter_id}/reassessment",
-        json=corrected_intake,
-    )
-
-    assert response.status_code == 201
-    body = response.json()
-    assert body["intake"] == corrected_intake
-    assert len(body["assessments"]) == 2
-    first, second = body["assessments"]
-    assert first["snapshot"]["pain_level"] == INTAKE["pain_level"]
-    assert second["snapshot"]["pain_level"] == 5
-    assert second["supersedes_assessment_id"] == first["id"]
-    assert body["assessment"]["id"] == second["id"]
-
-
-def test_a_patient_may_hold_many_encounters(clinical_client: TestClient) -> None:
-    patient_id = register_patient(clinical_client)
-
-    first = open_encounter(clinical_client, patient_id)
-    second = open_encounter(
+    first = open_visit(clinical_client, patient_id)
+    second = open_visit(
         clinical_client, patient_id, presenting_complaint="Follow-up review"
     )
 
@@ -199,83 +101,158 @@ def test_a_patient_may_hold_many_encounters(clinical_client: TestClient) -> None
     assert second.json()["patient"]["id"] == patient_id
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"presenting_complaint": "   "},
-        {"pain_level": 0},
-        {"pain_level": 11},
-        {"illness_duration_hours": -1},
-        {"illness_duration_hours": 9000},
-        {"temperature_c": 29.9},
-        {"temperature_c": 45.1},
-        {"heart_rate_bpm": 19},
-        {"heart_rate_bpm": 301},
-        {"respiratory_rate_bpm": -1},
-        {"respiratory_rate_bpm": 81},
-        {"blood_pressure": {"systolic": 120, "diastolic": 120}},
-        {"blood_pressure": {"systolic": 49, "diastolic": 20}},
-        {"blood_pressure": {"systolic": 150, "diastolic": 19}},
-        {"oxygen_saturation_percent": 49},
-        {"oxygen_saturation_percent": 101},
-        {"notes": "x" * 2001},
-    ],
-)
-def test_intake_ranges_are_validated_when_opening_an_encounter(
-    clinical_client: TestClient, overrides: dict[str, Any]
+@pytest.mark.parametrize("extra", VITALS)
+def test_opening_a_visit_refuses_vitals(
+    clinical_client: TestClient, extra: dict[str, Any]
 ) -> None:
+    """Vitals posted to a visit are refused, not silently dropped."""
     patient_id = register_patient(clinical_client)
 
-    response = open_encounter(clinical_client, patient_id, **overrides)
+    response = open_visit(clinical_client, patient_id, **extra)
 
     assert response.status_code == 422
 
 
-def test_intake_ranges_are_validated_when_correcting(
-    clinical_client: TestClient,
-) -> None:
+def test_a_visit_reason_is_required(clinical_client: TestClient) -> None:
     patient_id = register_patient(clinical_client)
-    encounter_id = open_encounter(clinical_client, patient_id).json()["id"]
 
-    response = clinical_client.put(
-        f"/api/clinical/encounters/{encounter_id}/intake",
-        json={**INTAKE, "pain_level": 11},
-    )
-
-    assert response.status_code == 422
+    assert open_visit(clinical_client, patient_id, presenting_complaint="   ").status_code == 422
     assert (
-        clinical_client.get(f"/api/clinical/encounters/{encounter_id}").json()["intake"]
-        == INTAKE
+        clinical_client.post(
+            "/api/clinical/encounters",
+            json={"patient_id": patient_id, "intake": {}},
+        ).status_code
+        == 422
     )
 
 
-def test_encounter_must_belong_to_a_known_patient(
+def test_the_reason_for_a_visit_can_be_corrected(
     clinical_client: TestClient,
 ) -> None:
-    response = open_encounter(clinical_client, 999_999)
+    """Nothing freezes the reason any more: the engine's inputs are gone."""
+    patient_id = register_patient(clinical_client)
+    encounter_id = open_visit(clinical_client, patient_id).json()["id"]
+
+    response = correct_reason(
+        clinical_client, encounter_id, presenting_complaint="Chest tightness on exertion"
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["reason_for_visit"] == "Chest tightness on exertion"
+    fetched = clinical_client.get(f"/api/clinical/encounters/{encounter_id}")
+    assert fetched.json()["reason_for_visit"] == "Chest tightness on exertion"
+
+
+def test_correcting_a_visit_reason_leaves_arrived_at_untouched(
+    clinical_client: TestClient,
+) -> None:
+    """The arrival instant is the server's, and a correction never re-stamps it.
+
+    ``arrived_at`` anchors the visit: reports and histories order on it, and it
+    is written once at creation. Correcting the reason edits the reason and
+    nothing else, so the instant must come back unchanged and timezone-aware
+    rather than being recomputed to the moment of the correction.
+    """
+    patient_id = register_patient(clinical_client)
+    opened = open_visit(clinical_client, patient_id).json()
+    arrived_at = opened["arrived_at"]
+    # The server speaks an aware UTC instant, not a bare local timestamp.
+    assert datetime.fromisoformat(arrived_at).tzinfo is not None
+
+    corrected = correct_reason(
+        clinical_client,
+        encounter_id=opened["id"],
+        presenting_complaint="Chest tightness on exertion",
+    )
+
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["arrived_at"] == arrived_at
+    fetched = clinical_client.get(f"/api/clinical/encounters/{opened['id']}")
+    assert fetched.json()["arrived_at"] == arrived_at
+
+
+def test_a_visit_reason_can_be_corrected_after_the_visit_ends(
+    clinical_client: TestClient,
+) -> None:
+    """Nothing freezes the reason, not even the end of the visit (ticket 26).
+
+    The old locked-intake rule is gone, so a correction after the end instant is
+    an ordinary correction: it succeeds, it is attributed, and the visit stays
+    ended. A correction is not a reopening.
+    """
+    patient_id = register_patient(clinical_client)
+    encounter_id = open_visit(clinical_client, patient_id).json()["id"]
+    ended = clinical_client.post(f"/api/clinical/encounters/{encounter_id}/end")
+    assert ended.status_code == 200, ended.text
+    assert ended.json()["status"] == "ended"
+
+    corrected = correct_reason(
+        clinical_client, encounter_id, presenting_complaint="Cause found: reflux"
+    )
+
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["reason_for_visit"] == "Cause found: reflux"
+    # The reason changes; the visit does not come back to life.
+    assert corrected.json()["status"] == "ended"
+
+    # The correction is attributable: an Administrator reads it back on the visit.
+    login = clinical_client.post(
+        "/api/auth/login", json=ADMINISTRATOR_CREDENTIALS
+    )
+    assert login.status_code == 200
+    entries = clinical_client.get(
+        "/api/administrator/audit-log", params={"encounter_id": encounter_id}
+    ).json()["entries"]
+    assert [entry["action"] for entry in entries] == [
+        "open_encounter",
+        "end_encounter",
+        "correct_visit_reason",
+    ]
+
+
+@pytest.mark.parametrize("extra", VITALS)
+def test_correcting_a_visit_reason_refuses_vitals(
+    clinical_client: TestClient, extra: dict[str, Any]
+) -> None:
+    patient_id = register_patient(clinical_client)
+    encounter_id = open_visit(clinical_client, patient_id).json()["id"]
+
+    response = correct_reason(clinical_client, encounter_id, **extra)
+
+    assert response.status_code == 422
+    # The stored reason is unchanged by the refused request.
+    assert (
+        clinical_client.get(f"/api/clinical/encounters/{encounter_id}").json()[
+            "reason_for_visit"
+        ]
+        == REASON
+    )
+
+
+def test_a_visit_must_belong_to_a_known_patient(
+    clinical_client: TestClient,
+) -> None:
+    response = open_visit(clinical_client, 999_999)
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Patient not found"}
 
 
-def test_correcting_an_unknown_encounter_is_not_found(
+def test_correcting_an_unknown_visit_is_not_found(
     clinical_client: TestClient,
 ) -> None:
-    response = clinical_client.put(
-        "/api/clinical/encounters/999999/intake",
-        json=INTAKE,
-    )
+    response = correct_reason(clinical_client, 999999)
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Encounter not found"}
 
 
-def test_recent_encounters_are_listed_newest_first(
+def test_recent_visits_are_listed_newest_first(
     clinical_client: TestClient,
 ) -> None:
     patient_id = register_patient(clinical_client)
-    older = open_encounter(clinical_client, patient_id).json()
-    newer = open_encounter(
+    older = open_visit(clinical_client, patient_id).json()
+    newer = open_visit(
         clinical_client, patient_id, presenting_complaint="Shortness of breath"
     ).json()
 
@@ -288,25 +265,23 @@ def test_recent_encounters_are_listed_newest_first(
         older["id"],
     ]
     assert encounters[0]["patient"]["full_name"] == "Ada Lovelace"
-    assert encounters[0]["intake"]["presenting_complaint"] == "Shortness of breath"
+    assert encounters[0]["reason_for_visit"] == "Shortness of breath"
 
 
-def test_administrator_cannot_capture_or_correct_intake(
+def test_administrator_cannot_open_or_correct_a_visit(
     client: TestClient,
 ) -> None:
     client.post(
         "/api/auth/login",
         json={"email": "clinical@example.com", "password": "clinical-password"},
     )
-    encounter_id = open_encounter(client, register_patient(client)).json()["id"]
+    encounter_id = open_visit(client, register_patient(client)).json()["id"]
 
     login = client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS)
     assert login.status_code == 200
 
-    opened = open_encounter(client, 1)
-    corrected = client.put(
-        f"/api/clinical/encounters/{encounter_id}/intake", json=INTAKE
-    )
+    opened = open_visit(client, 1)
+    corrected = correct_reason(client, encounter_id)
     listed = client.get("/api/clinical/encounters")
     fetched = client.get(f"/api/clinical/encounters/{encounter_id}")
 
@@ -315,8 +290,8 @@ def test_administrator_cannot_capture_or_correct_intake(
         assert response.json() == {"detail": "Role not permitted"}
 
 
-def test_intake_routes_require_authentication(client: TestClient) -> None:
-    assert open_encounter(client, 1).status_code == 401
-    assert client.put("/api/clinical/encounters/1/intake", json=INTAKE).status_code == 401
+def test_visit_routes_require_authentication(client: TestClient) -> None:
+    assert open_visit(client, 1).status_code == 401
+    assert correct_reason(client, 1).status_code == 401
     assert client.get("/api/clinical/encounters").status_code == 401
     assert client.get("/api/clinical/encounters/1").status_code == 401

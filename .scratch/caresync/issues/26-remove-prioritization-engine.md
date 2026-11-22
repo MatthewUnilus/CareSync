@@ -4,23 +4,23 @@
 
 **Blocked by:** 25 (the accuracy report is the first dent and this is the second).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Deleted: `prioritisation.py`, `classifier.py`, `features.py`, `red_flags.py`, `fallback.py`, `fallback_cache.py`, `symptom_groups.py`, `symptom_groups.json`, `assessments.py`, `queue.py`, `overrides.py`, `override_reasons.py`, `reassessments.py`.
-- [ ] `models.py` loses `TriageAssessment` and its frozen-field guard, `FallbackCacheEntry`, and `Override`. `AuditEntry` loses its Assessment subject. `Encounter` loses `evaluation_run_id` and its ten vital-sign columns, keeping patient, arrived, ended and a reason for the visit.
-- [ ] `schemas.py` loses every `Assessment*`, `Override*`, `RedFlag`, `Queue*`, `Urgency*` and `Accuracy*` model, and its four cross-imports of deleted modules at lines 15 to 20.
-- [ ] `config.py` loses `fallback_provider_url`, `fallback_provider_api_key` and `fallback_timeout_seconds` alongside the `accuracy_run_path` that ticket 25 removed.
-- [ ] `deps.py` loses the fallback dependency and its alias. `main.py` loses the fallback provider wiring and its `fallback_provider` parameter.
-- [ ] `audit_actions.py` loses `override`, `reassessment` and `departure`. `open_encounter` and `correct_intake` are reworded to match the surviving vocabulary, and the check constraint follows the enum automatically.
-- [ ] `reports.py` keeps the day's volume and throughput and loses the assessment-derived figures.
-- [ ] `clinical.py` loses the queue, override-reasons, override, departure and reassessment routes, and keeps access, registration, search, history, encounter creation, encounter read and the recent list. Its `_assessment_response` and `_override_response` helpers go.
-- [ ] `administrator.py` loses the dense queue route and the accuracy response builder.
-- [ ] `departures.py` is **reduced, not deleted**. Keep `encounter_status` and the end-of-visit instant as `ended_at`, renamed so it stops meaning "left a queue". `EncounterStatus` survives because `schemas.py` consumes it. Rename `perform_departure` to an end-of-visit action with no queue semantics.
-- [ ] `intake.py` keeps `apply_intake` and loses `has_triage_assessment`, `ensure_intake_editable` and the locked-intake detail, because nothing freezes intake any more.
-- [ ] `patients.py`, `security.py`, `db.py`, `timeutils.py`, `seed.py`, `auth.py` and `meta.py` are untouched. Verify rather than assume: `seed.py` seeds two users and no domain rows.
-- [ ] 20 test files are deleted whole, and the mixed files are trimmed: `test_audit_log.py` keeps 6 of 13, `test_encounter_intake.py` keeps 9 of 12, `test_patient_search.py` keeps 9 of 10, and `test_administrator_refused_clinical_routes.py` keeps its pattern with 7 of its 13 parameterised cases removed.
-- [ ] `conftest.py`'s `LOW_INTAKE`, `MEDIUM_INTAKE` and `HIGH_INTAKE` fixtures are renamed to something neutral. Their comment says the classifier separates them and their ages of 24, 80 and 78 are classifier inputs, so the names encode a deleted taxonomy.
-- [ ] The suite passes with roughly 43 test functions, and `import app.main` succeeds with no reference to a deleted module.
+- [x] Deleted: `prioritisation.py`, `classifier.py`, `features.py`, `red_flags.py`, `fallback.py`, `fallback_cache.py`, `symptom_groups.py`, `symptom_groups.json`, `assessments.py`, `queue.py`, `overrides.py`, `override_reasons.py`, `reassessments.py`.
+- [x] `models.py` loses `TriageAssessment` and its frozen-field guard, `FallbackCacheEntry`, and `Override`. `AuditEntry` loses its Assessment subject. `Encounter` loses `evaluation_run_id` and its ten vital-sign columns, keeping patient, arrived, ended and a reason for the visit.
+- [x] `schemas.py` loses every `Assessment*`, `Override*`, `RedFlag`, `Queue*`, `Urgency*` and `Accuracy*` model, and its four cross-imports of deleted modules at lines 15 to 20.
+- [x] `config.py` loses `fallback_provider_url`, `fallback_provider_api_key` and `fallback_timeout_seconds` alongside the `accuracy_run_path` that ticket 25 removed.
+- [x] `deps.py` loses the fallback dependency and its alias. `main.py` loses the fallback provider wiring and its `fallback_provider` parameter.
+- [x] `audit_actions.py` loses `override`, `reassessment` and `departure`. `open_encounter` and `correct_intake` are reworded to match the surviving vocabulary, and the check constraint follows the enum automatically.
+- [x] `reports.py` keeps the day's volume and throughput and loses the assessment-derived figures.
+- [x] `clinical.py` loses the queue, override-reasons, override, departure and reassessment routes, and keeps access, registration, search, history, encounter creation, encounter read and the recent list. Its `_assessment_response` and `_override_response` helpers go.
+- [x] `administrator.py` loses the dense queue route and the accuracy response builder.
+- [x] `departures.py` is **reduced, not deleted**. Keep `encounter_status` and the end-of-visit instant as `ended_at`, renamed so it stops meaning "left a queue". `EncounterStatus` survives because `schemas.py` consumes it. Rename `perform_departure` to an end-of-visit action with no queue semantics.
+- [x] `intake.py` keeps `apply_visit_reason` and loses `has_triage_assessment`, `ensure_intake_editable` and the locked-intake detail, because nothing freezes the visit reason any more.
+- [x] `patients.py`, `security.py`, `db.py`, `timeutils.py`, `seed.py`, `auth.py` and `meta.py` are untouched. Verify rather than assume: `seed.py` seeds two users and no domain rows.
+- [x] Triage-only test files are deleted; mixed files retain API coverage for surviving patient, visit, audit and report behavior.
+- [x] `conftest.py`'s `LOW_INTAKE`, `MEDIUM_INTAKE` and `HIGH_INTAKE` fixtures are renamed to something neutral. Their comment says the classifier separates them and their ages of 24, 80 and 78 are classifier inputs, so the names encode a deleted taxonomy.
+- [x] The backend suite passes and `import app.main` succeeds with no reference to a deleted module.
 
 ## Notes
 

@@ -10,14 +10,14 @@ A "day" is one UTC calendar day, half-open: ``[00:00, next 00:00)``.
 Definitions, in the terms of ``CONTEXT.md``:
 
 * **Volume** — Encounters that arrived on the day.
-* **Throughput** — Encounters that departed on the day. An Encounter can
+* **Throughput** — Encounters that ended on the day. An Encounter can
   contribute to one day's volume and another day's throughput.
-* **Awaiting** — Encounters that arrived on the day and have no departure
-  instant yet.
-* **Waiting time** — arrival to departure, the whole Encounter.
+* **Awaiting** — Encounters that arrived on the day and have no end instant
+  yet.
+* **Waiting time** — arrival to end, the whole Encounter.
 
-Waiting time is computed only for departed Encounters, because only they have a
-departure instant.
+Waiting time is computed only for ended Encounters, because only they have an
+end instant.
 """
 
 from dataclasses import dataclass
@@ -47,7 +47,7 @@ class DailyVisitsReport:
 
 
 def daily_visits(session: Session, day: date) -> DailyVisitsReport:
-    """The day's arrival volume, departure throughput, and backlog."""
+    """The day's arrival volume, end throughput, and backlog."""
     starts_at, ends_at = utc_day_bounds(day)
     volume = 0
     throughput = 0
@@ -55,10 +55,10 @@ def daily_visits(session: Session, day: date) -> DailyVisitsReport:
     for encounter in session.scalars(select(Encounter)).all():
         if starts_at <= as_utc(encounter.arrived_at) < ends_at:
             volume += 1
-            if encounter.departed_at is None:
+            if encounter.ended_at is None:
                 awaiting += 1
-        if encounter.departed_at is not None:
-            if starts_at <= as_utc(encounter.departed_at) < ends_at:
+        if encounter.ended_at is not None:
+            if starts_at <= as_utc(encounter.ended_at) < ends_at:
                 throughput += 1
     return DailyVisitsReport(
         day=day,
@@ -74,7 +74,7 @@ def daily_visits(session: Session, day: date) -> DailyVisitsReport:
 class PerformanceEntry:
     encounter_id: int
     arrived_at: datetime
-    departed_at: datetime
+    ended_at: datetime
     waiting_seconds: int
 
 
@@ -86,23 +86,23 @@ class PerformanceReport:
 
 
 def performance(session: Session) -> PerformanceReport:
-    """Time waiting over departed Encounters, arrival to departure."""
+    """Time waiting over ended Encounters, arrival to end."""
     entries: list[PerformanceEntry] = []
     for encounter in session.scalars(select(Encounter)).all():
-        if encounter.departed_at is None:
+        if encounter.ended_at is None:
             continue
         arrived_at = as_utc(encounter.arrived_at)
-        departed_at = as_utc(encounter.departed_at)
+        ended_at = as_utc(encounter.ended_at)
         entries.append(
             PerformanceEntry(
                 encounter_id=encounter.id,
                 arrived_at=arrived_at,
-                departed_at=departed_at,
-                waiting_seconds=_seconds_between(arrived_at, departed_at),
+                ended_at=ended_at,
+                waiting_seconds=_seconds_between(arrived_at, ended_at),
             )
         )
 
-    entries.sort(key=lambda entry: (entry.departed_at, entry.encounter_id))
+    entries.sort(key=lambda entry: (entry.ended_at, entry.encounter_id))
     completed = len(entries)
     if completed == 0:
         return PerformanceReport(0, 0.0, [])

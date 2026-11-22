@@ -2,28 +2,20 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import (
-    Boolean,
     CheckConstraint,
     DateTime,
-    Float,
     ForeignKey,
     Integer,
     String,
     UniqueConstraint,
     event,
 )
-from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.audit_actions import AuditAction
 from app.db import Base
-from app.override_reasons import OverrideReason
 from app.timeutils import utc_now
 
-
-_OVERRIDE_REASON_VALUES = ", ".join(
-    f"'{reason.value}'" for reason in OverrideReason
-)
 
 _AUDIT_ACTION_VALUES = ", ".join(
     f"'{action.value}'" for action in AuditAction
@@ -117,329 +109,51 @@ class Patient(Base):
 
 
 class Encounter(Base):
-    """One visit by one Patient. Holds the intake a Triage Assessment runs on.
+    """One visit by one Patient, with a reason and an end.
 
-    ``arrived_at`` is written once, at creation, and is never updated. Intake
-    values may be corrected only until the first Triage Assessment exists, at
-    which point the Assessment's snapshot becomes the durable record of what
-    the recommendation was made from. The one exception is an explicit
-    Re-assessment, which captures the Encounter's current condition and freezes
-    it into a new Assessment; every earlier snapshot is left untouched.
+    ``arrived_at`` is written once, at creation, and is never updated. The visit
+    ends when the end-of-visit action records ``ended_at``. There is no second
+    status column: the two conditions are derived from this one nullable
+    instant, open while it is null and ended once it is set.
 
-    An Encounter is **awaiting** while ``departed_at`` is null, and **departed**
-    once the Departure action records the instant. The Queue is every awaiting
-    Encounter, sorted; it is never a stored sequence. There is no second status
-    column: the condition is derived from this one nullable instant.
+    Vital signs no longer live here. The engine's columns and the intake block
+    are gone, so the visit carries only a reason for the visit; every set of
+    vitals is its own Observation (ADR 0008).
     """
 
     __tablename__ = "encounters"
-    __table_args__ = (
-        CheckConstraint(
-            "pain_level >= 1 AND pain_level <= 10",
-            name="ck_encounters_pain_level",
-        ),
-        CheckConstraint(
-            "temperature_c >= 30 AND temperature_c <= 45",
-            name="ck_encounters_temperature",
-        ),
-        CheckConstraint(
-            "heart_rate_bpm >= 20 AND heart_rate_bpm <= 300",
-            name="ck_encounters_heart_rate",
-        ),
-        CheckConstraint(
-            "respiratory_rate_bpm >= 0 AND respiratory_rate_bpm <= 80",
-            name="ck_encounters_respiratory_rate",
-        ),
-        CheckConstraint(
-            "systolic_bp >= 50 AND systolic_bp <= 300",
-            name="ck_encounters_systolic",
-        ),
-        CheckConstraint(
-            "diastolic_bp >= 20 AND diastolic_bp <= 200",
-            name="ck_encounters_diastolic",
-        ),
-        CheckConstraint(
-            "systolic_bp > diastolic_bp",
-            name="ck_encounters_blood_pressure_order",
-        ),
-        CheckConstraint(
-            "oxygen_saturation_percent >= 50 AND oxygen_saturation_percent <= 100",
-            name="ck_encounters_oxygen_saturation",
-        ),
-    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
     arrived_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True
     )
-    departed_at: Mapped[datetime | None] = mapped_column(
+    ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
-
-    # Set only when this Encounter is a stored row of a named evaluation run.
-    # Such rows are real Patients/Encounters/Assessments, scored through the
-    # engine, but they are measurement scaffolding: the Queue and the activity
-    # Reports exclude them. Live Encounters leave this null.
-    evaluation_run_id: Mapped[str | None] = mapped_column(
-        String(120), nullable=True, index=True
-    )
-
-    presenting_complaint: Mapped[str] = mapped_column(String(2000))
-    pain_level: Mapped[int] = mapped_column(Integer)
-    illness_duration_hours: Mapped[float] = mapped_column(Float)
-    temperature_c: Mapped[float] = mapped_column(Float)
-    heart_rate_bpm: Mapped[int] = mapped_column(Integer)
-    # Live intake always writes this (``apply_intake``), the Assessment snapshot
-    # always carries it, and ``evaluation/materialise.py`` writes the corpus's
-    # real rate. The default exists only so a direct construction that omits it
-    # (a test, say) need not repeat it; the engine treats zero as a rate below
-    # every tachypnoea threshold, so an omitted value is inert rather than
-    # dangerous.
-    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
-    systolic_bp: Mapped[int] = mapped_column(Integer)
-    diastolic_bp: Mapped[int] = mapped_column(Integer)
-    oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
-    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    reason_for_visit: Mapped[str] = mapped_column(String(2000))
 
     patient: Mapped[Patient] = relationship(
         back_populates="encounters",
         lazy="joined",
     )
-    assessments: Mapped[list["TriageAssessment"]] = relationship(
-        back_populates="encounter",
-        order_by="TriageAssessment.id",
-    )
-
-
-class TriageAssessment(Base):
-    """One urgency decision, plus the inputs it was made from.
-
-    Rows are append-only. ``machine_recommendation`` is the engine's output and
-    is protected from later updates; ``final_decision`` is what governs the
-    Queue and starts equal to the Machine Recommendation. An Override may
-    change the Final Decision, which is why only the recommendation and the
-    captured inputs are frozen here.
-
-    An Encounter may hold several rows: a Re-assessment appends a new one and
-    points ``supersedes_assessment_id`` at the row it replaced. The most recent
-    row is the one that governs.
-
-    The snapshot is stored as columns rather than a JSON blob so the data layer
-    stays dialect-neutral (ADR 0001). It includes the Patient's age because age
-    is an engine input even though it lives on the Patient.
-    """
-
-    __tablename__ = "triage_assessments"
-    __table_args__ = (
-        CheckConstraint(
-            "machine_recommendation IN ('High', 'Medium', 'Low')",
-            name="ck_triage_assessments_machine_recommendation",
-        ),
-        CheckConstraint(
-            "final_decision IN ('High', 'Medium', 'Low')",
-            name="ck_triage_assessments_final_decision",
-        ),
-        CheckConstraint(
-            "ground_truth_level IS NULL OR "
-            "ground_truth_level IN ('High', 'Medium', 'Low')",
-            name="ck_triage_assessments_ground_truth_level",
-        ),
-        CheckConstraint(
-            "pain_level >= 1 AND pain_level <= 10",
-            name="ck_triage_assessments_pain_level",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    encounter_id: Mapped[int] = mapped_column(
-        ForeignKey("encounters.id"), index=True
-    )
-    assessed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
-    )
-
-    # Immutable snapshot of the inputs the recommendation was made from.
-    patient_age: Mapped[int] = mapped_column(Integer)
-    presenting_complaint: Mapped[str] = mapped_column(String(2000))
-    pain_level: Mapped[int] = mapped_column(Integer)
-    illness_duration_hours: Mapped[float] = mapped_column(Float)
-    temperature_c: Mapped[float] = mapped_column(Float)
-    heart_rate_bpm: Mapped[int] = mapped_column(Integer)
-    # Carried on every snapshot the engine factory writes; the default mirrors
-    # ``Encounter.respiratory_rate_bpm`` and exists only for a direct
-    # construction that omits it.
-    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer, default=0)
-    systolic_bp: Mapped[int] = mapped_column(Integer)
-    diastolic_bp: Mapped[int] = mapped_column(Integer)
-    oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
-    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-
-    # Comma-separated canonical Symptom Groups. Ticket 05 fills this; until
-    # then the recognised set is empty, which is not the same as "not run".
-    recognised_symptom_groups: Mapped[str] = mapped_column(
-        String(1000), default=""
-    )
-
-    machine_recommendation: Mapped[str] = mapped_column(String(16))
-    final_decision: Mapped[str] = mapped_column(String(16))
-
-    # Independent ground truth, present only on an evaluation-run row. It is
-    # deliberately a separate column from ``machine_recommendation`` and
-    # ``final_decision`` so the rubric label can never be confused with either.
-    # Null on every live Assessment.
-    ground_truth_level: Mapped[str | None] = mapped_column(
-        String(16), nullable=True
-    )
-
-    # True only when the complaint matched no Symptom Group and the fallback
-    # provider was unavailable or exceeded its timeout, so the recommendation
-    # came from the safety layer's documented default. Frozen with the rest of
-    # the Assessment; it is not the same signal as an Override.
-    unclassified: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-
-    # Set by a Re-assessment: the Assessment it replaced. Null on the first.
-    supersedes_assessment_id: Mapped[int | None] = mapped_column(
-        ForeignKey("triage_assessments.id"), nullable=True
-    )
-
-    encounter: Mapped[Encounter] = relationship(back_populates="assessments")
-    overrides: Mapped[list["Override"]] = relationship(
-        back_populates="assessment",
-        order_by="Override.id",
-    )
-
-
-# Fields that must never change after the row is written. ``final_decision`` is
-# deliberately absent: ticket 09's Override changes it and leaves the Machine
-# Recommendation untouched.
-_ASSESSMENT_FROZEN_FIELDS = (
-    "encounter_id",
-    "assessed_at",
-    "patient_age",
-    "presenting_complaint",
-    "pain_level",
-    "illness_duration_hours",
-    "temperature_c",
-    "heart_rate_bpm",
-    "respiratory_rate_bpm",
-    "systolic_bp",
-    "diastolic_bp",
-    "oxygen_saturation_percent",
-    "notes",
-    "recognised_symptom_groups",
-    "machine_recommendation",
-    "ground_truth_level",
-    "unclassified",
-    "supersedes_assessment_id",
-)
-
-
-@event.listens_for(TriageAssessment, "before_update")
-def _refuse_rewriting_an_assessment(_mapper, _connection, target) -> None:
-    """Application-layer append-only guarantee (ADR 0001, no DB triggers)."""
-    state = sa_inspect(target)
-    changed = [
-        name
-        for name in _ASSESSMENT_FROZEN_FIELDS
-        if state.attrs[name].history.has_changes()
-    ]
-    if changed:
-        raise ValueError(
-            "A Triage Assessment's captured inputs and Machine Recommendation "
-            f"are immutable; refused to change {', '.join(changed)}"
-        )
-
-
-class FallbackCacheEntry(Base):
-    """One cached answer from the runtime fallback provider.
-
-    The key is the SHA-256 of the complaint text exactly as stored, so identical
-    wording always resolves to the same provider answer, including after a
-    process restart. Only the provider's complaint-only level is cached: the
-    safety layer is applied to it on every resolve, because the same words can
-    belong to a patient with different vitals. A degraded (unclassified) answer
-    is never cached, so a transient outage does not stick in the record.
-
-    The column is ``urgency_level``, not ``machine_recommendation``: this is the
-    external provider's answer to the complaint alone, before the safety layer
-    and before the engine produces a Machine Recommendation.
-    """
-
-    __tablename__ = "fallback_cache"
-    __table_args__ = (
-        CheckConstraint(
-            "urgency_level IN ('High', 'Medium', 'Low')",
-            name="ck_fallback_cache_urgency_level",
-        ),
-    )
-
-    complaint_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    presenting_complaint: Mapped[str] = mapped_column(String(2000))
-    urgency_level: Mapped[str] = mapped_column(String(16))
-    provider: Mapped[str] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
-    )
-
-
-class Override(Base):
-    """One human act of disagreeing with a Machine Recommendation.
-
-    The Override records *who* performed it and *why*, alongside the Assessment
-    it applies to. It never carries a decision of its own: the decision lives
-    in ``TriageAssessment.final_decision``, which this act changes while the
-    Machine Recommendation stays untouched.
-
-    Reasons are stored as validated strings (ADR 0001), constrained to the
-    fixed set in ``app.override_reasons``. Free text is only ever present for
-    the ``other`` reason, enforced at the request boundary.
-    """
-
-    __tablename__ = "overrides"
-    __table_args__ = (
-        CheckConstraint(
-            f"reason IN ({_OVERRIDE_REASON_VALUES})",
-            name="ck_overrides_reason",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    assessment_id: Mapped[int] = mapped_column(
-        ForeignKey("triage_assessments.id"), index=True
-    )
-    actor_user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), index=True
-    )
-    reason: Mapped[str] = mapped_column(String(64))
-    free_text: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    performed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
-    )
-
-    assessment: Mapped[TriageAssessment] = relationship(
-        back_populates="overrides"
-    )
-    actor: Mapped[User] = relationship(lazy="joined")
 
 
 class AuditEntry(Base):
     """One attributable record of a clinical mutation.
 
-    Every state-changing clinical act appends exactly one of these: registration,
-    opening an Encounter, correcting intake, an Override, a Re-assessment and a
-    Departure. The entry names the actor as a foreign key rather than a copied
-    name, so a renamed account is reported consistently everywhere, and exposes
-    the name through the ``actor`` relationship exactly as ``Override`` does.
+    Every state-changing clinical act appends exactly one of these: registering
+    a Patient, opening an Encounter, and correcting the reason for a visit. The
+    entry names the actor as a foreign key rather than a copied name, so a
+    renamed account is reported consistently everywhere, and exposes the name
+    through the ``actor`` relationship.
 
-    The subject references are nullable because the six actions do not all have
-    the same scope: registration touches only a Patient, while opening an
-    Encounter also produces its first Assessment. Keeping one column per subject
-    — rather than a polymorphic pair — means a filter to one Encounter is a plain
-    indexed lookup and the row stays reconstructable without a join through
-    whatever type it happened to point at.
+    The subject references are nullable because the actions do not all have the
+    same scope: registration touches only a Patient, while opening an Encounter
+    also names that Encounter. Keeping one column per subject — rather than a
+    polymorphic pair — means a filter to one Encounter is a plain indexed lookup
+    and the row stays reconstructable without a join through whatever type it
+    happened to point at.
 
     Rows are append-only, enforced in the application layer (see the guard
     below), because ADR 0001 forbids database triggers. An audit record that can
@@ -468,22 +182,17 @@ class AuditEntry(Base):
     # every subject; indexed because "one Encounter's history" is the read the
     # Administrator surface offers. The relationships are set rather than the
     # ids so an entry can reference a subject that is still pending in the same
-    # flush (registration and open-encounter both stage one), exactly as
-    # ``Override`` sets ``assessment`` rather than ``assessment_id``.
+    # flush (registration and open-encounter both stage one).
     patient_id: Mapped[int | None] = mapped_column(
         ForeignKey("patients.id"), nullable=True, index=True
     )
     encounter_id: Mapped[int | None] = mapped_column(
         ForeignKey("encounters.id"), nullable=True, index=True
     )
-    assessment_id: Mapped[int | None] = mapped_column(
-        ForeignKey("triage_assessments.id"), nullable=True, index=True
-    )
 
     actor: Mapped[User] = relationship(lazy="joined")
     patient: Mapped[Patient | None] = relationship()
     encounter: Mapped[Encounter | None] = relationship()
-    assessment: Mapped[TriageAssessment | None] = relationship()
 
 
 @event.listens_for(AuditEntry, "before_update")

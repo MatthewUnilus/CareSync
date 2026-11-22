@@ -1,42 +1,29 @@
-"""Departure: a Clinical user discharges an Encounter from the Queue.
+"""Ending a visit, at the HTTP API seam.
 
-These tests drive the HTTP API. Departure is an explicit Clinical action that
-records the departure instant at the moment it is performed, and nothing else:
-the Encounter leaves the awaiting Queue because the Queue filters on
-``departed_at``, the record stays readable, and no later clinical action is
-accepted against it.
-
-The two conditions come from the same nullable column — awaiting while
-``departed_at`` is null, departed once it is set — so there is no second status
-column to drift out of step.
+A Clinical user ends a visit with an explicit action; the end instant is written
+at that moment and nothing else schedules it. The visit's condition is derived
+from the one nullable ``ended_at`` column — open while it is null, ended once it
+is set — so there is no second status column to drift out of step, and an ended
+visit stays readable.
 """
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from conftest import (
-    LOW_AGE,
-    LOW_INTAKE,
-    MEDIUM_AGE,
-    MEDIUM_INTAKE,
-)
-from app.departures import (
-    ALREADY_DEPARTED_DETAIL,
-    REASSESSMENT_DEPARTED_DETAIL,
-    ensure_awaiting,
-)
-from app.models import Encounter
-from app.overrides import ENCOUNTER_DEPARTED_DETAIL
+from conftest import VISIT_INTAKE
+from app.departures import ALREADY_ENDED_DETAIL
 
 ADMINISTRATOR_CREDENTIALS = {
     "email": "administrator@example.com",
     "password": "administrator-password",
 }
 
+CLINICAL_CREDENTIALS = {
+    "email": "clinical@example.com",
+    "password": "clinical-password",
+}
 
 
 def register_patient(
@@ -56,23 +43,17 @@ def register_patient(
     return response.json()["id"]
 
 
-def open_encounter(
-    client: TestClient,
-    patient_id: int,
-    intake: dict[str, Any],
-) -> dict[str, Any]:
+def open_visit(client: TestClient, patient_id: int) -> dict[str, Any]:
     response = client.post(
         "/api/clinical/encounters",
-        json={"patient_id": patient_id, "intake": intake},
+        json={"patient_id": patient_id, "intake": VISIT_INTAKE},
     )
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def depart(client: TestClient, encounter_id: int, **kwargs: Any):
-    return client.post(
-        f"/api/clinical/encounters/{encounter_id}/departure", **kwargs
-    )
+def end(client: TestClient, encounter_id: int, **kwargs: Any):
+    return client.post(f"/api/clinical/encounters/{encounter_id}/end", **kwargs)
 
 
 def detail(client: TestClient, encounter_id: int) -> dict[str, Any]:
@@ -81,280 +62,153 @@ def detail(client: TestClient, encounter_id: int) -> dict[str, Any]:
     return response.json()
 
 
-def queue_ids(client: TestClient) -> list[int]:
-    response = client.get("/api/clinical/queue")
+def login_as_administrator(client: TestClient) -> None:
+    response = client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS)
     assert response.status_code == 200, response.text
-    return [entry["encounter_id"] for entry in response.json()["entries"]]
 
 
-def administrator_queue_ids(client: TestClient) -> list[int]:
-    response = client.get("/api/administrator/queue")
+def audit_entries(client: TestClient, encounter_id: int) -> list[dict[str, Any]]:
+    response = client.get(
+        f"/api/administrator/audit-log?encounter_id={encounter_id}"
+    )
     assert response.status_code == 200, response.text
-    return [entry["encounter_id"] for entry in response.json()["entries"]]
+    return response.json()["entries"]
 
 
-def stored_encounter(client: TestClient, encounter_id: int) -> Encounter:
-    session_factory = client.app.state.session_factory
-    with session_factory() as session:
-        encounter = session.get(Encounter, encounter_id)
-        assert encounter is not None
-        return encounter
+def test_a_clinical_user_ends_an_open_visit(clinical_client: TestClient) -> None:
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
+    assert encounter["status"] == "open"
+    assert encounter["ended_at"] is None
 
-
-def test_a_clinical_user_departs_an_awaiting_encounter(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    assert encounter["status"] == "awaiting"
-    assert encounter["departed_at"] is None
-
-    response = depart(clinical_client, encounter["id"])
+    response = end(clinical_client, encounter["id"])
 
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == encounter["id"]
-    assert body["status"] == "departed"
-    departed_at = datetime.fromisoformat(body["departed_at"])
-    assert departed_at.tzinfo is not None
+    assert body["status"] == "ended"
+    ended_at = datetime.fromisoformat(body["ended_at"])
+    assert ended_at.tzinfo is not None
     arrived_at = datetime.fromisoformat(body["arrived_at"])
-    now = datetime.now(timezone.utc)
-    assert arrived_at <= departed_at <= now + timedelta(seconds=5)
+    assert arrived_at <= ended_at <= datetime.now(timezone.utc) + timedelta(seconds=5)
+
+    # The end is persisted, not just echoed.
+    assert detail(clinical_client, encounter["id"])["status"] == "ended"
+    assert detail(clinical_client, encounter["id"])["ended_at"] == body["ended_at"]
 
 
-def test_the_caller_never_supplies_the_departure_instant(
+def test_the_caller_never_supplies_the_end_instant(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client, age=LOW_AGE)
-    encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
     supplied = "2000-01-01T00:00:00+00:00"
 
-    response = depart(clinical_client, encounter["id"], json={"departed_at": supplied})
+    response = end(clinical_client, encounter["id"], json={"ended_at": supplied})
 
     assert response.status_code == 200, response.text
-    recorded = datetime.fromisoformat(response.json()["departed_at"])
+    recorded = datetime.fromisoformat(response.json()["ended_at"])
     assert recorded != datetime.fromisoformat(supplied)
     assert recorded > datetime.fromisoformat(encounter["arrived_at"])
 
 
-def test_the_departed_encounter_leaves_the_awaiting_queue(
+def test_an_ended_visit_cannot_be_ended_again(
     clinical_client: TestClient,
 ) -> None:
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    departing = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    staying = open_encounter(
-        clinical_client, register_patient(clinical_client, "Grace Hopper", LOW_AGE), LOW_INTAKE
-    )
-
-    assert queue_ids(clinical_client) == [departing["id"], staying["id"]]
-
-    assert depart(clinical_client, departing["id"]).status_code == 200
-
-    # No new refresh mechanism: the existing Queue read reflects the change.
-    assert queue_ids(clinical_client) == [staying["id"]]
-
-
-def test_a_departed_encounter_leaves_the_administrator_board_too(
-    client: TestClient,
-) -> None:
-    assert (
-        client.post(
-            "/api/auth/login",
-            json={
-                "email": "clinical@example.com",
-                "password": "clinical-password",
-            },
-        ).status_code
-        == 200
-    )
-    patient_id = register_patient(client, age=MEDIUM_AGE)
-    departing = open_encounter(client, patient_id, MEDIUM_INTAKE)
-    staying = open_encounter(
-        client, register_patient(client, "Grace Hopper", LOW_AGE), LOW_INTAKE
-    )
-    assert depart(client, departing["id"]).status_code == 200
-    assert client.post("/api/auth/logout").status_code in (200, 204)
-
-    assert client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS).status_code == 200
-
-    assert administrator_queue_ids(client) == [staying["id"]]
-
-
-def test_a_departed_encounter_remains_readable_with_its_record(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    overridden = clinical_client.post(
-        f"/api/clinical/encounters/{encounter['id']}/override",
-        json={
-            "assessment_id": encounter["assessment"]["id"],
-            "final_decision": "High",
-            "reason": "patient deteriorating",
-        },
-    )
-    assert overridden.status_code == 200, overridden.text
-    before = detail(clinical_client, encounter["id"])
-
-    assert depart(clinical_client, encounter["id"]).status_code == 200
-
-    after = detail(clinical_client, encounter["id"])
-    assert after["status"] == "departed"
-    assert after["departed_at"] is not None
-    assert after["patient"] == before["patient"]
-    assert after["intake"] == before["intake"]
-    assert after["arrived_at"] == before["arrived_at"]
-    # The Triage Assessment and its Override survive departure untouched.
-    assert after["assessment"] == before["assessment"]
-    assert after["assessment"]["machine_recommendation"] == "Medium"
-    assert after["assessment"]["final_decision"] == "High"
-    assert after["assessment"]["override"]["reason"] == "patient deteriorating"
-
-    recent = clinical_client.get("/api/clinical/encounters").json()["encounters"]
-    assert encounter["id"] in [item["id"] for item in recent]
-
-
-def test_a_departed_encounter_cannot_be_overridden(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    assert depart(clinical_client, encounter["id"]).status_code == 200
-
-    response = clinical_client.post(
-        f"/api/clinical/encounters/{encounter['id']}/override",
-        json={
-            "assessment_id": encounter["assessment"]["id"],
-            "final_decision": "High",
-            "reason": "clinical gestalt",
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json() == {"detail": ENCOUNTER_DEPARTED_DETAIL}
-    after = detail(clinical_client, encounter["id"])
-    assert after["assessment"]["final_decision"] == "Medium"
-    assert after["assessment"]["override"] is None
-
-
-def test_the_shared_guard_refuses_a_departed_encounter_for_reassessment(
-    clinical_client: TestClient,
-) -> None:
-    """Ticket 10's Re-assessment route refuses through the same guard.
-
-    Re-assessment does not exist yet, so this pins the contract the route will
-    use: an action that needs an awaiting Encounter passes its own clear
-    message and gets a ``409`` once the Encounter has departed.
-    """
-    patient_id = register_patient(clinical_client, age=LOW_AGE)
-    encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
-    assert depart(clinical_client, encounter["id"]).status_code == 200
-
-    departed = stored_encounter(clinical_client, encounter["id"])
-    with pytest.raises(HTTPException) as raised:
-        ensure_awaiting(departed, REASSESSMENT_DEPARTED_DETAIL)
-
-    assert raised.value.status_code == 409
-    assert raised.value.detail == REASSESSMENT_DEPARTED_DETAIL
-    assert raised.value.detail == "A departed Encounter cannot be re-assessed"
-
-
-def test_an_already_departed_encounter_cannot_be_departed_again(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-    first = depart(clinical_client, encounter["id"])
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
+    first = end(clinical_client, encounter["id"])
     assert first.status_code == 200
-    first_instant = first.json()["departed_at"]
+    first_instant = first.json()["ended_at"]
 
-    second = depart(clinical_client, encounter["id"])
+    second = end(clinical_client, encounter["id"])
 
     assert second.status_code == 409
-    assert second.json() == {"detail": ALREADY_DEPARTED_DETAIL}
-    # The one recorded departure instant is not overwritten.
-    assert detail(clinical_client, encounter["id"])["departed_at"] == first_instant
+    assert second.json() == {"detail": ALREADY_ENDED_DETAIL}
+    # The one recorded end instant is not overwritten.
+    assert detail(clinical_client, encounter["id"])["ended_at"] == first_instant
 
 
-def test_an_encounter_is_never_departed_on_the_systems_own_initiative(
-    clinical_client: TestClient,
-) -> None:
-    """Elapsed time and repeated reads do not remove an Encounter.
-
-    The only thing that can depart an Encounter is the action itself: here an
-    Encounter that arrived three days ago is still awaiting, with no departure
-    instant invented for it, after several reads of the Queue.
-    """
-    patient_id = register_patient(clinical_client, age=MEDIUM_AGE)
-    encounter = open_encounter(clinical_client, patient_id, MEDIUM_INTAKE)
-
-    session_factory = clinical_client.app.state.session_factory
-    with session_factory() as session:
-        stored = session.get(Encounter, encounter["id"])
-        assert stored is not None
-        stored.arrived_at = datetime.now(timezone.utc) - timedelta(days=3)
-        session.commit()
-
-    for _ in range(3):
-        assert encounter["id"] in queue_ids(clinical_client)
-
-    after = detail(clinical_client, encounter["id"])
-    assert after["status"] == "awaiting"
-    assert after["departed_at"] is None
-
-
-def test_the_two_conditions_are_awaiting_and_departed(
-    clinical_client: TestClient,
-) -> None:
-    patient_id = register_patient(clinical_client, age=LOW_AGE)
-    encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
-
-    assert detail(clinical_client, encounter["id"])["status"] == "awaiting"
-    assert detail(clinical_client, encounter["id"])["departed_at"] is None
-
-    assert depart(clinical_client, encounter["id"]).status_code == 200
-
-    departed = detail(clinical_client, encounter["id"])
-    assert departed["status"] == "departed"
-    assert departed["departed_at"] is not None
-    # There is no in-treatment or left-without-being-seen condition.
-    assert "in_treatment" not in departed
-    assert "left_without_being_seen" not in departed
-
-
-def test_an_unknown_encounter_cannot_be_departed(
-    clinical_client: TestClient,
-) -> None:
-    response = depart(clinical_client, 9999)
+def test_an_unknown_visit_cannot_be_ended(clinical_client: TestClient) -> None:
+    response = end(clinical_client, 999999)
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Encounter not found"}
 
 
-def test_an_administrator_is_refused_a_departure(client: TestClient) -> None:
-    assert (
-        client.post(
-            "/api/auth/login",
-            json={
-                "email": "clinical@example.com",
-                "password": "clinical-password",
-            },
-        ).status_code
-        == 200
-    )
-    patient_id = register_patient(client, age=LOW_AGE)
-    encounter = open_encounter(client, patient_id, LOW_INTAKE)
-    assert client.post("/api/auth/logout").status_code in (200, 204)
-    assert client.post("/api/auth/login", json=ADMINISTRATOR_CREDENTIALS).status_code == 200
+def test_reading_a_visit_never_ends_it(clinical_client: TestClient) -> None:
+    """The system never closes a visit on its own initiative."""
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
 
-    response = depart(client, encounter["id"])
+    for _ in range(3):
+        assert detail(clinical_client, encounter["id"])["status"] == "open"
+
+    assert detail(clinical_client, encounter["id"])["ended_at"] is None
+
+
+def test_ending_a_visit_writes_one_audit_entry(clinical_client: TestClient) -> None:
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
+
+    assert end(clinical_client, encounter["id"]).status_code == 200
+
+    login_as_administrator(clinical_client)
+    entries = audit_entries(clinical_client, encounter["id"])
+
+    # Opening wrote one entry, ending wrote exactly one more.
+    assert [entry["action"] for entry in entries] == [
+        "open_encounter",
+        "end_encounter",
+    ]
+    end_entry = entries[-1]
+    assert end_entry["encounter_id"] == encounter["id"]
+    assert end_entry["action_label"] == "Encounter ended"
+
+
+def test_the_two_conditions_are_open_and_ended(
+    clinical_client: TestClient,
+) -> None:
+    encounter = open_visit(clinical_client, register_patient(clinical_client))
+
+    assert detail(clinical_client, encounter["id"])["status"] == "open"
+
+    assert end(clinical_client, encounter["id"]).status_code == 200
+
+    ended = detail(clinical_client, encounter["id"])
+    assert ended["status"] == "ended"
+    assert ended["ended_at"] is not None
+    # There is no in-treatment or left-without-being-seen condition.
+    assert "in_treatment" not in ended
+    assert "left_without_being_seen" not in ended
+
+
+def test_an_ended_visit_counts_in_the_days_report(clinical_client: TestClient) -> None:
+    """Ending a visit feeds the day's throughput, derived on read."""
+    patient_id = register_patient(clinical_client)
+    ended = open_visit(clinical_client, patient_id)
+    open_visit(clinical_client, patient_id)
+    assert end(clinical_client, ended["id"]).status_code == 200
+
+    login_as_administrator(clinical_client)
+    response = clinical_client.get("/api/administrator/reports/daily-visits")
+
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["volume"] == 2
+    assert report["throughput"] == 1
+    assert report["awaiting"] == 1
+
+
+def test_an_administrator_is_refused_ending_a_visit(client: TestClient) -> None:
+    assert client.post("/api/auth/login", json=CLINICAL_CREDENTIALS).status_code == 200
+    encounter = open_visit(client, register_patient(client))
+    assert client.post("/api/auth/logout").status_code in (200, 204)
+    login_as_administrator(client)
+
+    response = end(client, encounter["id"])
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Role not permitted"}
-    assert stored_encounter(client, encounter["id"]).departed_at is None
+    # The refused action left the visit open.
+    assert client.post("/api/auth/login", json=CLINICAL_CREDENTIALS).status_code == 200
+    assert detail(client, encounter["id"])["status"] == "open"
 
 
 def test_an_unauthenticated_request_is_refused(client: TestClient) -> None:
-    response = depart(client, 1)
-
-    assert response.status_code == 401
+    assert end(client, 1).status_code == 401
