@@ -40,6 +40,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class UnlockRequest(BaseModel):
+    """Resume a locked session: the credential that signs the holder back in.
+
+    Only the password is asked for. The session is already named by the cookie,
+    so asking for the email would imply the lock starts a new sign-in, which it
+    deliberately does not.
+    """
+
+    password: str = Field(min_length=1)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

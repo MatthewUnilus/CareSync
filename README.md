@@ -574,11 +574,18 @@ also read.
 | Variable                           | Default                      | Purpose                                      |
 | ---------------------------------- | ---------------------------- | -------------------------------------------- |
 | `TRIAGEASSIST_DATABASE_URL`        | `sqlite:///./triageassist.db` | SQLAlchemy URL; Postgres URL for the demo    |
-| `TRIAGEASSIST_SESSION_TTL_SECONDS` | `28800` (8 hours)            | Session lifetime, enforced on every request  |
+| `TRIAGEASSIST_SESSION_TTL_SECONDS` | `14400` (4 hours)            | Session lifetime, enforced on every request  |
+| `TRIAGEASSIST_SESSION_IDLE_SECONDS` | `300` (5 minutes)           | Inactivity lock: a session idle this long is refused until unlocked |
+| `TRIAGEASSIST_SESSION_HEARTBEAT_SECONDS` | `60`                  | How often a request refreshes the session's last-seen instant |
+| `TRIAGEASSIST_SESSION_UNLOCK_MAX_ATTEMPTS` | `5`               | Wrong unlock passwords before the session is rate-limited |
+| `TRIAGEASSIST_SESSION_UNLOCK_LOCKOUT_SECONDS` | `60`          | How long a locked session refuses further unlock attempts |
 | `TRIAGEASSIST_SESSION_COOKIE_NAME` | `triageassist_session`       | Session cookie name                          |
-| `TRIAGEASSIST_SESSION_COOKIE_SECURE` | `false`                    | Set `true` when served over HTTPS            |
+| `TRIAGEASSIST_SESSION_COOKIE_SECURE` | `false`                    | Set `true` when served over HTTPS. See "Security behaviour" |
 | `TRIAGEASSIST_CORS_ORIGINS`        | localhost origins             | Comma-separated origins granted credentialed CORS (the native shell) |
 | `TRIAGEASSIST_SEED_DEMO_USERS`     | `false`                      | Seed demo users during API startup           |
+
+`TRIAGEASSIST_SESSION_COOKIE_SECURE` must not be set to `true` without HTTPS:
+see "Security behaviour" for why it silently breaks sign-in otherwise.
 
 ## API surface
 
@@ -587,6 +594,9 @@ also read.
 | POST   | `/api/auth/login`                       | Public        |
 | GET    | `/api/auth/me`                          | Authenticated |
 | POST   | `/api/auth/logout`                      | Public        |
+| POST   | `/api/auth/switch-user`                 | Public        |
+| POST   | `/api/auth/lock`                        | Authenticated |
+| POST   | `/api/auth/unlock`                      | Public        |
 | POST   | `/api/auth/password`                    | Authenticated |
 | GET    | `/api/roles`                            | Public        |
 | GET    | `/api/clinical/access`                  | Clinical      |
@@ -643,6 +653,55 @@ it to one Encounter. See ADR 0007.
 - Changing a password updates the hash; the old password stops working
   immediately. The current session stays signed in.
 
+### Shared-device session lock
+
+A ward tablet is picked up by whoever is nearest, so a session has to stop
+showing patient data when the last person walks away. That is the inactivity
+lock, and it is enforced on the server, not only in the client.
+
+- After `TRIAGEASSIST_SESSION_IDLE_SECONDS` with no request (5 minutes by
+  default), the session is locked. The next request, including a background
+  poll, is refused with **423 Locked**, distinct from 401, so the client shows
+  the lock screen rather than the sign-in screen.
+- Locking does **not** end the session. The `sessions` row and the cookie
+  survive, and unlocking is a password check on that same session
+  (`POST /api/auth/unlock`), not a fresh sign-in. The token is unchanged.
+- A locked session is refused by every authenticated route, not just
+  `/api/auth/me`. The client's lock screen hides patient data, but the refusal
+  is the server's; a hidden screen on its own would not survive a request made
+  with a tool.
+- `POST /api/auth/lock` locks deliberately, for a handover that should not
+  wait for the timer. `POST /api/auth/switch-user` signs out and returns to
+  sign-in, for handing the tablet to a different person.
+- Unlock attempts are rate-limited on the session row: after
+  `TRIAGEASSIST_SESSION_UNLOCK_MAX_ATTEMPTS` wrong passwords (5 by default),
+  further attempts are refused with **429 Too Many Attempts** for
+  `TRIAGEASSIST_SESSION_UNLOCK_LOCKOUT_SECONDS` (60 by default). This stops a
+  locked tablet being used as an unattended guessing surface.
+- The session lifetime (`TRIAGEASSIST_SESSION_TTL_SECONDS`, 4 hours by
+  default) is the outer bound on a token, a backstop behind the lock rather
+  than the day's working hours. A token that escapes the lock (a restored tab,
+  a copied cookie) dies within half a shift.
+
+The lock is evaluated when a request arrives. There is no scheduled job and no
+background task, consistent with the rule that the system never acts on a
+timer.
+
+### The secure cookie needs HTTPS
+
+`TRIAGEASSIST_SESSION_COOKIE_SECURE` defaults to `false` because local
+development and the test suite run over plain HTTP. It must be set to `true`
+for the deployment, and the deployment must serve the API over **HTTPS**
+through a reverse proxy.
+
+A `Secure` cookie is sent only over an encrypted connection, so the browser
+withholds it over plain HTTP. If this flag is turned on against a plain-HTTP
+deployment, the cookie is never sent back and sign-in appears to do nothing:
+the request succeeds, the session row is written, and every following request
+looks unauthenticated. That failure is silent and easy to misread as a login
+bug. Enable HTTPS and the reverse proxy first, then set the flag. HTTPS is a
+go-live prerequisite, not something this code provides.
+
 ## Layout
 
 ```
@@ -676,10 +735,12 @@ backend/
     reports.py         read-only Reports derived on demand from stored records
     accuracy.py        the Accuracy Evaluation read model and run manifest loader
     security.py        argon2 hashing, session token hashing
-    deps.py            get_current_user, require_role
+    session_lock.py    inactivity lock and unlock rate limiting (session row)
+    deps.py            get_current_session, get_current_user, require_role
     seed.py            demo Clinical and Administrator users
     routers/
-      auth.py          login, me, logout, change-own-password
+      auth.py          login, me, lock, unlock, switch-user, logout,
+                       change-own-password
       meta.py          the two Roles
       clinical.py      Patient registration, intake, Assessments, Queue
       administrator.py Administrator queue read model, Reports and access surface
