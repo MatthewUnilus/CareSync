@@ -12,7 +12,6 @@ from pydantic import (
     model_validator,
 )
 
-from app.accuracy import FallbackMode, RunSource
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
 from app.models import Role, Sex
@@ -380,7 +379,7 @@ class AuditLogResponse(BaseModel):
     entries: list[AuditEntryResponse]
 
 
-class DailyQueueReportResponse(BaseModel):
+class DailyVisitsReportResponse(BaseModel):
     """One UTC day's arrival volume, departure throughput, and backlog."""
 
     day: date
@@ -404,130 +403,11 @@ class UrgencyDistributionReportResponse(BaseModel):
 class PerformanceEntryResponse(BaseModel):
     encounter_id: int
     arrived_at: UtcDatetime
-    assessed_at: UtcDatetime
     departed_at: UtcDatetime
     waiting_seconds: int
-    processing_seconds: int
 
 
 class PerformanceReportResponse(BaseModel):
     completed: int
     average_waiting_seconds: float
-    average_processing_seconds: float
     entries: list[PerformanceEntryResponse]
-
-
-class AccuracyGroundTruthSourceResponse(BaseModel):
-    """Where the labels came from. Shown in the UI so the standard is named."""
-
-    name: str
-    version: str
-    citation: str
-    document: str | None
-
-
-class AccuracyConfusionCellResponse(BaseModel):
-    machine_recommendation: UrgencyLevel
-    ground_truth: UrgencyLevel
-    assessments: int
-
-
-class AccuracyLevelMetricsResponse(BaseModel):
-    urgency_level: UrgencyLevel
-    ground_truth_count: int
-    predicted_count: int
-    correct: int
-    precision: float | None
-    recall: float | None
-
-
-class AccuracyPriorityErrorRateResponse(BaseModel):
-    count: int
-    denominator: int
-    rate: float | None
-
-
-class AccuracyLevelRecallResponse(BaseModel):
-    count: int
-    denominator: int
-    rate: float | None
-
-
-class AccuracyRunVariantResponse(BaseModel):
-    """A secondary scoring, explicitly not a Machine Recommendation."""
-
-    description: str
-    total: int
-    correct: int
-    accuracy: float
-    macro_f1: float
-    false_high_priority: AccuracyPriorityErrorRateResponse
-    false_low_priority: AccuracyPriorityErrorRateResponse
-    high_class_recall: AccuracyLevelRecallResponse
-
-
-class AccuracyRunSampleResponse(BaseModel):
-    labelled_cases: int
-    resolved_assessments: int
-    missing_assessments: list[int]
-    inconsistent_recommendations: list[int]
-
-
-class AccuracyFallbackCoverageResponse(BaseModel):
-    enabled: bool
-    fallback_used: int
-    unclassified: int
-    coverage: float | None
-    unclassified_rate: float | None
-
-
-class AccuracyMajorityBaselineResponse(BaseModel):
-    majority_class: UrgencyLevel
-    accuracy: float
-    model_minus_baseline: float
-    beats_baseline: bool
-
-
-class AccuracyRunResponse(BaseModel):
-    run_id: str
-    run_mode: str
-    source: RunSource
-    primary: bool
-    mode: FallbackMode
-    dataset: str | None
-    engine_artefact: str | None
-    ground_truth: AccuracyGroundTruthSourceResponse
-    sample: AccuracyRunSampleResponse
-    confusion_matrix: list[AccuracyConfusionCellResponse]
-    levels: list[AccuracyLevelMetricsResponse]
-    total: int
-    correct: int
-    accuracy: float | None
-    macro_f1: float | None
-    majority_baseline: AccuracyMajorityBaselineResponse | None
-    false_high_priority: AccuracyPriorityErrorRateResponse
-    false_low_priority: AccuracyPriorityErrorRateResponse
-    high_class_recall: AccuracyLevelRecallResponse
-    fallback: AccuracyFallbackCoverageResponse
-    classifier_only: AccuracyRunVariantResponse | None
-
-
-class AccuracyOverrideReasonCountResponse(BaseModel):
-    reason: OverrideReason
-    overrides: int
-    share: float | None
-
-
-class AccuracyOverrideMetricsResponse(BaseModel):
-    assessments: int
-    overridden_assessments: int
-    overrides: int
-    rate: float | None
-    reasons: list[AccuracyOverrideReasonCountResponse]
-
-
-class AccuracyEvaluationReportResponse(BaseModel):
-    available: bool
-    empty_reason: str | None
-    runs: list[AccuracyRunResponse]
-    overrides: AccuracyOverrideMetricsResponse

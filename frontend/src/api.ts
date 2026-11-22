@@ -186,7 +186,7 @@ export interface AdministratorQueueSnapshot {
   entries: AdministratorQueueEntry[];
 }
 
-export interface DailyQueueReport {
+export interface DailyVisitsReport {
   day: string;
   starts_at: string;
   ends_at: string;
@@ -195,158 +195,17 @@ export interface DailyQueueReport {
   awaiting: number;
 }
 
-export interface UrgencyLevelCount {
-  urgency_level: UrgencyLevel;
-  encounters: number;
-}
-
-export interface UrgencyDistributionReport {
-  total: number;
-  levels: UrgencyLevelCount[];
-}
-
 export interface PerformanceEntry {
   encounter_id: number;
   arrived_at: string;
-  assessed_at: string;
   departed_at: string;
   waiting_seconds: number;
-  processing_seconds: number;
 }
 
 export interface PerformanceReport {
   completed: number;
   average_waiting_seconds: number;
-  average_processing_seconds: number;
   entries: PerformanceEntry[];
-}
-
-export type AccuracyFallbackMode = "fallback-disabled" | "fallback-enabled";
-
-/**
- * Where the run's matrix came from: a live per-case manifest, a stored
- * evaluation run, or the offline artefact.
- */
-export type AccuracyRunSource = "assessments" | "evaluation" | "harness";
-
-export interface AccuracyMajorityBaseline {
-  majority_class: UrgencyLevel;
-  accuracy: number;
-  /** Negative when the model is worse than always predicting the commonest label. */
-  model_minus_baseline: number;
-  beats_baseline: boolean;
-}
-
-export interface AccuracyGroundTruthSource {
-  name: string;
-  version: string;
-  citation: string;
-  document: string | null;
-}
-
-export interface AccuracyConfusionCell {
-  machine_recommendation: UrgencyLevel;
-  ground_truth: UrgencyLevel;
-  assessments: number;
-}
-
-export interface AccuracyLevelMetrics {
-  urgency_level: UrgencyLevel;
-  ground_truth_count: number;
-  predicted_count: number;
-  correct: number;
-  /** Null when the engine never predicted this level. */
-  precision: number | null;
-  /** Null when no case had this ground truth. */
-  recall: number | null;
-}
-
-export interface AccuracyPriorityErrorRate {
-  count: number;
-  denominator: number;
-  rate: number | null;
-}
-
-export interface AccuracyLevelRecall {
-  count: number;
-  denominator: number;
-  rate: number | null;
-}
-
-/** A secondary scoring of a run: explicitly not a Machine Recommendation. */
-export interface AccuracyRunVariant {
-  description: string;
-  total: number;
-  correct: number;
-  accuracy: number;
-  macro_f1: number;
-  false_high_priority: AccuracyPriorityErrorRate;
-  false_low_priority: AccuracyPriorityErrorRate;
-  high_class_recall: AccuracyLevelRecall;
-}
-
-export interface AccuracyRunSample {
-  labelled_cases: number;
-  resolved_assessments: number;
-  missing_assessments: number[];
-  inconsistent_recommendations: number[];
-}
-
-export interface AccuracyFallbackCoverage {
-  enabled: boolean;
-  fallback_used: number;
-  unclassified: number;
-  /** Null for a fallback-disabled run: coverage is not exercised. */
-  coverage: number | null;
-  unclassified_rate: number | null;
-}
-
-export interface AccuracyRun {
-  run_id: string;
-  /** The producer's own mode: cross_validated, pipeline or assessment. */
-  run_mode: string;
-  source: AccuracyRunSource;
-  /** The first available run is primary; for a harness artefact it is cross-validated. */
-  primary: boolean;
-  mode: AccuracyFallbackMode;
-  dataset: string | null;
-  engine_artefact: string | null;
-  ground_truth: AccuracyGroundTruthSource;
-  sample: AccuracyRunSample;
-  confusion_matrix: AccuracyConfusionCell[];
-  levels: AccuracyLevelMetrics[];
-  total: number;
-  correct: number;
-  accuracy: number | null;
-  macro_f1: number | null;
-  majority_baseline: AccuracyMajorityBaseline | null;
-  false_high_priority: AccuracyPriorityErrorRate;
-  false_low_priority: AccuracyPriorityErrorRate;
-  high_class_recall: AccuracyLevelRecall;
-  fallback: AccuracyFallbackCoverage;
-  classifier_only: AccuracyRunVariant | null;
-}
-
-export interface AccuracyOverrideReasonCount {
-  reason: OverrideReason;
-  overrides: number;
-  share: number | null;
-}
-
-export interface AccuracyOverrideMetrics {
-  assessments: number;
-  overridden_assessments: number;
-  overrides: number;
-  rate: number | null;
-  reasons: AccuracyOverrideReasonCount[];
-}
-
-export interface AccuracyEvaluationReport {
-  available: boolean;
-  /** Why no accuracy figure can be shown. Null when a run is available. */
-  empty_reason: string | null;
-  runs: AccuracyRun[];
-  overrides: AccuracyOverrideMetrics;
 }
 
 export interface AuditEntry {
@@ -552,25 +411,12 @@ export const api = {
     request<AdministratorQueueSnapshot>("/api/administrator/queue"),
   /*
    * Reports are read-only derivations. The daily figure defaults to the
-   * server's UTC day; the other two are whole-record views.
+   * server's UTC day; the performance figure is a whole-record view.
    */
-  dailyQueueReport: () =>
-    request<DailyQueueReport>("/api/administrator/reports/daily-queue"),
-  priorityDistributionReport: () =>
-    request<UrgencyDistributionReport>(
-      "/api/administrator/reports/priority-distribution",
-    ),
+  dailyVisitsReport: () =>
+    request<DailyVisitsReport>("/api/administrator/reports/daily-visits"),
   performanceReport: () =>
     request<PerformanceReport>("/api/administrator/reports/performance"),
-  /*
-   * The flagship report. Its accuracy figures come from stored immutable
-   * Assessments joined to a labelled evaluation run; when no such run exists
-   * the response says so explicitly instead of returning a zero score.
-   */
-  accuracyEvaluationReport: () =>
-    request<AccuracyEvaluationReport>(
-      "/api/administrator/reports/accuracy-evaluation",
-    ),
 
   /*
    * The audit log is an append-only record of clinical mutations, oldest first.
