@@ -383,6 +383,14 @@ export class ApiError extends Error {
 }
 
 /**
+ * A locked session is refused with 423, distinct from 401. Any request can
+ * return it, including the background polls the workspaces run, so the lock
+ * is announced as an event rather than left to each caller: the app listens
+ * and shows the lock screen, whichever screen was open when the lock landed.
+ */
+export const SESSION_LOCKED_EVENT = "caresync:session-locked";
+
+/**
  * A caught error as a sentence a user can act on.
  *
  * A server refusal carries its own message; anything else means the request
@@ -427,6 +435,9 @@ async function requestDetailed<T>(
       typeof body?.detail === "string"
         ? body.detail
         : `Request failed (${response.status})`;
+    if (response.status === 423) {
+      window.dispatchEvent(new Event(SESSION_LOCKED_EVENT));
+    }
     throw new ApiError(response.status, detail);
   }
 
@@ -445,6 +456,19 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+  /*
+   * Lock and switch-user. Locking hides the workspace without ending the
+   * session; the server refuses a locked session on every route until unlock
+   * succeeds. Switch-user is the deliberate handover: it ends the session and
+   * returns to sign-in, and is the same server effect as logout.
+   */
+  lock: () => request<void>("/api/auth/lock", { method: "POST" }),
+  unlock: (password: string) =>
+    request<CurrentUser>("/api/auth/unlock", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  switchUser: () => request<void>("/api/auth/switch-user", { method: "POST" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>("/api/auth/password", {
       method: "POST",

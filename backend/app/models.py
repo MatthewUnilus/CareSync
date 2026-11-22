@@ -500,6 +500,20 @@ def _refuse_editing_an_audit_entry(_mapper, _connection, _target) -> None:
 
 
 class UserSession(Base):
+    """One signed-in session on one device.
+
+    The row is the single source of truth for "may this session act". Expiry
+    lives here, and beside it the lock state a shared ward tablet needs: an
+    inactivity lock that hides patient data without ending the session, the
+    last time the session was seen, and the failed-unlock counters that stop a
+    locked tablet becoming an unattended guessing surface.
+
+    ``locked_at`` is nullable: null means unlocked. It is a deliberate act
+    (a nurse locks the tablet) or a derived one (the idle window lapsed when a
+    request arrived); either way the session survives, because unlocking is a
+    credential check on this same row rather than a fresh sign-in.
+    """
+
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -509,5 +523,23 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    # Last time an authenticated request was seen. Drives the inactivity lock.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    # Null while unlocked; set to the instant the lock took effect.
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Wrong-password attempts since the session locked, and the instant past
+    # which a new attempt is refused. Both reset on a successful unlock; the
+    # counter is application-layer state, not a database constraint.
+    unlock_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    unlock_blocked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped[User] = relationship(back_populates="sessions", lazy="joined")
