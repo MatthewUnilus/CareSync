@@ -1,3 +1,9 @@
+> **Archived.** This document describes the Prioritization Engine, the Queue and
+> the ESI-facing evaluation of the TriageAssist system, all of which no longer
+> ship. They were removed by [ADR 0014](../adr/0014-remove-triage-engine.md). It
+> is kept because the dissertation may cite it, and it does not describe the
+> current design.
+
 # Prioritisation in context — TriageAssist against ESI and queueing theory
 
 This document places the Prioritization Engine against the two bodies of work a

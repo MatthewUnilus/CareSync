@@ -23,3 +23,17 @@ Application code stays dialect-neutral so the switch is a connection string:
 - The "real Postgres" property is documented but unproven locally. It is covered by running the deployed instance against Postgres, and by keeping the model layer portable.
 - If the engine's evaluation ever needs Postgres-only features, or dialect drift produces a genuine defect, this decision is reopened rather than worked around.
 - Deviation from the spec's Testing Decisions is deliberate and recorded here, not absorbed silently.
+
+## Amendment (2026-11-22)
+
+The decision stands unchanged: one dialect-neutral model layer, SQLite locally,
+Postgres in production, append-only enforced in the application layer and not by
+database triggers. The two later ward decisions lean on it directly. Medication
+Orders are frozen and Medication Administrations are append-only by the same
+application-layer guard, and the Audit Entry is written in the mutation's
+transaction for the same reason. None of those can use a trigger.
+
+The context above named a second seam, the Prioritization Engine pure function.
+ADR 0014 removes the engine, so that seam is empty. The data layer is unaffected:
+the model layer was never engine-specific, and the constraint it imposes applies
+to the ward entities exactly as it applied to the triage ones.

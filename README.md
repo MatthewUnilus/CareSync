@@ -158,7 +158,7 @@ implements three of ESI's four decision points — A (life-saving need) and B
 and D (danger-zone vitals) through the cited red flags — and substitutes the
 trained classifier for **C (projected resource categories)**, which it does not
 collect. That substitution is why the middle tier is the hardest to get right;
-the reasoning is in [`docs/prioritisation-in-context.md`](docs/prioritisation-in-context.md).
+the reasoning is in [`docs/archive/prioritisation-in-context.md`](docs/archive/prioritisation-in-context.md).
 
 Since ticket 06 the boundary is backed by a **trained supervised classifier**, a
 multinomial logistic regression over a structured feature vector. The vector is
@@ -225,7 +225,7 @@ Each rule carries a clinical citation to ESI v4 and, where it implements the
 same criterion, to the independent rubric in
 `backend/evaluation/RUBRIC.md`. The full rule table, its citations and the
 deliberate limits of the layer are in
-[`docs/red-flag-safety-layer.md`](docs/red-flag-safety-layer.md). The limits are
+[`docs/archive/red-flag-safety-layer.md`](docs/archive/red-flag-safety-layer.md). The limits are
 real: it is not a full ESI rule engine, it does not count resources or see
 respiratory rate/mental status, and a pain-only presentation can still be
 under-triaged because the handbook's severe-pain criterion needs a clinician's
@@ -261,7 +261,7 @@ HTTP service configured by `TRIAGEASSIST_FALLBACK_PROVIDER_URL` (optional
 network or paid service. The unclassified state is rendered as its own
 violet **Unclassified** badge, separate from the orange **Override** badge.
 Details, the timeout policy and the evaluation notes are in
-[`docs/cached-fallback.md`](docs/cached-fallback.md).
+[`docs/archive/cached-fallback.md`](docs/archive/cached-fallback.md).
 
 The Queue is a sort over awaiting Encounters, not a stored sequence: Urgency
 Level first (High, Medium, Low), then arrival time, so equally urgent Encounters
@@ -522,7 +522,7 @@ current UTC day.
   can never move a matrix cell. With no labelled run the view shows an explicit
   empty state rather than a flattering zero. Definitions and the run manifest
   contract are in
-  [`docs/accuracy-evaluation-report.md`](docs/accuracy-evaluation-report.md).
+  [`docs/archive/accuracy-evaluation-report.md`](docs/archive/accuracy-evaluation-report.md).
 
   To make the Report read stored, immutable Assessments rather than a file,
   materialise the rubric-labelled corpus through the real engine (from

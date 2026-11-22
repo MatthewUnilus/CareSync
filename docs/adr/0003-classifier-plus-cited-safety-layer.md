@@ -1,6 +1,6 @@
 # 0003 — Compose a trained classifier with a cited deterministic safety layer
 
-**Status:** Accepted (2026-11-03)
+**Status:** Superseded (2026-11-22) by [ADR 0014](0014-remove-triage-engine.md)
 
 ## Context
 

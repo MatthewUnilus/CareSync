@@ -1,6 +1,6 @@
 # 0005 — Train the interim classifier on an open dataset that lacks the complaint
 
-**Status:** Accepted (2026-11-03), explicitly interim
+**Status:** Superseded (2026-11-22) by [ADR 0014](0014-remove-triage-engine.md). Was: Accepted (2026-11-03), explicitly interim
 
 ## Context
 

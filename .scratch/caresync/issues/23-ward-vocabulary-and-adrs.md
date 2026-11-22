@@ -4,7 +4,7 @@
 
 **Blocked by:** none.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `CONTEXT.md` gains eleven terms in its existing style: Admission, Discharge, Observation, Nursing Note, Note Template, Medication Order, Medication Administration, Medication Round Time, Investigation, Task, Ward Board.
 - [ ] `CONTEXT.md` loses the triage terms: Triage Assessment, Urgency, Urgency Level, Machine Recommendation, Final Decision, Override, Override Reason, Re-assessment, Queue, Prioritization Engine, Symptom Group, Departure. ESI goes with them, because it existed as the evaluation's reference standard and there is no evaluation left for it to reference.
@@ -26,3 +26,20 @@
 - ADR 0006 needs care. It rejected reordering by wait and auto-escalation in a system that had a queue. The rule survives the pivot but the reason narrows to "the system never acts on a timer", which is what ADR 0010 should say.
 - The terms to add are chosen so that every user story in the spec is sayable in the glossary's language. If a story needs a word that is not in the list, that is the signal `docs/agents/domain.md` describes, and it should be resolved here rather than in code.
 - Ethics approval for the usability study starts here, not after the system is built. A study with ward staff needs the hospital's agreement and probably the university's review, and both have lead time.
+
+## Comments
+
+Done. `CONTEXT.md` is now a CareSync glossary: the eleven ward terms (Admission, Discharge, Observation, Nursing Note, Note Template, Medication Order, Medication Administration, Medication Round Time, Investigation, Task, Ward Board) are in, the triage terms and the ESI material are out, and Patient, Encounter, Roles, Report and Audit Entry are kept and trimmed. The header's "glossary only" rule holds: no schema, no table names, nothing about the API.
+
+Seven ADRs 0008 to 0014 written in the existing format, status "Accepted (2026-11-22)". 0002 to 0006 marked Superseded, each naming 0014. 0001 and 0007 kept and amended: 0001 gains an amendment saying the application-layer no-triggers rule is what the ward entities lean on; 0007 gains the action-set growth, the Admission subject replacing the Assessment subject, and the label-set move to one source of truth.
+
+The four subsystem docs moved to `docs/archive/` with a removal header pointing at 0014, not deleted.
+
+Two judgement calls.
+
+- The archived red-flag doc's reference range is the one ADR 0010 keeps, so the archive header on `red-flag-safety-layer.md` points at 0010 as well as 0014. The range outlives the engine, so a reader arriving at that doc should see where it went.
+- The move broke two things that referenced the old paths: `backend/tests/test_red_flags.py` read `docs/red-flag-safety-layer.md` by literal path, and `README.md` linked all four docs. Both were updated to the `docs/archive/` paths. Nothing under `backend/` or `frontend/` source changed; the test edit is a path string only, and the ticket's "tests must still pass" is the reason it moved rather than being left broken.
+
+Every spec story from 64 to 122 is sayable in the glossary's language. No story needed a term the list does not hold. "Doctor" and "ward round entry" appear in stories but are not domain entities: a Medication Order and a ward round Nursing Note name the doctor as the instruction's source, and a Task names the round entry it came from, so neither needs its own glossary term.
+
+Tests: `uv run pytest -q` green (the worktree's fresh `.venv` hits a Windows `thinc` `numpy_ops` DLL load failure unrelated to these changes, so the suite was run with the main checkout's working interpreter against the worktree's code; 425 passed, 10 skipped, 0 failures).

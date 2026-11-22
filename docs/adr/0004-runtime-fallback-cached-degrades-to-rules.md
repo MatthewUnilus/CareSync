@@ -1,6 +1,6 @@
 # 0004 — Runtime fallback, cached, degrading to rules on timeout
 
-**Status:** Accepted (2026-11-03)
+**Status:** Superseded (2026-11-22) by [ADR 0014](0014-remove-triage-engine.md)
 
 ## Context
 
