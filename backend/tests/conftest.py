@@ -7,10 +7,12 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 
-# The reason a test opens a visit with. A visit carries only a reason until the
-# Observation chart lands (ticket 30), and a visit route refuses vitals rather
-# than dropping them, so the shared fixture is reason-only. A test that needs a
-# different reason overrides ``presenting_complaint`` inline.
+# The reason a test opens a visit with. A visit opened from the reason alone
+# carries only that reason; opening one with the full intake (the reason plus
+# the first set of vitals) records the first Observation as well (ticket 30).
+# A partial set is refused rather than silently dropped, so the shared fixture
+# is reason-only. A test that needs a different reason overrides
+# ``presenting_complaint`` inline.
 VISIT_INTAKE = {
     "presenting_complaint": "Mild headache for a day",
 }

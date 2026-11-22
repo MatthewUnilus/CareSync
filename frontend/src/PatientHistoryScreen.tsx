@@ -8,6 +8,7 @@ import { toast } from "@/components/base/toast/toast";
 import { api, errorText } from "./api";
 import type { Encounter, Patient } from "./api";
 import { cardClass, figureClass, mutedTextClass } from "./design";
+import ObservationChart from "./ObservationChart";
 import { formatInstant, sexLabel } from "./queueDisplay";
 
 /**
@@ -40,6 +41,13 @@ export default function PatientHistoryScreen() {
   const [selected, setSelected] = useState<Patient | null>(null);
   const [history, setHistory] = useState<Encounter[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // The open Encounter the chart writes against, chosen explicitly from the
+  // Patient's visits. Null means the chart is read-only: nothing is charted
+  // until the reader names a visit, so an ambiguous history never silently
+  // chooses one. A Patient with several open visits therefore has no default.
+  const [chartingEncounterId, setChartingEncounterId] = useState<number | null>(
+    null,
+  );
   // The Patient whose history the view is allowed to show. Each fetch captures
   // the id it was started for and, once it resolves, writes nothing unless that
   // Patient is still selected. Without this, a slow reply for the previous
@@ -69,6 +77,7 @@ export default function PatientHistoryScreen() {
       selectedIdRef.current = null;
       setSelected(null);
       setHistory([]);
+      setChartingEncounterId(null);
     } catch (caught) {
       toast.error(errorText(caught));
     } finally {
@@ -79,6 +88,8 @@ export default function PatientHistoryScreen() {
   async function openHistory(patient: Patient) {
     selectedIdRef.current = patient.id;
     setSelected(patient);
+    // A new Patient has no charting subject until the reader names one.
+    setChartingEncounterId(null);
     setLoadingHistory(true);
     try {
       const { encounters } = await api.patientHistory(patient.id);
@@ -141,6 +152,9 @@ export default function PatientHistoryScreen() {
     if (!selected) {
       return;
     }
+    // An ended visit can no longer be charted against, so a selection pointing
+    // at it is dropped rather than left charting into a closed visit.
+    setChartingEncounterId((current) => (current === ended.id ? null : current));
     setHistory((previous) =>
       previous.map((encounter) =>
         encounter.id === ended.id ? ended : encounter,
@@ -279,7 +293,9 @@ export default function PatientHistoryScreen() {
           )}
 
           <p className={mutedTextClass}>
-            Every visit for this Patient, oldest first.
+            Every visit for this Patient, oldest first. Choose an open visit to
+            chart a new set of vitals against it; an ended visit cannot be
+            charted against, and nothing is charted until a visit is chosen.
           </p>
 
           {loadingHistory ? (
@@ -317,17 +333,53 @@ export default function PatientHistoryScreen() {
                   <p className="text-body-regular text-text-primary wrap-anywhere">
                     {encounter.reason_for_visit}
                   </p>
-                  {encounter.status === "open" ? (
-                    <EndVisitAction
-                      encounter={encounter}
-                      onEnded={handleEncounterEnded}
-                    />
-                  ) : null}
+                  <footer className="flex flex-wrap gap-2">
+                    {encounter.status === "open" ? (
+                      <Button
+                        variant={
+                          chartingEncounterId === encounter.id
+                            ? "primary"
+                            : "secondary"
+                        }
+                        className="min-h-11"
+                        onClick={() =>
+                          setChartingEncounterId((current) =>
+                            current === encounter.id ? null : encounter.id,
+                          )
+                        }
+                      >
+                        {chartingEncounterId === encounter.id
+                          ? "Charting against this visit"
+                          : "Chart vitals against this visit"}
+                      </Button>
+                    ) : null}
+                    {encounter.status === "open" ? (
+                      <EndVisitAction
+                        encounter={encounter}
+                        onEnded={handleEncounterEnded}
+                      />
+                    ) : null}
+                  </footer>
                 </li>
               ))}
             </ul>
           )}
         </section>
+      ) : null}
+
+      {/*
+       * The Observation chart sits with the selected Patient, so the latest
+       * vitals are read without walking back to the ward. Charting a repeat set
+       * is reachable here: once the reader names an open visit above, the chart
+       * carries the form and writes against it. Without a named visit the chart
+       * is read-only, so an ambiguous history never silently chooses one, and an
+       * ended visit is never a subject.
+       */}
+      {selected ? (
+        <ObservationChart
+          patientId={selected.id}
+          encounterId={chartingEncounterId ?? undefined}
+        />
       ) : null}
     </>
   );

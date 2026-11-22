@@ -49,13 +49,87 @@ export interface BloodPressure {
 }
 
 /**
- * The reason for a visit, as sent when a visit is opened. A visit no longer
- * holds vital signs; every set of vitals is its own Observation (ADR 0008), so
- * only the reason travels here. Matching the server's `VisitReasonPayload`,
- * which refuses any extra field with a `422`.
+ * The eight readings of one set of vital signs.
+ *
+ * Every value is a plain number. The server owns the reference range that marks
+ * a reading abnormal (ADR 0010), so the client sends values and never judges
+ * them; it reads the mark back on the response.
  */
-export interface Intake {
+export interface ObservationReading {
+  pain_level: number;
+  illness_duration_hours: number;
+  temperature_c: number;
+  heart_rate_bpm: number;
+  respiratory_rate_bpm: number;
+  blood_pressure: BloodPressure;
+  oxygen_saturation_percent: number;
+}
+
+/**
+ * A set of vitals as charted against an Encounter or an Admission, as sent to
+ * the chart's write routes. Matching the server's `ObservationPayload`: every
+ * reading is required and only the notes are optional.
+ */
+export interface ObservationPayload extends ObservationReading {
+  notes: string | null;
+}
+
+/**
+ * The reason for a visit together with the first set of vitals, as sent when a
+ * visit is opened.
+ *
+ * A visit no longer holds vital signs; every set of vitals is its own
+ * Observation (ADR 0008), so the intake records the reason and charts the first
+ * Observation in one act. Matching the server's `IntakePayload`.
+ */
+export interface Intake extends ObservationPayload {
   presenting_complaint: string;
+}
+
+/**
+ * The reason for a visit alone, as sent when a visit is opened before any vitals
+ * are measured. Matching the server's `VisitReasonPayload`.
+ */
+export interface VisitReasonIntake {
+  presenting_complaint: string;
+}
+
+/**
+ * The set of readings that immediately preceded another Observation, for the
+ * chart to show beside the current one. Carries the time it was taken as well
+ * as the readings, so the comparison can name when the earlier set was taken.
+ */
+export interface PreviousObservation extends ObservationPayload {
+  taken_at: string;
+}
+
+/**
+ * One Observation as the server returns it: its readings, the time they were
+ * taken and who took them, the readings that fell outside their reference range
+ * (marked for display only — ADR 0010), and the readings that immediately
+ * preceded it so the direction of travel reads beside the current set.
+ */
+export interface Observation extends ObservationPayload {
+  id: number;
+  /** Exactly one of `encounter_id` / `admission_id` is set, never both. */
+  encounter_id: number | null;
+  admission_id: number | null;
+  taken_at: string;
+  actor: { id: number; display_name: string };
+  /**
+   * Whether the published adult reference ranges apply to this Patient. When
+   * false — a child, for whom the adult ranges do not apply — no reading is
+   * marked, so `abnormal_fields` is empty and the chart says why (ADR 0010).
+   */
+  reference_range_applies: boolean;
+  /**
+   * The names of the readings outside their reference range. The client renders
+   * the mark from this list rather than re-deriving the thresholds, so the
+   * bounds live in exactly one place (ADR 0010).
+   */
+  abnormal_fields: string[];
+  /** The readings immediately preceding this set, or null for the first. */
+  previous: PreviousObservation | null;
 }
 
 export interface Encounter {
@@ -77,9 +151,7 @@ export interface PatientSearchResults {
 }
 
 /**
- * One Patient's Encounters over time, oldest first. Corpus rows (Encounters
- * carrying an evaluation run id) are absent, so a measurement row never reads
- * as a real visit.
+ * One Patient's Encounters over time, oldest first.
  */
 export interface PatientHistory {
   patient: Patient;
@@ -245,7 +317,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(patient),
     }),
-  openEncounter: (patientId: number, intake: Intake) =>
+  openEncounter: (patientId: number, intake: Intake | VisitReasonIntake) =>
     request<Encounter>("/api/clinical/encounters", {
       method: "POST",
       body: JSON.stringify({ patient_id: patientId, intake }),
@@ -267,6 +339,32 @@ export const api = {
     ),
   patientHistory: (patientId: number) =>
     request<PatientHistory>(`/api/clinical/patients/${patientId}/encounters`),
+  /*
+   * Charting a set of vitals writes one append-only Observation against its
+   * subject — an Encounter or an Admission, never both. A set is unchangeable
+   * once saved (ADR 0008), so there is no edit or delete route; a correction is
+   * a new set. The response is the stored Observation, including the readings
+   * that preceded it and the ones the server marked abnormal.
+   */
+  chartEncounterObservation: (encounterId: number, payload: ObservationPayload) =>
+    request<Observation>(`/api/clinical/encounters/${encounterId}/observations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  chartAdmissionObservation: (admissionId: number, payload: ObservationPayload) =>
+    request<Observation>(`/api/clinical/admissions/${admissionId}/observations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  /*
+   * One Patient's Observations, newest first. This is the chart's read: the
+   * single time series for a Patient's vitals, across every Encounter and
+   * Admission they have.
+   */
+  patientObservations: (patientId: number) =>
+    request<{ observations: Observation[] }>(
+      `/api/clinical/patients/${patientId}/observations`,
+    ),
   /*
    * Attach a hospital number to an existing Patient who has none. The server is
    * the authority on identity: a number already held by another record is

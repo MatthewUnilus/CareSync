@@ -4,6 +4,7 @@ from enum import Enum
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -180,6 +181,128 @@ class Encounter(Base):
     patient: Mapped[Patient] = relationship(
         back_populates="encounters",
         lazy="joined",
+    )
+    observations: Mapped[list["Observation"]] = relationship(
+        back_populates="encounter",
+    )
+
+
+class Admission(Base):
+    """A period of inpatient care: the Patient, the ward and the bed.
+
+    This is a minimal shell for ticket 30. An Observation attaches to an
+    Admission, so the table and its foreign key have to exist for the schema to
+    build; without them ``create_all`` cannot resolve ``observations.admission_id``.
+    Ward admission, discharge, location moves, the board and their audit actions
+    are ticket 31, which owns the routes. Until then an Admission row is written
+    only by a test fixture, so the chart's admission seam can be exercised.
+
+    Like an Encounter, a stay is open while ``discharged_at`` is null and ended
+    once it is set; there is no second status column.
+    """
+
+    __tablename__ = "admissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    ward: Mapped[str] = mapped_column(String(120))
+    bed: Mapped[str] = mapped_column(String(64))
+    admitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    discharged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # The outpatient visit the patient was seen in before this stay, when there
+    # was one. Optional: a direct admission has no prior Encounter.
+    encounter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("encounters.id"), nullable=True, index=True
+    )
+
+    patient: Mapped[Patient] = relationship(lazy="joined")
+    encounter: Mapped[Encounter | None] = relationship()
+    observations: Mapped[list["Observation"]] = relationship(
+        back_populates="admission",
+    )
+
+
+class Observation(Base):
+    """One set of vital signs, charted at a point in time.
+
+    An Observation is the single home for vitals (ADR 0008): a set attached to
+    either an Encounter or an Admission, never both and never neither. The
+    ``ck_observations_exactly_one_subject`` constraint enforces that in the data
+    layer, the same one-column-per-subject pattern ``AuditEntry`` documents —
+    both subject columns are nullable, and exactly one is set.
+
+    ``patient_id`` is carried alongside the subject in the same pattern: an
+    Observation is always about a Patient, so the Patient's chart is a plain
+    indexed lookup rather than a join through whichever subject it points at.
+
+    The eight readings keep the intake bounds, validated at the request
+    boundary (``app.schemas.ObservationPayload``). Rows are append-only,
+    enforced in the application layer (see the guard below) because ADR 0001
+    forbids database triggers: a charted set must not be quietly rewritten.
+
+    A reading's reference range is marked for display only (ADR 0010); nothing
+    is stored about it here and the value is never altered.
+    """
+
+    __tablename__ = "observations"
+    __table_args__ = (
+        CheckConstraint(
+            "(encounter_id IS NOT NULL AND admission_id IS NULL) "
+            "OR (encounter_id IS NULL AND admission_id IS NOT NULL)",
+            name="ck_observations_exactly_one_subject",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    encounter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("encounters.id"), nullable=True, index=True
+    )
+    admission_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admissions.id"), nullable=True, index=True
+    )
+
+    pain_level: Mapped[int] = mapped_column(Integer)
+    illness_duration_hours: Mapped[float] = mapped_column(Float)
+    temperature_c: Mapped[float] = mapped_column(Float)
+    heart_rate_bpm: Mapped[int] = mapped_column(Integer)
+    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer)
+    systolic: Mapped[int] = mapped_column(Integer)
+    diastolic: Mapped[int] = mapped_column(Integer)
+    oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+
+    taken_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    actor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+
+    actor: Mapped[User] = relationship(lazy="joined")
+    patient: Mapped[Patient] = relationship(lazy="joined")
+    encounter: Mapped[Encounter | None] = relationship(
+        back_populates="observations"
+    )
+    admission: Mapped[Admission | None] = relationship(
+        back_populates="observations"
+    )
+
+
+@event.listens_for(Observation, "before_update")
+def _refuse_editing_an_observation(_mapper, _connection, _target) -> None:
+    """Application-layer append-only guarantee (ADR 0001, no DB triggers).
+
+    The guard refuses *any* in-place change, not a fixed field list: a charted
+    set has no field that is ever legitimately updated, so the whole row is
+    frozen rather than a chosen subset.
+    """
+    raise ValueError(
+        "An Observation is append-only; it cannot be edited after it is written"
     )
 
 

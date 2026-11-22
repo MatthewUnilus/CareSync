@@ -7,21 +7,35 @@ from sqlalchemy.orm import Session
 
 from app.audit import record_audit_entry
 from app.audit_actions import AuditAction
-from app.departures import encounter_status, end_encounter
+from app.departures import encounter_status, end_encounter, ensure_open
 from app.deps import DbSession, require_role
 from app.intake import apply_visit_reason
-from app.models import Encounter, Patient, Role, User
+from app.models import Admission, Encounter, Observation, Patient, Role, User
+from app.observations import (
+    REFERENCE_RANGE_NOTE,
+    abnormal_fields,
+    previous_observation,
+    reference_range_applies,
+    stage_observation,
+)
 from app.patients import (
     find_or_create_patient,
     normalise_hospital_number,
     search_patients as patient_search,
 )
 from app.schemas import (
+    ActorResponse,
+    BloodPressure,
     EncounterCreateRequest,
     EncounterListResponse,
     EncounterResponse,
     HospitalNumberRequest,
+    IntakePayload,
+    ObservationPayload,
+    ObservationReadings,
+    ObservationResponse,
     PatientHistoryResponse,
+    PatientObservationsResponse,
     PatientRegistrationRequest,
     PatientResponse,
     PatientSearchResponse,
@@ -34,6 +48,16 @@ ClinicalUser = Annotated[User, Depends(require_role(Role.clinical))]
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
+
+#: Refusals for charting against a closed subject. Ticket 31 owns the discharge
+#: route; the stay is closed in the data layer here by a set ``discharged_at``,
+#: the same open/ended pattern ``departures.ensure_open`` applies to a visit.
+ENDED_VISIT_CHART_DETAIL = (
+    "An Encounter that has already ended cannot take new Observations"
+)
+DISCHARGED_ADMISSION_CHART_DETAIL = (
+    "A discharged Admission cannot take new Observations"
+)
 
 
 @router.get("/access")
@@ -188,6 +212,19 @@ def open_encounter(
         patient=patient,
         encounter=encounter,
     )
+    # A full intake carries the first set of vitals as well as the reason. Those
+    # readings become the visit's first Observation, in this same transaction;
+    # they are never written onto the Encounter. The open entry above already
+    # covers this transaction, so the first Observation is not logged a second
+    # time: opening a visit writes exactly one audit entry (documented boundary).
+    if isinstance(payload.intake, IntakePayload):
+        stage_observation(
+            db,
+            actor=user,
+            payload=payload.intake,
+            patient=patient,
+            encounter=encounter,
+        )
     db.commit()
     return _encounter_response(encounter)
 
@@ -271,6 +308,132 @@ def get_encounter(
     return _encounter_response(_get_encounter(db, encounter_id))
 
 
+@router.post(
+    "/encounters/{encounter_id}/observations",
+    response_model=ObservationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def chart_encounter_observation(
+    encounter_id: int,
+    payload: ObservationPayload,
+    db: DbSession,
+    user: ClinicalUser,
+) -> ObservationResponse:
+    """Chart a set of vitals against a visit, appending one Observation.
+
+    The set and its audit entry commit together. An unknown Encounter is a 404;
+    a visit that has already ended takes no new sets (``409``), and a refused
+    request writes neither an Observation nor an audit entry. Reading the visit's
+    chart is unaffected, so an ended visit keeps its history.
+    """
+    encounter = _get_encounter(db, encounter_id)
+    ensure_open(encounter, ENDED_VISIT_CHART_DETAIL)
+    observation = stage_observation(
+        db,
+        actor=user,
+        payload=payload,
+        patient=encounter.patient,
+        encounter=encounter,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.chart_observation,
+        patient=encounter.patient,
+        encounter=encounter,
+    )
+    db.commit()
+    return _observation_response(db, observation)
+
+
+@router.post(
+    "/admissions/{admission_id}/observations",
+    response_model=ObservationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def chart_admission_observation(
+    admission_id: int,
+    payload: ObservationPayload,
+    db: DbSession,
+    user: ClinicalUser,
+) -> ObservationResponse:
+    """Chart a set of vitals against a stay, appending one Observation.
+
+    The set and its audit entry commit together. An unknown Admission is a 404;
+    a discharged stay takes no new sets (``409``), and a refused request writes
+    neither an Observation nor an audit entry. Reading the stay's chart is
+    unaffected, so a discharged stay keeps its history.
+    """
+    admission = db.get(Admission, admission_id)
+    if admission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admission not found",
+        )
+    if admission.discharged_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=DISCHARGED_ADMISSION_CHART_DETAIL,
+        )
+    observation = stage_observation(
+        db,
+        actor=user,
+        payload=payload,
+        patient=admission.patient,
+        admission=admission,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.chart_observation,
+        patient=admission.patient,
+        # The audit log's subjects are Patient and Encounter; a stay is named in
+        # the detail until ticket 31 adds its own actions and subject column.
+        detail=f"admission_id={admission.id}",
+    )
+    db.commit()
+    return _observation_response(db, observation)
+
+
+@router.get(
+    "/patients/{patient_id}/observations",
+    response_model=PatientObservationsResponse,
+)
+def get_patient_observations(
+    patient_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> PatientObservationsResponse:
+    """One Patient's Observation chart, newest first.
+
+    Every reading is returned beside the value taken before it, so the chart
+    shows the direction of travel. An unknown Patient is a 404; an empty chart
+    is an empty list, not a row of zeros.
+    """
+    patient = db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    observations = db.scalars(
+        select(Observation)
+        .where(Observation.patient_id == patient.id)
+        .order_by(Observation.taken_at, Observation.id)
+    ).all()
+
+    responses: list[ObservationResponse] = []
+    previous: Observation | None = None
+    for observation in observations:
+        responses.append(_observation_response_for(observation, previous))
+        previous = observation
+    responses.reverse()
+    return PatientObservationsResponse(observations=responses)
+
+
 @router.put("/encounters/{encounter_id}/intake", response_model=EncounterResponse)
 def correct_visit_reason(
     encounter_id: int,
@@ -340,4 +503,61 @@ def _encounter_response(encounter: Encounter) -> EncounterResponse:
         status=encounter_status(encounter),
         patient=PatientResponse.model_validate(encounter.patient),
         reason_for_visit=encounter.reason_for_visit,
+    )
+
+
+def _observation_response(
+    db: Session, observation: Observation
+) -> ObservationResponse:
+    return _observation_response_for(
+        observation, previous_observation(db, observation)
+    )
+
+
+def _observation_response_for(
+    observation: Observation,
+    previous: Observation | None,
+) -> ObservationResponse:
+    applies = reference_range_applies(observation)
+    return ObservationResponse(
+        id=observation.id,
+        encounter_id=observation.encounter_id,
+        admission_id=observation.admission_id,
+        taken_at=observation.taken_at,
+        actor=ActorResponse(
+            id=observation.actor.id,
+            display_name=observation.actor.display_name,
+        ),
+        pain_level=observation.pain_level,
+        illness_duration_hours=observation.illness_duration_hours,
+        temperature_c=observation.temperature_c,
+        heart_rate_bpm=observation.heart_rate_bpm,
+        respiratory_rate_bpm=observation.respiratory_rate_bpm,
+        blood_pressure=BloodPressure(
+            systolic=observation.systolic,
+            diastolic=observation.diastolic,
+        ),
+        oxygen_saturation_percent=observation.oxygen_saturation_percent,
+        notes=observation.notes,
+        abnormal_fields=abnormal_fields(observation),
+        reference_range_applies=applies,
+        reference_range_note=None if applies else REFERENCE_RANGE_NOTE,
+        previous=None if previous is None else _readings(previous),
+    )
+
+
+def _readings(observation: Observation) -> ObservationReadings:
+    return ObservationReadings(
+        taken_at=observation.taken_at,
+        pain_level=observation.pain_level,
+        illness_duration_hours=observation.illness_duration_hours,
+        temperature_c=observation.temperature_c,
+        heart_rate_bpm=observation.heart_rate_bpm,
+        respiratory_rate_bpm=observation.respiratory_rate_bpm,
+        blood_pressure=BloodPressure(
+            systolic=observation.systolic,
+            diastolic=observation.diastolic,
+        ),
+        oxygen_saturation_percent=observation.oxygen_saturation_percent,
+        notes=observation.notes,
     )

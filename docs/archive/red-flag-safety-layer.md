@@ -1,9 +1,11 @@
 > **Archived.** This document describes the red-flag safety layer of the
 > Prioritization Engine, which no longer ships. It was removed by
 > [ADR 0014](../adr/0014-remove-triage-engine.md). It is kept because the
-> dissertation may cite it, and it does not describe the current design. The
-> reference range it cited for marking an out-of-range reading survives in
-> [ADR 0010](../adr/0010-observation-range-marked-for-display.md).
+> dissertation may cite it, and it does not describe the current design. The ESI
+> danger cut-offs it cited are archived with it and are not the current marking
+> range; for marking an out-of-range reading, [ADR
+> 0010](../adr/0010-observation-range-marked-for-display.md) uses published adult
+> resting normal intervals instead.
 
 # Red-flag safety layer
 

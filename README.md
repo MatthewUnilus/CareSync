@@ -135,6 +135,18 @@ contact details.
 > created with `npm run seed`. Do not run on the old schema, and do not remove
 > an existing `caresync.db` without taking that backup first.
 
+> **Operator note — ticket 30.** Ticket 30 adds the ward tables — `Observations`
+> and `Admissions` — and its chart API writes to them. An existing
+> `backend/caresync.db` has neither table, and, more seriously, its `audit_log`
+> carries a `CHECK` constraint on `action` whose allowed set excludes
+> `chart_observation`. `create_all` only creates missing tables; it never alters
+> an existing table or its constraints, so it will not upgrade that `CHECK`, and
+> any chart write will fail against the old `audit_log`. Preserve and back up the
+> current file, then reseed a fresh database with `npm run seed` before running
+> the new chart API. The Postgres schema has the same problem — the same
+> constraints are baked in — so it likewise needs a recreate or an explicit
+> migration before the chart API will run.
+
 ## Intake
 
 > **Obsolete — triage era.** The intake fields and the frozen-Assessment

@@ -155,18 +155,23 @@ class BloodPressure(BaseModel):
         return self
 
 
-class IntakePayload(BaseModel):
-    """The full intake an Observation is charted from, kept for ticket 30.
+class ObservationPayload(BaseModel):
+    """One set of vital signs, as charted against a visit or a stay.
 
-    A visit no longer holds vital signs; every set of vitals is its own
-    Observation (ADR 0008). This is the validated shape and the bounds the
-    Observation chart will accept (pain 1-10, temperature 30-45, heart rate
-    20-300, respiratory rate 0-80, systolic 50-300, diastolic 20-200 and greater
-    than diastolic, saturation 50-100). No visit route accepts it yet, so a
-    visit's own payload is the reason-only ``VisitReasonPayload`` below.
+    The bounds are the intake bounds, unchanged: pain 1-10, illness duration
+    0-8760 hours, temperature 30-45, heart rate 20-300, respiratory rate 0-80,
+    systolic 50-300, diastolic 20-200 with systolic greater than diastolic, and
+    saturation 50-100. ``IntakePayload`` extends this with the reason for the
+    visit, so there is one definition of the bounds rather than two that could
+    drift.
+
+    An unknown key is refused rather than ignored: a misspelled reading would
+    otherwise be silently dropped and the client left believing it was charted.
+    ``extra='forbid'`` turns that into a ``422``.
     """
 
-    presenting_complaint: _TEXT
+    model_config = ConfigDict(extra="forbid")
+
     pain_level: int = Field(ge=1, le=10)
     illness_duration_hours: float = Field(ge=0, le=8760)
     temperature_c: float = Field(ge=30, le=45)
@@ -180,6 +185,19 @@ class IntakePayload(BaseModel):
     @classmethod
     def _blank_notes_are_absent(cls, value: str | None) -> str | None:
         return value or None
+
+
+class IntakePayload(ObservationPayload):
+    """The full intake a visit is opened with: the reason and the first vitals.
+
+    A visit no longer holds vital signs; every set of vitals is its own
+    Observation (ADR 0008). Opening a visit with this full payload records the
+    reason on the Encounter and the first Observation in the same transaction.
+    Its readings are validated by ``ObservationPayload``, so the chart and the
+    intake accept identical bounds.
+    """
+
+    presenting_complaint: _TEXT
 
 
 class VisitReasonPayload(BaseModel):
@@ -197,17 +215,19 @@ class VisitReasonPayload(BaseModel):
 
 
 class EncounterCreateRequest(BaseModel):
-    """Open a visit: the Patient, and the reason for the visit.
+    """Open a visit: the Patient, and either a reason or a full intake.
 
-    The reason travels under the ``intake`` wrapper the client already sends, but
-    its shape is reason-only, so vitals posted here are refused until the
-    Observation chart exists.
+    The reason travels under the ``intake`` wrapper the client already sends.
+    It is reason-only for a visit opened from the reason alone, and the full
+    ``IntakePayload`` when the first set of vitals is captured at the same
+    time. A partial set matches neither shape and is refused, so a posted set
+    of vitals is never silently dropped to a reason-only visit.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     patient_id: int = Field(gt=0)
-    intake: VisitReasonPayload
+    intake: VisitReasonPayload | IntakePayload
 
 
 class ActorResponse(BaseModel):
@@ -263,6 +283,67 @@ class PatientHistoryResponse(BaseModel):
 
     patient: PatientResponse
     encounters: list[EncounterResponse]
+
+
+class ObservationReadings(BaseModel):
+    """The readings of one Observation, with the instant they were taken.
+
+    This is the shape ``previous`` carries: a reading's preceding value and the
+    time it was taken, so the chart can show the direction of travel and compare
+    the two instants without reading back to the row.
+    """
+
+    taken_at: UtcDatetime
+    pain_level: int
+    illness_duration_hours: float
+    temperature_c: float
+    heart_rate_bpm: int
+    respiratory_rate_bpm: int
+    blood_pressure: BloodPressure
+    oxygen_saturation_percent: int
+    notes: str | None
+
+
+class ObservationResponse(BaseModel):
+    """One set of vitals, as read back from a Patient's chart.
+
+    Exactly one of ``encounter_id`` and ``admission_id`` is set. ``taken_at`` is
+    the server instant the reading was charted and ``actor`` is the Clinical
+    user who took it. ``abnormal_fields`` names each reading outside its adult
+    resting reference interval, for display only (ADR 0010): the values are
+    returned unchanged and nothing is scored. ``reference_range_applies`` is
+    false for a patient under 18, whose readings are not marked against the
+    adult intervals; ``reference_range_note`` is the note the interface shows in
+    that case and null when the ranges apply. ``previous`` is the preceding set
+    of readings for the same Patient, or null when this is the first.
+    """
+
+    id: int
+    encounter_id: int | None
+    admission_id: int | None
+    taken_at: UtcDatetime
+    actor: ActorResponse
+    pain_level: int
+    illness_duration_hours: float
+    temperature_c: float
+    heart_rate_bpm: int
+    respiratory_rate_bpm: int
+    blood_pressure: BloodPressure
+    oxygen_saturation_percent: int
+    notes: str | None
+    abnormal_fields: list[str]
+    reference_range_applies: bool
+    reference_range_note: str | None
+    previous: ObservationReadings | None
+
+
+class PatientObservationsResponse(BaseModel):
+    """One Patient's Observation chart, newest first.
+
+    An empty chart returns an empty list rather than a row of zeros.
+    """
+
+    observations: list[ObservationResponse]
 
 
 class AuditEntryResponse(BaseModel):

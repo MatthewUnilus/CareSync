@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/base/buttons/button";
+import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { Input } from "@/components/base/input/input";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Textarea } from "@/components/base/textarea/textarea";
@@ -9,10 +10,16 @@ import { toast } from "@/components/base/toast/toast";
 
 import { api, errorText } from "./api";
 import type { Encounter, Sex } from "./api";
-import { cardClass, figureClass, noticeClass } from "./design";
-import { NumberField } from "./IntakeFields";
-import { buildIntake } from "./intakeForm";
-import type { IntakeFormValues } from "./intakeForm";
+import { cardClass, figureClass, mutedTextClass, noticeClass } from "./design";
+import { NumberField, ObservationFields } from "./IntakeFields";
+import {
+  buildIntake,
+  buildReasonOnlyIntake,
+  emptyIntakeFormValues,
+  validateObservationForm,
+} from "./intakeForm";
+import type { IntakeFormValues, ObservationFieldErrors } from "./intakeForm";
+import ObservationChart from "./ObservationChart";
 import { SEX_OPTIONS, formatInstant, sexLabel } from "./queueDisplay";
 
 interface FormState extends IntakeFormValues {
@@ -27,9 +34,10 @@ interface FormState extends IntakeFormValues {
 /**
  * Per-field validation messages. Each key names the field it belongs beside,
  * so one error can never stand in for another or be overwritten by the next
- * check.
+ * check. The reading fields are shared with the chart through
+ * `ObservationFieldErrors`.
  */
-interface FormErrors {
+interface FormErrors extends ObservationFieldErrors {
   fullName?: string;
   age?: string;
   sex?: string;
@@ -38,13 +46,13 @@ interface FormErrors {
 }
 
 const EMPTY_FORM: FormState = {
+  ...emptyIntakeFormValues(),
   fullName: "",
   hospitalNumber: "",
   age: "",
   sex: "unspecified",
   phone: "",
   email: "",
-  complaint: "",
 };
 
 const fieldsetClass = "grid min-w-0 gap-3";
@@ -58,6 +66,9 @@ export default function IntakeScreen() {
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  // A visit may be opened before any vitals are measured. This is a deliberate
+  // opt-out, off by default: the ordinary path charts the first set at intake.
+  const [vitalsNotMeasured, setVitalsNotMeasured] = useState(false);
 
   const refreshRecent = useCallback(async () => {
     try {
@@ -81,6 +92,7 @@ export default function IntakeScreen() {
     setSavedEncounter(null);
     setFieldErrors({});
     setServerError(null);
+    setVitalsNotMeasured(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -89,7 +101,10 @@ export default function IntakeScreen() {
     setServerError(null);
 
     // Validate required fields. Every error is written to the field it belongs
-    // to, so a later check can never mask an earlier one.
+    // to, so a later check can never mask an earlier one. The readings are
+    // validated by the same helper the chart uses, so intake and chart agree on
+    // every bound — but only when the full intake is being sent: a reason-only
+    // visit is opened without vitals, and no partial vital payload is sent.
     const errors: FormErrors = {};
     if (form.fullName.trim() === "") errors.fullName = "Full name is required";
     if (form.age.trim() === "") errors.age = "Age is required";
@@ -97,6 +112,9 @@ export default function IntakeScreen() {
     if (form.phone.trim() === "") errors.phone = "Contact phone is required";
     if (form.complaint.trim() === "") {
       errors.complaint = "Presenting complaint is required";
+    }
+    if (!vitalsNotMeasured) {
+      Object.assign(errors, validateObservationForm(form));
     }
 
     if (Object.keys(errors).length > 0) {
@@ -119,7 +137,15 @@ export default function IntakeScreen() {
         contact_phone: form.phone.trim(),
         contact_email: form.email.trim() ? form.email.trim() : null,
       });
-      const encounter = await api.openEncounter(patient.id, buildIntake(form));
+      const encounter = await api.openEncounter(
+        patient.id,
+        // Reason-only when vitals are not yet measured; the full intake (reason
+        // and the first set of vitals) otherwise, so opening the visit charts its
+        // first Observation.
+        vitalsNotMeasured
+          ? buildReasonOnlyIntake(form)
+          : buildIntake(form),
+      );
       setSavedEncounter(encounter);
       toast.success(
         status === 201
@@ -248,6 +274,29 @@ export default function IntakeScreen() {
             />
           </fieldset>
 
+          <Checkbox
+            isSelected={vitalsNotMeasured}
+            onChange={setVitalsNotMeasured}
+          >
+            Vitals not measured yet — open the visit with the reason only
+          </Checkbox>
+
+          {vitalsNotMeasured ? (
+            <p className={mutedTextClass}>
+              No vitals are sent with this visit. They can be charted from the
+              patient&rsquo;s chart below and in patient history once they are
+              taken.
+            </p>
+          ) : (
+            <ObservationFields
+              form={form}
+              onChange={(next) =>
+                setForm((current) => ({ ...current, ...next }))
+              }
+              errors={fieldErrors}
+            />
+          )}
+
           <div className="flex flex-wrap gap-2">
             <Button type="submit" className="min-h-11" disabled={pending}>
               {pending ? "Saving…" : "Open encounter"}
@@ -264,6 +313,18 @@ export default function IntakeScreen() {
           </div>
         </form>
       </section>
+
+      {savedEncounter ? (
+        // Keyed by the encounter so a second visit for the same patient remounts
+        // the chart, re-reading the new visit's first Observation and starting
+        // the form blank.
+        <ObservationChart
+          key={savedEncounter.id}
+          patientId={savedEncounter.patient.id}
+          encounterId={savedEncounter.id}
+          title={`Vitals for encounter #${savedEncounter.id}`}
+        />
+      ) : null}
 
       <section className={cardClass}>
         <h2 className="text-title-3-medium text-text-primary">

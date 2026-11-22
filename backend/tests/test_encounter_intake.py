@@ -322,3 +322,91 @@ def test_visit_routes_require_authentication(client: TestClient) -> None:
     assert correct_reason(client, 1).status_code == 401
     assert client.get("/api/clinical/encounters").status_code == 401
     assert client.get("/api/clinical/encounters/1").status_code == 401
+
+
+# The full intake a visit is opened with: the reason plus the first set of
+# vitals, which becomes the visit's first Observation (ADR 0008).
+FULL_INTAKE = {
+    "presenting_complaint": REASON,
+    "pain_level": 8,
+    "illness_duration_hours": 6,
+    "temperature_c": 37.2,
+    "heart_rate_bpm": 104,
+    "respiratory_rate_bpm": 20,
+    "blood_pressure": {"systolic": 148, "diastolic": 92},
+    "oxygen_saturation_percent": 94,
+    "notes": "Diabetic, on metformin",
+}
+
+
+def open_visit_with_intake(client: TestClient, patient_id: int, **intake: Any):
+    return client.post(
+        "/api/clinical/encounters",
+        json={"patient_id": patient_id, "intake": {**FULL_INTAKE, **intake}},
+    )
+
+
+def chart_of(client: TestClient, patient_id: int) -> list[dict[str, Any]]:
+    response = client.get(f"/api/clinical/patients/{patient_id}/observations")
+    assert response.status_code == 200, response.text
+    return response.json()["observations"]
+
+
+def test_opening_a_visit_with_full_intake_records_the_first_observation(
+    clinical_client: TestClient,
+) -> None:
+    """The first set of vitals becomes an Observation, not a column on the visit."""
+    patient_id = register_patient(clinical_client)
+
+    response = open_visit_with_intake(clinical_client, patient_id)
+
+    assert response.status_code == 201, response.text
+    encounter_id = response.json()["id"]
+    # The visit keeps only its reason; vitals have no home on the Encounter.
+    assert "intake" not in response.json()
+    assert "temperature_c" not in response.json()
+
+    (observation,) = chart_of(clinical_client, patient_id)
+    assert observation["encounter_id"] == encounter_id
+    assert observation["admission_id"] is None
+    assert observation["temperature_c"] == 37.2
+    assert observation["blood_pressure"] == {"systolic": 148, "diastolic": 92}
+    assert observation["notes"] == "Diabetic, on metformin"
+
+
+def test_opening_a_visit_with_full_intake_writes_one_open_entry(
+    clinical_client: TestClient,
+) -> None:
+    """The first Observation is not double-logged: the open entry covers it."""
+    patient_id = register_patient(clinical_client)
+    assert open_visit_with_intake(clinical_client, patient_id).status_code == 201
+
+    login = clinical_client.post(
+        "/api/auth/login", json=ADMINISTRATOR_CREDENTIALS
+    )
+    assert login.status_code == 200
+    entries = clinical_client.get("/api/administrator/audit-log").json()["entries"]
+
+    assert [entry["action"] for entry in entries] == [
+        "register_patient",
+        "open_encounter",
+    ]
+
+
+def test_a_partial_intake_is_refused(
+    clinical_client: TestClient,
+) -> None:
+    """A partial set is refused, never silently dropped to a reason-only visit."""
+    patient_id = register_patient(clinical_client)
+
+    response = clinical_client.post(
+        "/api/clinical/encounters",
+        json={
+            "patient_id": patient_id,
+            "intake": {"presenting_complaint": REASON, "pain_level": 8},
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    # Nothing was opened, so the chart stays empty too.
+    assert chart_of(clinical_client, patient_id) == []

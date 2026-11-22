@@ -24,6 +24,7 @@ class AuditAction(str, Enum):
     register_patient = "register_patient"
     attach_hospital_number = "attach_hospital_number"
     open_encounter = "open_encounter"
+    chart_observation = "chart_observation"
     correct_visit_reason = "correct_visit_reason"
     end_encounter = "end_encounter"
 
@@ -44,6 +45,7 @@ AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.register_patient: "Patient registered",
     AuditAction.attach_hospital_number: "Hospital number attached",
     AuditAction.open_encounter: "Encounter opened",
+    AuditAction.chart_observation: "Observation charted",
     AuditAction.correct_visit_reason: "Visit reason corrected",
     AuditAction.end_encounter: "Encounter ended",
 }
