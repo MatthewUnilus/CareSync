@@ -15,7 +15,7 @@ from pydantic import (
 from app.admissions import AdmissionStatus
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
-from app.models import Role, Sex
+from app.models import MedicationOrderStatus, Role, Sex
 from app.timeutils import as_utc
 
 _NAME = Annotated[
@@ -50,6 +50,29 @@ _NOTE_KEY = Annotated[
 #: in scope, so a value is never validated as a coded concept; it may be blank.
 _NOTE_VALUE = Annotated[
     str, StringConstraints(strip_whitespace=True, max_length=2000)
+]
+#: A Medication Order's transcribed instruction: the drug, dose, route and the
+#: free-text name of the doctor who gave it. Required and non-blank; the lengths
+#: match the model's columns so a stored value is never silently truncated. There
+#: is no controlled drug or route vocabulary in scope, so nothing here validates
+#: a value as a coded concept (ADR 0011).
+_DRUG = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+_DOSE = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+_ROUTE = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+_INSTRUCTED_BY = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+#: A round-frequency key. Checked against the fixed vocabulary in ``app.medications``
+#: by the route, so an unknown frequency — or one the ticket deliberately does not
+#: cover — is refused with a ``422`` rather than silently stored.
+_FREQUENCY_KEY = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
 ]
 
 # SQLite round-trips aware timestamps as naive; responses always speak UTC.
@@ -613,3 +636,96 @@ class WardBoardResponse(BaseModel):
     """The ward's open Admissions, ordered by outstanding work."""
 
     admissions: list[WardBoardEntryResponse]
+
+
+class MedicationFrequencyResponse(BaseModel):
+    """One round frequency and the clock times of day it maps to.
+
+    The times are the provisional ward convention held in ``app.medications``,
+    shown to the user so nobody mistakes them for clinical advice. They are
+    ``HH:MM`` strings, in the order the doses fall through the day.
+    """
+
+    key: str
+    label: str
+    times: list[str]
+
+
+class RoundTimesResponse(BaseModel):
+    """The frequency-to-round-times convention, so a client can show it."""
+
+    frequencies: list[MedicationFrequencyResponse]
+
+
+class MedicationOrderCreateRequest(BaseModel):
+    """Transcribe one medication instruction a doctor already gave.
+
+    ``drug``, ``dose``, ``route`` and ``frequency`` are the instruction's clinical
+    fields; ``start_at`` is when the schedule begins; ``instructed_by`` is the
+    doctor's name as text, because the doctor is not a user of this system. An
+    unknown key is refused rather than ignored. The order records nothing the
+    system decided: it is a transcription, not a prescription (ADR 0011).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    drug: _DRUG
+    dose: _DOSE
+    route: _ROUTE
+    frequency: _FREQUENCY_KEY
+    start_at: datetime
+    instructed_by: _INSTRUCTED_BY
+
+
+class MedicationOrderResponse(BaseModel):
+    """One Medication Order, active or stopped.
+
+    ``status`` is derived from ``stopped_at`` rather than stored: active while the
+    instant is null, stopped once it is set. A stopped order is still returned in
+    full, and it produces no further due doses. ``instructed_by`` is the doctor's
+    name as text; the Clinical user who transcribed the order is not carried here,
+    because the order is the instruction rather than the act of recording it.
+    """
+
+    id: int
+    admission_id: int
+    drug: str
+    dose: str
+    route: str
+    frequency: str
+    start_at: UtcDatetime
+    instructed_by: str
+    status: MedicationOrderStatus
+    stopped_at: UtcDatetime | None = None
+
+
+class MedicationOrderListResponse(BaseModel):
+    """One Admission's Medication Orders, oldest first, including stopped ones."""
+
+    orders: list[MedicationOrderResponse]
+
+
+class DueDoseResponse(BaseModel):
+    """One dose due in the window, derived at read time from an active order.
+
+    ``due_at`` is the round time the dose falls at and ``overdue`` is whether it
+    is past the server's clock at the moment of the read. Nothing is stored for a
+    dose: it is computed from the order's frequency and start time and the round
+    times. ``patient`` is the Admission's Patient, rendered exactly as anywhere
+    else, so a dose carries who it is for without a second read.
+    """
+
+    order_id: int
+    admission_id: int
+    patient: PatientResponse
+    drug: str
+    dose: str
+    route: str
+    due_at: UtcDatetime
+    overdue: bool
+
+
+class DueListResponse(BaseModel):
+    """Every dose due in the window across the ward, sorted by due time."""
+
+    doses: list[DueDoseResponse]

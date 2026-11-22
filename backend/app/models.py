@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     event,
+    inspect,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -64,6 +65,19 @@ class Sex(str, Enum):
     male = "male"
     other = "other"
     unspecified = "unspecified"
+
+
+class MedicationOrderStatus(str, Enum):
+    """The only two conditions a Medication Order can hold in this scope.
+
+    The condition is derived from the one nullable ``stopped_at`` instant, the
+    same reduced shape an Admission and an Encounter use for open and ended:
+    active while the instant is null, stopped once it is set. There is no second
+    status column that could contradict the instant.
+    """
+
+    active = "active"
+    stopped = "stopped"
 
 
 class Patient(Base):
@@ -489,6 +503,106 @@ def _refuse_editing_an_audit_entry(_mapper, _connection, _target) -> None:
     raise ValueError(
         "An Audit Entry is append-only; it cannot be edited after it is written"
     )
+
+
+class MedicationOrder(Base):
+    """The transcription of a medication instruction a doctor already gave.
+
+    An order belongs to an Admission (ADR 0008 is the anchor) and carries only
+    what the doctor said: the drug, the dose, the route, the frequency, the start
+    time and who instructed it. Nothing in it is the system's own judgement. It
+    is *not* a prescription: the system does not calculate a dose, does not check
+    a dose against a maximum, and does not check interactions or allergies, so it
+    holds no allergy or interaction data (ADR 0011, CONTEXT.md "Medication
+    Order").
+
+    The clinical fields are frozen when the order is written (see the guard
+    below). A change is a stop and a new order, so both the stopped order and the
+    order that replaced it stay in the record and the change is visible. The
+    data layer refuses an in-place change rather than a chosen field list,
+    because the only legitimate update is the one that stops the order.
+
+    ``instructed_by`` is free text, because the doctor who gave the instruction
+    is not a user of this system. ``actor_user_id`` is the Clinical user who
+    transcribed it, a foreign key exposed through the ``actor`` relationship, so
+    the record says who recorded it as well as who instructed it.
+
+    The condition is derived, not stored: active while ``stopped_at`` is null,
+    stopped once it is set. A stopped order produces no further due doses, and
+    the due list is computed at read time from the active orders and the round
+    times, so there is no stored schedule to bring back into line.
+    """
+
+    __tablename__ = "medication_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admission_id: Mapped[int] = mapped_column(
+        ForeignKey("admissions.id"), index=True
+    )
+    drug: Mapped[str] = mapped_column(String(200))
+    dose: Mapped[str] = mapped_column(String(120))
+    route: Mapped[str] = mapped_column(String(120))
+    frequency: Mapped[str] = mapped_column(String(64))
+    start_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    # The instruction's author as text: the doctor is not a user of this system.
+    instructed_by: Mapped[str] = mapped_column(String(200))
+    # The Clinical user who transcribed the instruction, so the act is attributable.
+    actor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    # Null while active; set once when the order is stopped. The order's state is
+    # derived from this, never stored a second time.
+    stopped_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    admission: Mapped[Admission] = relationship(lazy="joined")
+    actor: Mapped[User] = relationship(lazy="joined")
+
+    @property
+    def status(self) -> MedicationOrderStatus:
+        return order_status(self)
+
+
+def order_status(order: MedicationOrder) -> MedicationOrderStatus:
+    """The order's condition, derived from its stopped instant."""
+    return (
+        MedicationOrderStatus.active
+        if order.stopped_at is None
+        else MedicationOrderStatus.stopped
+    )
+
+
+@event.listens_for(MedicationOrder, "before_update")
+def _refuse_editing_a_medication_order(_mapper, _connection, target) -> None:
+    """Freeze the clinical fields; only stopping the order may change a row.
+
+    Application-layer, not a database trigger (ADR 0001). The clinical fields —
+    the drug, dose, route, frequency and start time — are frozen when the order
+    is written, so a dose change is a stop and a new order rather than an edit
+    that leaves the record saying the patient was on the new dose all along
+    ADR 0011). The single legitimate update is setting ``stopped_at`` once; a
+    stopped order cannot be reopened or stopped a second time.
+    """
+    state = inspect(target)
+    for attribute in state.mapper.column_attrs:
+        if attribute.key == "stopped_at":
+            continue
+        if state.attrs[attribute.key].history.has_changes():
+            raise ValueError(
+                "A Medication Order's clinical fields are frozen; a change is a "
+                "stop and a new order"
+            )
+    history = state.attrs["stopped_at"].history
+    if history.has_changes():
+        if target.stopped_at is None:
+            raise ValueError("A stopped Medication Order cannot be reopened")
+        if any(value is not None for value in history.deleted):
+            raise ValueError(
+                "A stopped Medication Order cannot be stopped again"
+            )
 
 
 class UserSession(Base):

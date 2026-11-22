@@ -6,21 +6,26 @@ in the very next request. It is a count of what the record shows is outstanding,
 not a score and not a clinical judgement, and it does not decide who is treated
 first (CONTEXT.md, "Ward Board").
 
-Every count is a function here, and each returns zero while the feature it counts
-does not exist yet. The later ward tickets each replace one function rather than
-rewriting the board — medicine (ticket 34), tasks (ticket 33) and investigations
-(ticket 36) — so this ticket lands before them and still works.
+One read captures one clock (``utc_now``) and passes it down, so every count on a
+board is measured against the same instant. The medication figures for an
+admission are read through one seam, ``medication_counts``, which derives all
+three from a single pass of that admission's schedule rather than scanning once
+per count. Tasks (ticket 33) and investigations (ticket 36) each fill in their
+own count the same way.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import medications
 from app.models import Admission, Observation
+from app.timeutils import utc_now
 
 
 @dataclass(frozen=True)
@@ -36,19 +41,20 @@ class WardBoardEntry:
     unreviewed_result_count: int
 
 
-def overdue_medication_count(session: Session, admission: Admission) -> int:
-    """Doses past their due time. Medicine fills this in; zero until then."""
-    return 0
+def medication_counts(
+    session: Session,
+    admission: Admission,
+    *,
+    now: datetime | None = None,
+) -> medications.MedicationCounts:
+    """The three medication figures for one admission, from one schedule read.
 
-
-def due_medication_count(session: Session, admission: Admission) -> int:
-    """Doses due now. Medicine fills this in; zero until then."""
-    return 0
-
-
-def outstanding_medication_count(session: Session, admission: Admission) -> int:
-    """Doses not yet given. Medicine fills this in; zero until then."""
-    return 0
+    The single seam the board reads its medication counts through: one clock for
+    the read and one pass of the admission's schedule, rather than a scan per
+    count. ``app.medications`` owns the round-time convention and the derivation;
+    nothing is stored for a dose.
+    """
+    return medications.medication_counts(session, admission, now=now)
 
 
 def unreviewed_result_count(session: Session, admission: Admission) -> int:
@@ -87,16 +93,22 @@ def open_admissions(session: Session) -> list[Admission]:
     )
 
 
-def entry_for(session: Session, admission: Admission) -> WardBoardEntry:
-    """Build one board entry for an admission, reading each count from the record."""
+def entry_for(
+    session: Session, admission: Admission, *, now: datetime | None = None
+) -> WardBoardEntry:
+    """Build one board entry, reading each count from the record against one clock.
+
+    The medication figures come from a single call to ``medication_counts``, so a
+    board read scans each admission's schedule once rather than once per count.
+    """
+    now = now or utc_now()
+    counts = medication_counts(session, admission, now=now)
     return WardBoardEntry(
         admission=admission,
         latest_observation=latest_observation(session, admission),
-        outstanding_medication_count=outstanding_medication_count(
-            session, admission
-        ),
-        overdue_medication_count=overdue_medication_count(session, admission),
-        due_medication_count=due_medication_count(session, admission),
+        outstanding_medication_count=counts.outstanding,
+        overdue_medication_count=counts.overdue,
+        due_medication_count=counts.due,
         open_task_count=open_task_count(session, admission),
         unreviewed_result_count=unreviewed_result_count(session, admission),
     )
@@ -109,8 +121,14 @@ def board(session: Session) -> list[WardBoardEntry]:
     now, then results awaiting review, then open Tasks, with bed order breaking
     ties. Each category is compared on its count, so the patient with more
     overdue doses sits above one with fewer before the next category is reached.
+    One clock is captured here and used for every entry, so the whole board is
+    measured at a single instant.
     """
-    entries = [entry_for(session, admission) for admission in open_admissions(session)]
+    now = utc_now()
+    entries = [
+        entry_for(session, admission, now=now)
+        for admission in open_admissions(session)
+    ]
     entries.sort(key=_board_order)
     return entries
 

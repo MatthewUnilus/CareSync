@@ -10,7 +10,13 @@ import { toast } from "@/components/base/toast/toast";
 import { cx } from "@/utils/cx";
 
 import { api, errorText } from "./api";
-import type { BoardAdmission, Encounter, Observation, Patient } from "./api";
+import type {
+  BoardAdmission,
+  Encounter,
+  MedicationRoundTime,
+  Observation,
+  Patient,
+} from "./api";
 import {
   cardClass,
   figureClass,
@@ -20,6 +26,11 @@ import {
 } from "./design";
 import ObservationChart from "./ObservationChart";
 import NursingNotes from "./NursingNotes";
+import {
+  MedicationDueList,
+  MedicationOrders,
+  MedicationRoundTimesReference,
+} from "./MedicationOrders";
 import { formatInstant, sexLabel } from "./queueDisplay";
 
 /**
@@ -46,6 +57,16 @@ export default function WardBoard() {
   const [board, setBoard] = useState<BoardAdmission[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // The ward's frequency-to-round-time policy, read once and shown to the
+  // reader. It lives above the rows so every order writer and the due list
+  // share the one definition of the convention.
+  const [roundTimes, setRoundTimes] = useState<MedicationRoundTime[] | null>(
+    null,
+  );
+  const [roundTimesError, setRoundTimesError] = useState<string | null>(null);
+  // Bumped when an order is written or stopped, so the cross-patient due list
+  // re-reads rather than showing a schedule from before the change.
+  const [medicationRevision, setMedicationRevision] = useState(0);
   // The Admission whose chart is open. One at a time keeps the board a list at
   // a glance rather than a stack of open charts.
   const [openChartId, setOpenChartId] = useState<number | null>(null);
@@ -57,6 +78,7 @@ export default function WardBoard() {
   // once it resolves, writes nothing unless it is still the newest — so a slow
   // reply can never land stale rows after a move or discharge reloaded the board.
   const requestIdRef = useRef(0);
+  const roundTimesRequestRef = useRef(0);
 
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -85,6 +107,37 @@ export default function WardBoard() {
     return () => {
       requestIdRef.current += 1;
     };
+  }, [load]);
+
+  const loadRoundTimes = useCallback(async () => {
+    const requestId = ++roundTimesRequestRef.current;
+    setRoundTimesError(null);
+    try {
+      const { frequencies } = await api.medicationRoundTimes();
+      if (roundTimesRequestRef.current !== requestId) {
+        return;
+      }
+      setRoundTimes(frequencies);
+    } catch (caught) {
+      if (roundTimesRequestRef.current !== requestId) {
+        return;
+      }
+      setRoundTimesError(errorText(caught));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRoundTimes();
+    return () => {
+      roundTimesRequestRef.current += 1;
+    };
+  }, [loadRoundTimes]);
+
+  // A written or stopped order changes both the board's counts and the due list,
+  // so the board is re-read and the list is told the medication view moved on.
+  const handleMedicationChanged = useCallback(async () => {
+    setMedicationRevision((current) => current + 1);
+    await load();
   }, [load]);
 
   return (
@@ -146,6 +199,8 @@ export default function WardBoard() {
                         current === admission.id ? null : admission.id,
                       )
                     }
+                    roundTimes={roundTimes}
+                    onMedicationChanged={handleMedicationChanged}
                     onChanged={load}
                   />
                 ))}
@@ -154,6 +209,17 @@ export default function WardBoard() {
           </>
         )}
       </section>
+
+      <MedicationRoundTimesReference
+        roundTimes={roundTimes}
+        roundTimesError={roundTimesError}
+        onReloadRoundTimes={loadRoundTimes}
+      />
+
+      <MedicationDueList
+        admissions={board ?? []}
+        revision={medicationRevision}
+      />
 
       <section className={cardClass}>
         <h2 className="text-title-3-medium text-text-primary">
@@ -182,6 +248,8 @@ function BoardAdmissionRow({
   onToggleChart,
   notesOpen,
   onToggleNotes,
+  roundTimes,
+  onMedicationChanged,
   onChanged,
 }: {
   admission: BoardAdmission;
@@ -189,9 +257,14 @@ function BoardAdmissionRow({
   onToggleChart: () => void;
   notesOpen: boolean;
   onToggleNotes: () => void;
+  roundTimes: MedicationRoundTime[] | null;
+  onMedicationChanged: () => Promise<void> | void;
   onChanged: () => Promise<void> | void;
 }) {
   const { patient } = admission;
+  // The medication orders are a third disclosure beside the chart and the
+  // notes, opened from the row and kept local so the board stays a list.
+  const [medicationOpen, setMedicationOpen] = useState(false);
 
   // The server's counts, shown as given, in the board's own order: overdue
   // doses, then doses due now, then results awaiting review, then open tasks.
@@ -320,6 +393,13 @@ function BoardAdmissionRow({
         >
           {notesOpen ? "Hide notes" : "Nursing notes"}
         </Button>
+        <Button
+          variant={medicationOpen ? "primary" : "secondary"}
+          className="min-h-11"
+          onClick={() => setMedicationOpen((current) => !current)}
+        >
+          {medicationOpen ? "Hide medication orders" : "Medication orders"}
+        </Button>
         <MoveAction admission={admission} onMoved={onChanged} />
         <DischargeAction admission={admission} onDischarged={onChanged} />
       </footer>
@@ -333,6 +413,14 @@ function BoardAdmissionRow({
       ) : null}
 
       {notesOpen ? <NursingNotes admissionId={admission.id} /> : null}
+
+      {medicationOpen ? (
+        <MedicationOrders
+          admissionId={admission.id}
+          roundTimes={roundTimes}
+          onChanged={onMedicationChanged}
+        />
+      ) : null}
     </li>
   );
 }

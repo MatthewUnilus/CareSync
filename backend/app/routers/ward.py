@@ -10,23 +10,33 @@ note is written from one, its fields one row each, prefilled from the patient's
 latest Observation.
 """
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import notes, ward
+from app import medications, notes, ward
 from app.admissions import (
     admission_status,
     admit,
     discharge,
+    ensure_open,
     move,
 )
 from app.audit import record_audit_entry
 from app.audit_actions import AuditAction
 from app.deps import DbSession, require_role
-from app.models import Admission, Encounter, NursingNote, Patient, Role, User
+from app.models import (
+    Admission,
+    Encounter,
+    MedicationOrder,
+    NursingNote,
+    Patient,
+    Role,
+    User,
+)
 from app.observations import observation_response
 from app.schemas import (
     ActorResponse,
@@ -34,6 +44,10 @@ from app.schemas import (
     AdmissionListResponse,
     AdmissionMoveRequest,
     AdmissionResponse,
+    DueListResponse,
+    MedicationOrderCreateRequest,
+    MedicationOrderListResponse,
+    MedicationOrderResponse,
     NotePrefillResponse,
     NotePrefillSourceResponse,
     NoteTemplatesResponse,
@@ -41,9 +55,11 @@ from app.schemas import (
     NursingNoteListResponse,
     NursingNoteResponse,
     PatientResponse,
+    RoundTimesResponse,
     WardBoardEntryResponse,
     WardBoardResponse,
 )
+from app.timeutils import as_utc
 
 router = APIRouter(prefix="/api/ward", tags=["ward"])
 
@@ -195,6 +211,173 @@ def get_board(db: DbSession, user: ClinicalUser) -> WardBoardResponse:
             _board_entry_response(db, entry) for entry in ward.board(db)
         ]
     )
+
+
+def _get_admission(db: Session, admission_id: int) -> Admission:
+    admission = db.get(Admission, admission_id)
+    if admission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ADMISSION_NOT_FOUND_DETAIL,
+        )
+    return admission
+
+
+def _get_medication_order(db: Session, order_id: int) -> MedicationOrder:
+    order = db.get(MedicationOrder, order_id)
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=medications.ORDER_NOT_FOUND_DETAIL,
+        )
+    return order
+
+
+@router.get("/medications/round-times", response_model=RoundTimesResponse)
+def get_round_times(user: ClinicalUser) -> RoundTimesResponse:
+    """The frequency-to-round-times convention, so the interface can show it.
+
+    A plain read of the policy in ``app.medications``. The times are a documented
+    ward convention, not clinical advice, and the hospital's own set replaces it
+    in that one place (ticket 34).
+    """
+    return medications.round_times_response()
+
+
+@router.get("/medications/due", response_model=DueListResponse)
+def get_due_list(
+    db: DbSession,
+    user: ClinicalUser,
+    from_at: Annotated[
+        datetime,
+        Query(
+            alias="from",
+            description="Start of the window, inclusive (ISO 8601)",
+        ),
+    ],
+    to: Annotated[
+        datetime,
+        Query(description="End of the window, exclusive (ISO 8601)"),
+    ],
+) -> DueListResponse:
+    """Every dose due across the ward in a window, derived at read time.
+
+    Computed from the active orders on open Admissions and the round times and
+    never stored, so it cannot drift from the orders that generate it; reading it
+    writes nothing. The window is inclusive of ``from`` and exclusive of ``to``,
+    and may not exceed seven days. ``overdue`` is measured against the server's
+    clock at the moment of the read. A stopped order and a discharged Admission
+    produce no doses.
+    """
+    start = as_utc(from_at)
+    end = as_utc(to)
+    medications.validate_due_window(start, end)
+    return DueListResponse(
+        doses=[
+            medications.dose_response(dose)
+            for dose in medications.due_doses(db, start=start, end=end)
+        ]
+    )
+
+
+@router.get(
+    "/admissions/{admission_id}/medication-orders",
+    response_model=MedicationOrderListResponse,
+)
+def list_medication_orders(
+    admission_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> MedicationOrderListResponse:
+    """One Admission's Medication Orders, oldest first, including stopped ones.
+
+    A stopped order is part of the record, so both the order that was stopped and
+    the order that replaced it read back. An unknown Admission is a ``404``.
+    """
+    admission = _get_admission(db, admission_id)
+    return MedicationOrderListResponse(
+        orders=[
+            medications.order_response(order)
+            for order in medications.orders_for_admission(db, admission)
+        ]
+    )
+
+
+@router.post(
+    "/admissions/{admission_id}/medication-orders",
+    response_model=MedicationOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_medication_order(
+    admission_id: int,
+    payload: MedicationOrderCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> MedicationOrderResponse:
+    """Transcribe a medication instruction against an Admission.
+
+    The order carries only what the doctor said and who transcribed it — it is
+    not a prescription (ADR 0011). Its clinical fields are frozen once written,
+    so a dose change is a stop and a new order. An unknown Admission is a
+    ``404``; a discharged Admission is a ``409``; an unknown frequency, or one
+    the ticket does not cover (PRN, an infusion, a variable dose), is a ``422``.
+    The order and its single audit entry commit together.
+    """
+    admission = _get_admission(db, admission_id)
+    ensure_open(admission, medications.DISCHARGED_ORDER_DETAIL)
+    frequency = medications.resolve_frequency(payload.frequency)
+    order = medications.stage_order(
+        db,
+        admission=admission,
+        actor=user,
+        drug=payload.drug,
+        dose=payload.dose,
+        route=payload.route,
+        frequency=frequency,
+        start_at=as_utc(payload.start_at),
+        instructed_by=payload.instructed_by,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.record_medication_order,
+        patient=admission.patient,
+        admission=admission,
+        detail=f"{payload.drug} {payload.dose} {frequency.key}",
+    )
+    db.commit()
+    return medications.order_response(order)
+
+
+@router.post(
+    "/medication-orders/{order_id}/stop",
+    response_model=MedicationOrderResponse,
+)
+def stop_medication_order(
+    order_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> MedicationOrderResponse:
+    """Stop an active order, recording the instant now.
+
+    A stopped order produces no further due doses. The instant is the server's
+    clock, never a value the caller supplies. An unknown order is a ``404``; an
+    order already stopped is a ``409``. The stop and its single audit entry
+    commit together, with the Admission as the entry's subject.
+    """
+    order = _get_medication_order(db, order_id)
+    medications.stop_order(db, order)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.stop_medication_order,
+        patient=order.admission.patient,
+        admission=order.admission,
+        detail=f"order {order.id}",
+    )
+    db.commit()
+    return medications.order_response(order)
 
 
 @router.get("/admissions", response_model=AdmissionListResponse)
@@ -390,16 +573,6 @@ def write_nursing_note(
     )
     db.commit()
     return notes.note_response(db, note)
-
-
-def _get_admission(db: Session, admission_id: int) -> Admission:
-    admission = db.get(Admission, admission_id)
-    if admission is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ADMISSION_NOT_FOUND_DETAIL,
-        )
-    return admission
 
 
 def _admission_fields(admission: Admission) -> dict:

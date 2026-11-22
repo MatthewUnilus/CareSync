@@ -32,13 +32,26 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "ward": "Ward B",
         "bed": "2",
     },
+    ("POST", "/api/ward/admissions/{admission_id}/medication-orders"): {
+        "drug": "Amoxicillin",
+        "dose": "500 mg",
+        "route": "oral",
+        "frequency": "once_daily",
+        "start_at": "2026-11-20T08:00:00+00:00",
+        "instructed_by": "Dr Okafor",
+    },
 }
 
-_PATH_PARAMS = {"admission_id": "1"}
+_PATH_PARAMS = {"admission_id": "1", "order_id": "1"}
 
 #: Required query strings per route template, so a route whose only missing piece
 #: is a query parameter still reaches the role guard rather than a 422.
-_QUERY = {"/api/ward/admissions": "patient_id=1"}
+_QUERY = {
+    "/api/ward/admissions": "patient_id=1",
+    "/api/ward/medications/due": (
+        "from=2026-11-19T00:00:00%2B00:00&to=2026-11-20T00:00:00%2B00:00"
+    ),
+}
 
 
 def _concrete_path(template: str) -> str:

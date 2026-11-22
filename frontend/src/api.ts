@@ -202,6 +202,99 @@ export interface WardBoard {
 }
 
 /**
+ * One frequency's round times: the clock times of day the frequency maps to, as
+ * the ward's convention holds them (ADR 0011). The policy is served from one
+ * module so a hospital's own set replaces the default in one place, and it is
+ * shown to the reader — a round time is a convention, not clinical advice.
+ *
+ * The times are provisional **UTC** clock times: this build carries no ward
+ * timezone, so the schedule is placed on the UTC clock and the due list is asked
+ * for and shown on the UTC clock to match.
+ */
+export interface MedicationRoundTime {
+  /**
+   * The frequency key an order carries, one the policy serves, e.g.
+   * `once_daily` or `twice_daily` (not a shorthand such as `OD`/`BD`).
+   */
+  key: string;
+  /** The frequency's human label, e.g. `Once daily`. */
+  label: string;
+  /** The clock times the frequency maps to, each `HH:MM` on the UTC clock. */
+  times: string[];
+}
+
+/** The ward's frequency-to-round-time policy, the single definition of the convention. */
+export interface MedicationRoundTimes {
+  frequencies: MedicationRoundTime[];
+}
+
+/**
+ * A Medication Order: the transcription of a medication instruction a doctor
+ * already gave, recorded against an Admission (ADR 0011).
+ *
+ * It is not a prescription. The system calculates no dose, checks no dose
+ * against a maximum and checks no interaction or allergy, because it holds none
+ * of that data. Its clinical fields — drug, dose, route, frequency and start
+ * time — are frozen when it is written, so a change is a stop and a new order
+ * and both stay in the record.
+ */
+export interface MedicationOrder {
+  id: number;
+  admission_id: number;
+  drug: string;
+  dose: string;
+  route: string;
+  /** The frequency key, one the round-times policy serves (e.g. `once_daily`). */
+  frequency: string;
+  start_at: string;
+  /** Who gave the instruction being transcribed, as free text (e.g. "Dr Okafor"). */
+  instructed_by: string;
+  status: "active" | "stopped";
+  stopped_at: string | null;
+}
+
+/** One Admission's orders, as the server returns them. */
+export interface MedicationOrders {
+  orders: MedicationOrder[];
+}
+
+/**
+ * The fields of a new order, as sent to transcribe an instruction. The client
+ * sends the clinical fields as given and computes none of them.
+ */
+export interface MedicationOrderPayload {
+  drug: string;
+  dose: string;
+  route: string;
+  frequency: string;
+  start_at: string;
+  instructed_by: string;
+}
+
+/**
+ * One dose due from an open order, derived at read time from the order and its
+ * frequency's round times and stored nowhere (ADR 0011).
+ *
+ * `overdue` is the server's mark at the moment of the read; the client shows the
+ * word and never re-derives the boundary. Nothing acts on an overdue dose.
+ */
+export interface MedicationDueDose {
+  order_id: number;
+  admission_id: number;
+  patient: Patient;
+  drug: string;
+  dose: string;
+  route: string;
+  due_at: string;
+  overdue: boolean;
+}
+
+/** Every dose due across the ward in a window, already ordered by due time. */
+export interface MedicationDueList {
+  doses: MedicationDueDose[];
+}
+
+/**
  * One field of a Note Template, as the server defines it. The client renders the
  * fields a template carries and never hard-codes what a template holds, so a
  * change to a template's fields is a server change with no client change.
@@ -553,6 +646,47 @@ export const api = {
     request<WardAdmission>(`/api/ward/admissions/${admissionId}/discharge`, {
       method: "POST",
     }),
+
+  /*
+   * Medication orders, round times and the due list (ADR 0011).
+   *
+   * An order transcribes an instruction a doctor already gave: the client sends
+   * the drug, dose, route, frequency, start time and who instructed it, and the
+   * server freezes those fields. Nothing is computed here — no dose, no maximum,
+   * no interaction or allergy check — and a change is a stop and a new order. The
+   * round times a frequency maps to are served from one module and shown to the
+   * reader rather than assumed. The due list is derived on read from the open
+   * orders and those round times and is stored nowhere, so it cannot drift from
+   * the orders behind it. The round times are provisional UTC clock times, so the
+   * due window is a UTC day and due times are shown on the UTC clock.
+   */
+  medicationRoundTimes: () =>
+    request<MedicationRoundTimes>("/api/ward/medications/round-times"),
+  writeMedicationOrder: (
+    admissionId: number,
+    payload: MedicationOrderPayload,
+  ) =>
+    request<MedicationOrder>(
+      `/api/ward/admissions/${admissionId}/medication-orders`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  admissionMedicationOrders: (admissionId: number) =>
+    request<MedicationOrders>(
+      `/api/ward/admissions/${admissionId}/medication-orders`,
+    ),
+  stopMedicationOrder: (orderId: number) =>
+    request<MedicationOrder>(`/api/ward/medication-orders/${orderId}/stop`, {
+      method: "POST",
+    }),
+  /*
+   * A window of doses due across the ward, `[from, to)`, as ISO 8601 instants.
+   * The round times are provisional UTC clock times, so a caller asks for the
+   * UTC calendar day (`Date.UTC` bounds) to match the schedule.
+   */
+  medicationDue: (from: string, to: string) =>
+    request<MedicationDueList>(
+      `/api/ward/medications/due?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
   /*
    * Nursing notes and their templates.
    *

@@ -4,20 +4,20 @@
 
 **Blocked by:** 31 (a Medication Order belongs to an Admission).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `medication_orders` table records the Admission, the drug, the dose, the route, the frequency, the start time, who instructed it, and the order's own state.
-- [ ] The clinical fields are frozen when the order is written: drug, dose, route, frequency and start time. A `before_update` guard refuses a change, following the pattern the deleted assessment used.
-- [ ] A dose change is a stop and a new order, so both the stop and the change are visible in the record rather than one overwriting the other.
-- [ ] An order can be stopped, and a stopped order produces no further due entries.
-- [ ] A new module holds the frequency-to-clock-times policy: what times of day a frequency maps to.
-- [ ] The round times a frequency maps to are shown to the user in the interface, so nobody mistakes the convention for clinical advice.
-- [ ] A due list is derived at read time from the open orders and the round times. It is never stored. A test asserts that reading it adds no rows.
-- [ ] The due list shows, across the ward, every dose due in a window, with the patient, the drug, the dose, the route and the due time, marking what is overdue.
-- [ ] The ward board's outstanding medication count starts returning a real figure, replacing the zero that ticket 31 stubbed, and the board's ordering by overdue and due-now doses becomes live.
-- [ ] A test constructs an order and a clock time and asserts exactly which doses are due and which are overdue.
-- [ ] Writing an order and stopping one each write exactly one Audit Entry in the same transaction as the change.
-- [ ] Tests: a stopped order stops producing due entries; a changed dose leaves the first order intact and stopped; the due list marks overdue correctly at a boundary; the derived read writes nothing.
+- [x] A new `medication_orders` table records the Admission, the drug, the dose, the route, the frequency, the start time, who instructed it, and the order's own state.
+- [x] The clinical fields are frozen when the order is written: drug, dose, route, frequency and start time. A `before_update` guard refuses a change, following the pattern the deleted assessment used.
+- [x] A dose change is a stop and a new order, so both the stop and the change are visible in the record rather than one overwriting the other.
+- [x] An order can be stopped, and a stopped order produces no further due entries.
+- [x] A new module holds the frequency-to-clock-times policy: what times of day a frequency maps to.
+- [x] The round times a frequency maps to are shown to the user in the interface, so nobody mistakes the convention for clinical advice.
+- [x] A due list is derived at read time from the open orders and the round times. It is never stored. A test asserts that reading it adds no rows.
+- [x] The due list shows, across the ward, every dose due in a window, with the patient, the drug, the dose, the route and the due time, marking what is overdue.
+- [x] The ward board's outstanding medication count starts returning a real figure, replacing the zero that ticket 31 stubbed, and the board's ordering by overdue and due-now doses becomes live.
+- [x] A test constructs an order and a clock time and asserts exactly which doses are due and which are overdue.
+- [x] Writing an order and stopping one each write exactly one Audit Entry in the same transaction as the change.
+- [x] Tests: a stopped order stops producing due entries; a changed dose leaves the first order intact and stopped; the due list marks overdue correctly at a boundary; the derived read writes nothing.
 
 ## Notes
 

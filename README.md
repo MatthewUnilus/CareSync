@@ -692,6 +692,24 @@ failure described above.
 - **Postgres demo** — `nursing_notes` and `nursing_note_fields` may be created in
   place, but `audit_log` needs the same hand migration or a database rebuild.
 
+### Ticket 34 — medication orders
+
+Ticket 34 adds the `medication_orders` table and two more audit actions
+(`record_medication_order`, `stop_medication_order`). As before, `create_all`
+builds the new table but cannot widen the SQLite `audit_log` action `CHECK`, so a
+database created before this change rejects the new writes.
+
+- **Local SQLite** — back up `caresync.db`, then recreate and reseed
+  (`npm run seed`, or just `npm run dev`), or widen the check with an explicit
+  migration, before the API uses it.
+- **Postgres demo** — `medication_orders` may be created in place, but
+  `audit_log` needs the same hand migration or a database rebuild.
+
+Two provisional limits are built in, not migration work: round times are
+provisional **UTC** clock times (this build carries no ward timezone), and
+as-required (PRN) medication, continuous infusions and variable-dose medication
+are out of scope for the due list.
+
 ## Environment variables
 
 All variables use the `CARESYNC_` prefix. A `.env` file in `backend/` is

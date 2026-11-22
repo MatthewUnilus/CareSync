@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app import ward
+from app.medications import MedicationCounts
 from app.models import Admission, AuditEntry, Encounter, Observation, Patient
 
 CLINICAL_CREDENTIALS = {
@@ -359,23 +360,23 @@ def test_the_board_orders_outstanding_work_before_bed(
 ) -> None:
     """The order seam: overdue, then due, then results, then tasks, then bed.
 
-    The later features do not exist yet, so the counts are stubbed to prove the
-    board's ordering reads them in the documented priority rather than by bed
-    alone. Bed "1" has no work and must still sit last.
+    The counts are stubbed to prove the board's ordering reads them in the
+    documented priority rather than by bed alone. The medication figures come
+    through the one ``medication_counts`` seam, so overdue and due are stubbed
+    together there; results and tasks keep a function each. Bed "1" has no work
+    and must still sit last.
     """
     for bed in ("1", "2", "3", "4", "5"):
         admit(clinical_client, register_patient(clinical_client, f"P{bed}"), "Ward A", bed)
 
-    monkeypatch.setattr(
-        ward,
-        "overdue_medication_count",
-        lambda session, admission: 1 if admission.bed == "2" else 0,
-    )
-    monkeypatch.setattr(
-        ward,
-        "due_medication_count",
-        lambda session, admission: 1 if admission.bed == "3" else 0,
-    )
+    def stub_counts(session, admission, *, now=None):
+        return MedicationCounts(
+            overdue=1 if admission.bed == "2" else 0,
+            due=1 if admission.bed == "3" else 0,
+            outstanding=0,
+        )
+
+    monkeypatch.setattr(ward, "medication_counts", stub_counts)
     monkeypatch.setattr(
         ward,
         "unreviewed_result_count",
