@@ -25,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine.dispose()
 
     app = FastAPI(
-        title="TriageAssist API",
+        title="CareSync API",
         version="0.1.0",
         lifespan=lifespan,
     )

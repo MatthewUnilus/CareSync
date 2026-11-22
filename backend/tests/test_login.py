@@ -22,7 +22,7 @@ def test_clinical_user_starts_session_with_valid_password(client: TestClient) ->
     assert response.json()["role"] == "clinical"
 
     set_cookie = response.headers["set-cookie"]
-    assert "triageassist_session=" in set_cookie
+    assert "caresync_session=" in set_cookie
     assert "HttpOnly" in set_cookie
     assert "SameSite=lax" in set_cookie
 

@@ -1,5 +1,5 @@
 {
-  "name": "triageassist",
+  "name": "caresync",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -9,12 +9,12 @@
     "predev": "npm run seed",
     "dev": "concurrently -k --names api,web --prefix-colors blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "uv run --directory backend uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
-    "dev:web": "npm run dev --workspace @triageassist/web",
+    "dev:web": "npm run dev --workspace @caresync/web",
     "seed": "uv run --directory backend python -m app.seed",
     "test": "npm run test:api && npm run test:web",
     "test:api": "uv run --directory backend pytest",
-    "test:web": "npm run test --workspace @triageassist/web",
-    "build:web": "npm run build --workspace @triageassist/web",
+    "test:web": "npm run test --workspace @caresync/web",
+    "build:web": "npm run build --workspace @caresync/web",
     "mobile:sync": "npm run build:web && cap sync",
     "mobile:run:android": "npm run mobile:sync && cap run android --no-sync",
     "mobile:open:android": "cap open android",

@@ -31,7 +31,7 @@ def _login(client: TestClient) -> str:
         json={"email": CLINICAL_EMAIL, "password": CLINICAL_PASSWORD},
     )
     assert response.status_code == 200
-    token = client.cookies.get("triageassist_session")
+    token = client.cookies.get("caresync_session")
     assert token
     return token
 
@@ -57,7 +57,7 @@ def test_a_locked_session_is_refused_by_the_api(client: TestClient) -> None:
         json={"email": CLINICAL_EMAIL, "password": CLINICAL_PASSWORD},
     )
     assert login.status_code == 200
-    token = client.cookies.get("triageassist_session")
+    token = client.cookies.get("caresync_session")
     assert token
     assert client.get("/api/auth/me").status_code == 200
 
@@ -76,7 +76,7 @@ def test_a_locked_session_is_refused_by_the_api(client: TestClient) -> None:
     # nothing: the refusal is the server's, not the client's.
     replay = client.get(
         "/api/auth/me",
-        headers={"Cookie": f"triageassist_session={token}"},
+        headers={"Cookie": f"caresync_session={token}"},
     )
     assert replay.status_code == LOCKED_STATUS
 
@@ -109,7 +109,7 @@ def test_unlocking_with_the_right_credential_resumes_the_same_session(
 
     # The same session token still works: unlocking is a credential check on
     # the existing session, not a fresh sign-in that issues a new token.
-    assert lockable_client.cookies.get("triageassist_session") == token
+    assert lockable_client.cookies.get("caresync_session") == token
     assert lockable_client.get("/api/auth/me").status_code == 200
     assert lockable_client.get("/api/clinical/access").status_code == 200
 
@@ -179,7 +179,7 @@ def test_switch_user_signs_out_and_returns_to_sign_in(client: TestClient) -> Non
 
     assert switch.status_code == 204
     set_cookie = switch.headers["set-cookie"]
-    assert "triageassist_session=" in set_cookie
+    assert "caresync_session=" in set_cookie
     assert "Max-Age=0" in set_cookie
     assert client.get("/api/auth/me").status_code == 401
 
@@ -187,6 +187,6 @@ def test_switch_user_signs_out_and_returns_to_sign_in(client: TestClient) -> Non
     # picks the tablet up next.
     replay = client.get(
         "/api/auth/me",
-        headers={"Cookie": f"triageassist_session={token}"},
+        headers={"Cookie": f"caresync_session={token}"},
     )
     assert replay.status_code == 401

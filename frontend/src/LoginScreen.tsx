@@ -87,8 +87,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           showForgotPassword={false}
           showSwitch={false}
           logo={logo}
-          title="Sign in to TriageAssist"
-          description="Clinical decision support"
+          title="Sign in to CareSync"
+          description="Nursing workflow management"
           onSubmit={(data) => void handleSubmit(data)}
         />
 

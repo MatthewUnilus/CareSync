@@ -75,10 +75,10 @@ export default function Shell({
           <LogoMark />
           <div>
             <p className="text-body-medium font-medium text-text-primary">
-              TriageAssist
+              CareSync
             </p>
             <p className="text-caption-1-regular text-text-secondary">
-              Clinical decision support
+              Nursing workflow management
             </p>
           </div>
         </div>

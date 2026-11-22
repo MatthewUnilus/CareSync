@@ -18,7 +18,7 @@ VISIT_INTAKE = {
 
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "triageassist-test.db"
+    return tmp_path / "caresync-test.db"
 
 
 @pytest.fixture

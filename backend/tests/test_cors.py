@@ -22,7 +22,7 @@ def test_native_webview_origin_may_call_the_api_with_credentials(
 def test_unlisted_origin_is_not_granted_cors(client: TestClient) -> None:
     response = client.options(
         "/api/auth/login",
-        headers={"Origin": "https://not-triageassist.example", **PREFLIGHT_HEADERS},
+        headers={"Origin": "https://not-caresync.example", **PREFLIGHT_HEADERS},
     )
 
     assert "access-control-allow-origin" not in response.headers

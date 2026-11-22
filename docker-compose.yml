@@ -2,18 +2,18 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: triageassist
-      POSTGRES_USER: triageassist
-      POSTGRES_PASSWORD: triageassist
+      POSTGRES_DB: caresync
+      POSTGRES_USER: caresync
+      POSTGRES_PASSWORD: caresync
     ports:
       - "5432:5432"
     volumes:
-      - triageassist_pgdata:/var/lib/postgresql/data
+      - caresync_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U triageassist -d triageassist"]
+      test: ["CMD-SHELL", "pg_isready -U caresync -d caresync"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  triageassist_pgdata:
+  caresync_pgdata:

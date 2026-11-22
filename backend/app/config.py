@@ -4,16 +4,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime configuration, read from TRIAGEASSIST_* environment variables."""
+    """Runtime configuration, read from CARESYNC_* environment variables."""
 
     model_config = SettingsConfigDict(
-        env_prefix="TRIAGEASSIST_",
+        env_prefix="CARESYNC_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    database_url: str = "sqlite:///./triageassist.db"
+    database_url: str = "sqlite:///./caresync.db"
 
     # Session lifetime. This is the outer bound on a token, not the working
     # day: a ward tablet is shared, so a token that escapes the inactivity
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     session_unlock_max_attempts: int = 5
     session_unlock_lockout_seconds: int = 60
 
-    session_cookie_name: str = "triageassist_session"
+    session_cookie_name: str = "caresync_session"
 
     # Secure cookies are sent only over HTTPS, so enabling this against a plain
     # HTTP deployment silently breaks sign-in. It is what the deployment turns

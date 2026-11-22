@@ -1,20 +1,33 @@
-# TriageAssist
+# CareSync
 
-Clinical decision support for emergency-department triage. The system recommends
-an Urgency Level for each Encounter and keeps the Queue ordered from that
-recommendation, leaving the final decision with clinical staff.
+CareSync is a nursing workflow management system for a private hospital ward. It
+is presented through one responsive client codebase — a ward surface for clinical
+staff and a read-only operations dashboard for administrators — with a Capacitor
+shell so the same build runs on a shared tablet.
 
 This build covers the walking skeleton: the HTTP API, the React client,
-authentication, the two Roles, Patient registration, Encounter intake, the
-Triage Assessment record, Symptom Group recognition, a trained classifier and a
-red-flag safety layer behind the Prioritization Engine, the live Queue board,
-the Re-assessment, Override and Departure actions, the read-only Administrator
-dashboard and its four Reports — including the Accuracy Evaluation, which is
-the project's central evidence.
+authentication and its shared-device session lock, the two Roles, Patient
+registration and matching, a visit record that carries a reason for the visit
+only, the append-only Audit Log, and the read-only Administrator Reports. It does
+not score urgency, recommend a level or order a queue. The ward features —
+Admissions and the Ward Board, the Observation chart, Nursing Notes, Medication
+Orders and administrations, Investigations, Tasks, handover printing and the
+operations dashboard — are not built yet (tickets 29–40).
 
 Vocabulary follows [`CONTEXT.md`](CONTEXT.md). The data-layer decision is
 [ADR 0001](docs/adr/0001-sqlite-local-postgres-production.md): SQLite for local
 development and tests, Postgres for the demonstration deployment.
+
+> **Obsolete sections — triage era.** The sections marked **Obsolete** below
+> (**Intake**, **Symptom Groups**, **Prioritization Engine and the Queue**,
+> **Override**, **Departure**, **Re-assessment**, **Administrator dashboard**,
+> **Reports**, **API surface** and **Layout**) describe the triage system that
+> tickets 25 and 26 removed — the Prioritization Engine, the Queue, Override,
+> Re-assessment, Symptom Groups and the Accuracy Evaluation. Their endpoints,
+> fields and settings (including the `CARESYNC_FALLBACK_PROVIDER_*` variables)
+> no longer exist, so they are history rather than instructions for the current
+> build. A full documentation pass (ticket 41) will rewrite them; the setup,
+> environment, security and mobile sections remain current.
 
 ## Stack
 
@@ -92,6 +105,11 @@ never overwrites the stored name, age, sex, or contact details.
 
 ## Intake
 
+> **Obsolete — triage era.** The intake fields and the frozen-Assessment
+> behaviour below were removed by ticket 26. A visit now carries a reason for the
+> visit only, corrected with `PUT /api/clinical/encounters/{id}/intake`. Kept as
+> history pending ticket 41.
+
 Opening an Encounter requires the intake that a Triage Assessment will later run
 on. Every field except notes is required and is validated server-side as well as
 in the form:
@@ -118,6 +136,10 @@ Re-assessment (below), which appends a new Assessment instead of rewriting an
 old one. See `backend/app/intake.py`.
 
 ## Symptom Groups
+
+> **Obsolete — triage era.** Symptom Group recognition fed the classifier and
+> was removed with it (ticket 26); the vocabulary file and its module no longer
+> exist. Kept as history pending ticket 41.
 
 The free-text presenting complaint is mapped onto the finite Symptom Group
 vocabulary in `backend/app/symptom_groups.json`, versioned there as
@@ -146,6 +168,13 @@ The first `uv sync` downloads spaCy and the `en_core_web_sm` wheel from GitHub
 releases, so it needs network access.
 
 ## Prioritization Engine and the Queue
+
+> **Obsolete — triage era.** This whole section, and its "Reading the Queue
+> board", "Red-flag safety layer" and "Cached fallback" subsections, describe the
+> Prioritization Engine and the Queue that ticket 26 removed. No urgency level is
+> computed and no queue is ordered, and none of the settings named here (the
+> `CARESYNC_FALLBACK_PROVIDER_*` variables in particular) exist. Kept as history
+> pending ticket 41.
 
 The engine boundary (Seam B) is `app.prioritisation.recommend`: a pure function
 taking a `PrioritisationInputs` and returning exactly one `UrgencyLevel`, with no
@@ -256,7 +285,7 @@ patient with different vitals.
 No provider URL is configured by default. That is the unavailable path, not a
 crash: a failure or a timeout resolves to the safety layer over **Medium** and
 the Assessment is marked `unclassified`. The normal runtime provider is an
-HTTP service configured by `TRIAGEASSIST_FALLBACK_PROVIDER_URL` (optional
+HTTP service configured by `CARESYNC_FALLBACK_PROVIDER_URL` (optional
 `..._API_KEY`, `..._TIMEOUT_SECONDS`); the build and test suite need no key,
 network or paid service. The unclassified state is rendered as its own
 violet **Unclassified** badge, separate from the orange **Override** badge.
@@ -338,10 +367,10 @@ the app at `http://10.0.2.2:8000` reaches the API at the network level but makes
 it a different site, so login would appear to succeed and the next request would
 be refused with `401`. For a deployed HTTPS API, set the base URL to that HTTPS
 address; the WebView origin is then `https://localhost`, which the backend must
-allow in `TRIAGEASSIST_CORS_ORIGINS`.
+allow in `CARESYNC_CORS_ORIGINS`.
 
 The API grants credentialed CORS only to the origins listed in
-`TRIAGEASSIST_CORS_ORIGINS` (localhost by default). The browser never needs it
+`CARESYNC_CORS_ORIGINS` (localhost by default). The browser never needs it
 because the Vite dev server proxies `/api`; the native shell is genuinely
 cross-origin.
 
@@ -352,8 +381,8 @@ the same config, but building it needs macOS and Xcode.
 
 ### Primary screen and session expiry
 
-A Clinical user lands on Intake in the native app; the web dashboard still lands
-on the Queue, and the existing view switch exposes both screens in both forms.
+A Clinical user lands on Intake on every surface, web and native; the view switch
+exposes Intake and Patient history.
 Session expiry is not reimplemented for mobile: the app shares `api.ts`, so an
 expired session produces the same `401 Not authenticated` response and the same
 on-screen error as the browser, with no separate mobile session state. Signing in
@@ -367,6 +396,10 @@ assets (`*/assets/public`), Gradle/Xcode build output, `local.properties`, Pods,
 derived data and keystores. `npm run mobile:sync` repopulates the ignored assets
 after every client change.
 ## Override
+
+> **Obsolete — triage era.** Override was removed with the Prioritization Engine
+> (ticket 26); `override_reasons.py`, the `overrides` table and the `/override`
+> route no longer exist. Kept as history pending ticket 41.
 
 A Clinical user may disagree with a Machine Recommendation and set a different
 Final Decision on the governing Triage Assessment of an awaiting Encounter:
@@ -405,6 +438,11 @@ next poll, since it sorts on Final Decision.
 
 ## Departure
 
+> **Obsolete — triage era.** Departure was removed by ticket 26 and replaced by
+> an end-of-visit action: `POST /api/clinical/encounters/{id}/end`, with
+> `ended_at` and a `status` of `open` or `ended` rather than
+> `awaiting`/`departed`. Kept as history pending ticket 41.
+
 A Clinical user discharges an awaiting Encounter from the Queue:
 
 ```http
@@ -431,6 +469,9 @@ the same shared guard. Departing twice is refused with `409` and does not
 overwrite the first instant.
 
 ## Re-assessment
+
+> **Obsolete — triage era.** Re-assessment and the `TriageAssessment` record
+> were removed by ticket 26. Kept as history pending ticket 41.
 
 A Clinical user may ask for a fresh Triage Assessment on an awaiting Encounter:
 
@@ -464,6 +505,10 @@ Assessment can move the Encounter.
 
 ## Administrator dashboard
 
+> **Obsolete — triage era.** The dense awaiting-Queue table described here was
+> removed by ticket 26; the Administrator dashboard now mounts the Reports and
+> the Audit Log only. Kept as history pending ticket 41.
+
 The same client serves both Roles from one codebase and one build. Signing in
 sends a Clinical user to `/clinical` and an Administrator to `/administrator`;
 any other path is replaced with the Role's own landing route.
@@ -484,6 +529,12 @@ user in the same way. The dashboard ends with a Reports section, described
 below, with the Accuracy Evaluation first and visually featured.
 
 ## Reports
+
+> **Obsolete — triage era.** Only two Reports survive — Daily Visits
+> (`GET /api/administrator/reports/daily-visits`) and Performance
+> (`GET /api/administrator/reports/performance`). The Priority Distribution and
+> the Accuracy Evaluation described below were removed by tickets 25 and 26.
+> Kept as history pending ticket 41.
 
 The four Reports are read-only. Each is computed inside the request from the
 rows that record what happened — arrival and departure instants on the
@@ -556,11 +607,11 @@ test suite (see ADR 0001).
 
 ```powershell
 docker compose up -d db
-$env:TRIAGEASSIST_DATABASE_URL = "postgresql+psycopg://triageassist:triageassist@127.0.0.1:5432/triageassist"
+$env:CARESYNC_DATABASE_URL = "postgresql+psycopg://caresync:caresync@127.0.0.1:5432/caresync"
 npm run dev
 ```
 
-In bash, use `export TRIAGEASSIST_DATABASE_URL=...` instead. To stop Postgres:
+In bash, use `export CARESYNC_DATABASE_URL=...` instead. To stop Postgres:
 
 ```powershell
 docker compose down
@@ -568,26 +619,31 @@ docker compose down
 
 ## Environment variables
 
-All variables use the `TRIAGEASSIST_` prefix. A `.env` file in `backend/` is
+All variables use the `CARESYNC_` prefix. A `.env` file in `backend/` is
 also read.
 
-| Variable                           | Default                      | Purpose                                      |
-| ---------------------------------- | ---------------------------- | -------------------------------------------- |
-| `TRIAGEASSIST_DATABASE_URL`        | `sqlite:///./triageassist.db` | SQLAlchemy URL; Postgres URL for the demo    |
-| `TRIAGEASSIST_SESSION_TTL_SECONDS` | `14400` (4 hours)            | Session lifetime, enforced on every request  |
-| `TRIAGEASSIST_SESSION_IDLE_SECONDS` | `300` (5 minutes)           | Inactivity lock: a session idle this long is refused until unlocked |
-| `TRIAGEASSIST_SESSION_HEARTBEAT_SECONDS` | `60`                  | How often a request refreshes the session's last-seen instant |
-| `TRIAGEASSIST_SESSION_UNLOCK_MAX_ATTEMPTS` | `5`               | Wrong unlock passwords before the session is rate-limited |
-| `TRIAGEASSIST_SESSION_UNLOCK_LOCKOUT_SECONDS` | `60`          | How long a locked session refuses further unlock attempts |
-| `TRIAGEASSIST_SESSION_COOKIE_NAME` | `triageassist_session`       | Session cookie name                          |
-| `TRIAGEASSIST_SESSION_COOKIE_SECURE` | `false`                    | Set `true` when served over HTTPS. See "Security behaviour" |
-| `TRIAGEASSIST_CORS_ORIGINS`        | localhost origins             | Comma-separated origins granted credentialed CORS (the native shell) |
-| `TRIAGEASSIST_SEED_DEMO_USERS`     | `false`                      | Seed demo users during API startup           |
+| Variable                                   | Default                   | Purpose                                      |
+| ------------------------------------------ | ------------------------- | -------------------------------------------- |
+| `CARESYNC_DATABASE_URL`                    | `sqlite:///./caresync.db` | SQLAlchemy URL; Postgres URL for the demo    |
+| `CARESYNC_SESSION_TTL_SECONDS`             | `14400` (4 hours)         | Session lifetime, enforced on every request  |
+| `CARESYNC_SESSION_IDLE_SECONDS`            | `300` (5 minutes)         | Inactivity lock: a session idle this long is refused until unlocked |
+| `CARESYNC_SESSION_HEARTBEAT_SECONDS`       | `60`                      | How often a request refreshes the session's last-seen instant |
+| `CARESYNC_SESSION_UNLOCK_MAX_ATTEMPTS`     | `5`                       | Wrong unlock passwords before the session is rate-limited |
+| `CARESYNC_SESSION_UNLOCK_LOCKOUT_SECONDS`  | `60`                      | How long a locked session refuses further unlock attempts |
+| `CARESYNC_SESSION_COOKIE_NAME`             | `caresync_session`        | Session cookie name                          |
+| `CARESYNC_SESSION_COOKIE_SECURE`           | `false`                   | Set `true` when served over HTTPS. See "Security behaviour" |
+| `CARESYNC_CORS_ORIGINS`                    | localhost origins         | Comma-separated origins granted credentialed CORS (the native shell) |
+| `CARESYNC_SEED_DEMO_USERS`                 | `false`                   | Seed demo users during API startup           |
 
-`TRIAGEASSIST_SESSION_COOKIE_SECURE` must not be set to `true` without HTTPS:
+`CARESYNC_SESSION_COOKIE_SECURE` must not be set to `true` without HTTPS:
 see "Security behaviour" for why it silently breaks sign-in otherwise.
 
 ## API surface
+
+> **Obsolete — triage era.** This table lists routes the demolition removed
+> (Queue, Override, Departure, Re-assessment and the Accuracy Evaluation report)
+> and omits the surviving `/encounters/{id}/end` route. Do not treat it as the
+> current surface; it is kept as history pending ticket 41.
 
 | Method | Path                                    | Access        |
 | ------ | --------------------------------------- | ------------- |
@@ -659,7 +715,7 @@ A ward tablet is picked up by whoever is nearest, so a session has to stop
 showing patient data when the last person walks away. That is the inactivity
 lock, and it is enforced on the server, not only in the client.
 
-- After `TRIAGEASSIST_SESSION_IDLE_SECONDS` with no request (5 minutes by
+- After `CARESYNC_SESSION_IDLE_SECONDS` with no request (5 minutes by
   default), the session is locked. The next request, including a background
   poll, is refused with **423 Locked**, distinct from 401, so the client shows
   the lock screen rather than the sign-in screen.
@@ -674,11 +730,11 @@ lock, and it is enforced on the server, not only in the client.
   wait for the timer. `POST /api/auth/switch-user` signs out and returns to
   sign-in, for handing the tablet to a different person.
 - Unlock attempts are rate-limited on the session row: after
-  `TRIAGEASSIST_SESSION_UNLOCK_MAX_ATTEMPTS` wrong passwords (5 by default),
+  `CARESYNC_SESSION_UNLOCK_MAX_ATTEMPTS` wrong passwords (5 by default),
   further attempts are refused with **429 Too Many Attempts** for
-  `TRIAGEASSIST_SESSION_UNLOCK_LOCKOUT_SECONDS` (60 by default). This stops a
+  `CARESYNC_SESSION_UNLOCK_LOCKOUT_SECONDS` (60 by default). This stops a
   locked tablet being used as an unattended guessing surface.
-- The session lifetime (`TRIAGEASSIST_SESSION_TTL_SECONDS`, 4 hours by
+- The session lifetime (`CARESYNC_SESSION_TTL_SECONDS`, 4 hours by
   default) is the outer bound on a token, a backstop behind the lock rather
   than the day's working hours. A token that escapes the lock (a restored tab,
   a copied cookie) dies within half a shift.
@@ -689,7 +745,7 @@ timer.
 
 ### The secure cookie needs HTTPS
 
-`TRIAGEASSIST_SESSION_COOKIE_SECURE` defaults to `false` because local
+`CARESYNC_SESSION_COOKIE_SECURE` defaults to `false` because local
 development and the test suite run over plain HTTP. It must be set to `true`
 for the deployment, and the deployment must serve the API over **HTTPS**
 through a reverse proxy.
@@ -704,6 +760,11 @@ go-live prerequisite, not something this code provides.
 
 ## Layout
 
+> **Obsolete — triage era.** This inventory names files the demolition deleted
+> (the engine, classifier, Symptom Groups, assessments, queue, overrides, reports
+> and accuracy modules, and the Queue/Override frontend). It is kept as history
+> pending ticket 41.
+
 ```
 capacitor.config.ts    native shell config; webDir is frontend/dist
 android/               Capacitor Android project (committed; build output ignored)
@@ -711,7 +772,7 @@ ios/                   Capacitor iOS project (committed; build output ignored)
 backend/
   app/
     main.py            app factory, router wiring, startup seeding, CORS
-    config.py          Settings (TRIAGEASSIST_* env vars)
+    config.py          Settings (CARESYNC_* env vars)
     db.py              engine and session factory
     models.py          User, UserSession, Role, Patient, Encounter,
                        TriageAssessment, Override, AuditEntry, Sex
@@ -773,4 +834,4 @@ frontend/
 ```
 
 There is no migration tool yet. Tables are created at API startup; deleting
-`backend/triageassist.db` resets the local database.
+`backend/caresync.db` resets the local database.

@@ -1,4 +1,4 @@
-package com.triageassist.app;
+package com.caresync.app;
 
 import com.getcapacitor.BridgeActivity;
 

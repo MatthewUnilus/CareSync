@@ -14,8 +14,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * "Mobile client".
  */
 const config: CapacitorConfig = {
-  appId: "com.triageassist.app",
-  appName: "TriageAssist",
+  appId: "com.caresync.app",
+  appName: "CareSync",
   webDir: "frontend/dist",
   server: {
     // Capacitor 8 no longer applies `server.cleartext` on Android, so the
