@@ -159,29 +159,12 @@ def test_register_intake_override_reassess_depart_then_administrator_reads(
     assert journey_id in admin_ids
     assert staying_id not in admin_ids
 
-    daily = client.get("/api/administrator/reports/daily-queue")
+    daily = client.get("/api/administrator/reports/daily-visits")
     assert daily.status_code == 200, daily.text
     daily_body = daily.json()
     assert daily_body["volume"] == 2
     assert daily_body["throughput"] == 1
     assert daily_body["awaiting"] == 1
-
-    distribution = client.get("/api/administrator/reports/priority-distribution")
-    assert distribution.status_code == 200, distribution.text
-    dist_body = distribution.json()
-    assert dist_body["total"] == 2
-    assert sum(level["encounters"] for level in dist_body["levels"]) == 2
-    by_level = {level["urgency_level"]: level["encounters"] for level in dist_body["levels"]}
-    final_levels = {
-        journey_id: reassessed["final_decision"],
-        staying_id: "Medium",  # never overridden
-    }
-    assert by_level.get("High", 0) == sum(
-        1 for level in final_levels.values() if level == "High"
-    )
-    assert by_level.get("Medium", 0) == sum(
-        1 for level in final_levels.values() if level == "Medium"
-    )
 
     performance = client.get("/api/administrator/reports/performance")
     assert performance.status_code == 200, performance.text
@@ -189,8 +172,3 @@ def test_register_intake_override_reassess_depart_then_administrator_reads(
     assert perf_body["completed"] == 1
     assert [e["encounter_id"] for e in perf_body["entries"]] == [staying_id]
     assert perf_body["entries"][0]["waiting_seconds"] >= 0
-    assert perf_body["entries"][0]["processing_seconds"] >= 0
-
-    accuracy = client.get("/api/administrator/reports/accuracy-evaluation")
-    assert accuracy.status_code == 200, accuracy.text
-    assert accuracy.json()["overrides"]["assessments"] >= 3

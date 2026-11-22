@@ -58,13 +58,6 @@ class Settings(BaseSettings):
     fallback_provider_api_key: str | None = None
     fallback_timeout_seconds: float = 2.0
 
-    # The Accuracy Evaluation Report's explicit override. Leave it unset to use
-    # the documented precedence: a legacy per-case manifest if one is present,
-    # otherwise the versioned artefact the offline harness writes. A missing
-    # file is the explicit "no labelled run" state, not an error and not a zero
-    # score.
-    accuracy_run_path: str | None = None
-
     # Comma-separated. The native shell has its own WebView origin, so it calls
     # the API cross-origin; these are the only origins granted credentials.
     cors_origins: str = (
