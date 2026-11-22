@@ -27,6 +27,9 @@ _OPTIONAL_TEXT = Annotated[
     str, StringConstraints(strip_whitespace=True, max_length=2000)
 ]
 _EMAIL = Annotated[str, StringConstraints(strip_whitespace=True, max_length=320)]
+_HOSPITAL_NUMBER = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=64)
+]
 
 # SQLite round-trips aware timestamps as naive; responses always speak UTC.
 UtcDatetime = Annotated[datetime, BeforeValidator(as_utc)]
@@ -77,6 +80,7 @@ class PatientRegistrationRequest(BaseModel):
     sex: Sex
     contact_phone: Annotated[str, StringConstraints(max_length=40)]
     contact_email: _EMAIL | None = None
+    hospital_number: _HOSPITAL_NUMBER | None = None
 
     @field_validator("contact_phone")
     @classmethod
@@ -98,6 +102,34 @@ class PatientRegistrationRequest(BaseModel):
             raise ValueError("contact_email must be an email address")
         return value
 
+    @field_validator("hospital_number")
+    @classmethod
+    def _blank_hospital_number_is_absent(cls, value: str | None) -> str | None:
+        """A blank or whitespace-only number is absent, not an empty one.
+
+        The number is optional, so a walk-in with none is registrable; an empty
+        field must read as "no number" rather than a number that is the empty
+        string, which would be a key of its own.
+        """
+        return value or None
+
+
+class HospitalNumberRequest(BaseModel):
+    """The hospital number to attach to an existing, numbered-less Patient.
+
+    Blank or whitespace-only input is normalised to absent, exactly as in
+    registration; the attach route then refuses it, because attaching "no
+    number" is not a change. A number is optional at registration but required
+    to attach one later.
+    """
+
+    hospital_number: _HOSPITAL_NUMBER | None = None
+
+    @field_validator("hospital_number")
+    @classmethod
+    def _blank_hospital_number_is_absent(cls, value: str | None) -> str | None:
+        return value or None
+
 
 class PatientResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -108,6 +140,7 @@ class PatientResponse(BaseModel):
     sex: Sex
     contact_phone: str
     contact_email: str | None
+    hospital_number: str | None = None
     registered_at: UtcDatetime
 
 
@@ -212,8 +245,10 @@ class PatientSearchResponse(BaseModel):
     """Patients matching a search fragment.
 
     A discovery result, not an identity decision: several records may come
-    back for one query, and the caller chooses. ``app.patients`` documents why
-    a name alone never matches an identity, and that rule is untouched here.
+    back for one query, and the caller chooses. ``app.patients`` documents the
+    identity rule — a hospital number when one is present, otherwise the whole
+    name together with the whole phone — and that rule is untouched here: the
+    search merely matches part of a name, a contact number or a hospital number.
     """
 
     patients: list[PatientResponse]

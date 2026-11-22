@@ -85,23 +85,55 @@ npm run seed
 
 ## Patient matching
 
-Registering a Patient reuses an existing record when the normalised full name
-**and** the normalised contact phone number both match:
+A Patient may carry an optional **hospital number**. When a number is involved
+it decides identity, and the name-and-phone rule is the fallback used only when
+neither side has one:
 
-- name: surrounding whitespace trimmed, internal whitespace collapsed to one
-  space, case-folded (`"  Ada   Lovelace "` matches `"ada lovelace"`)
-- phone: non-digits dropped, a leading `+` kept (`"0770-090 0123"` matches
-  `"07700 900123"`)
+- **Same number reuses the record.** A registration whose normalised hospital
+  number equals an existing Patient's number is that Patient, whatever name or
+  phone was entered alongside it.
+- **Different numbers stay separate.** Two Patients whose numbers differ are
+  different people, even when the name **and** the phone both match. This is the
+  case that matters on a ward, where a family phone number is shared and
+  surnames repeat.
+- **Neither number: name and phone.** With no number on either side, a record
+  is reused only when the normalised full name **and** the normalised contact
+  phone both match:
 
-Requiring both is deliberate. A name alone collides between different people, so
-matching on name only would merge two Patients irreversibly. The cost is that a
-returning Patient who gives a new phone number registers a second record; a
-duplicate can be resolved later, a bad merge cannot. The API answers
-`201 Created` for a new Patient and `200 OK` when an existing record is reused.
+  - name: surrounding whitespace trimmed, internal whitespace collapsed to one
+    space, case-folded (`"  Ada   Lovelace "` matches `"ada lovelace"`)
+  - phone: non-digits dropped, a leading `+` kept (`"0770-090 0123"` matches
+    `"07700 900123"`)
 
-The rule is enforced by a unique constraint on the normalised pair, so a
-concurrent double submission cannot create two rows either. Re-registration
-never overwrites the stored name, age, sex, or contact details.
+The hospital number is optional, so a walk-in with no number is still
+registrable. It is stored as entered and compared in normalised form, the way
+name and phone are.
+
+Requiring name and phone together is deliberate. A name alone collides between
+different people, so matching on name only would merge two Patients
+irreversibly. The cost is that a returning Patient who gives a new phone number
+registers a second record; a duplicate can be resolved later, a bad merge
+cannot. The API answers `201 Created` for a new Patient and `200 OK` when an
+existing record is reused.
+
+Adding a number later **attaches it to the selected existing Patient**. It does
+not merge that record with an unrelated Patient who shares its name, and a
+registration that carries a number attaches to the Patient already holding that
+number rather than auto-merging an unnumbered record that happens to share the
+name. Patient search matches on the hospital number as well as name and phone,
+so a number can find someone whose name cannot be spelled. The rule is enforced
+at the data layer, so a concurrent double submission cannot create two rows
+either, and re-registration never overwrites the stored name, age, sex, or
+contact details.
+
+> **Operator note — ticket 29.** Ticket 29 adds a `hospital_number` column to
+> the `Patients` table and changes its unique indexes. There is no migration
+> tool, and `create_all` only creates missing tables — it never alters an
+> existing one — so a `backend/caresync.db` created before ticket 29 still
+> carries the old schema and the API will not run against it. Preserve that file
+> first: back it up (copy it aside), then let a freshly seeded database be
+> created with `npm run seed`. Do not run on the old schema, and do not remove
+> an existing `caresync.db` without taking that backup first.
 
 ## Intake
 

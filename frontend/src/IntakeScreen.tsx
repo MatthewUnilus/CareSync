@@ -9,7 +9,7 @@ import { toast } from "@/components/base/toast/toast";
 
 import { api, errorText } from "./api";
 import type { Encounter, Sex } from "./api";
-import { cardClass, noticeClass } from "./design";
+import { cardClass, figureClass, noticeClass } from "./design";
 import { NumberField } from "./IntakeFields";
 import { buildIntake } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
@@ -17,6 +17,7 @@ import { SEX_OPTIONS, formatInstant, sexLabel } from "./queueDisplay";
 
 interface FormState extends IntakeFormValues {
   fullName: string;
+  hospitalNumber: string;
   age: string;
   sex: Sex;
   phone: string;
@@ -38,6 +39,7 @@ interface FormErrors {
 
 const EMPTY_FORM: FormState = {
   fullName: "",
+  hospitalNumber: "",
   age: "",
   sex: "unspecified",
   phone: "",
@@ -107,6 +109,11 @@ export default function IntakeScreen() {
     try {
       const { body: patient, status } = await api.registerPatient({
         full_name: form.fullName.trim(),
+        // A blank hospital number is sent as `null`, so a walk-in with no
+        // number registers exactly as before.
+        hospital_number: form.hospitalNumber.trim()
+          ? form.hospitalNumber.trim()
+          : null,
         age: Number(form.age),
         sex: form.sex,
         contact_phone: form.phone.trim(),
@@ -156,6 +163,13 @@ export default function IntakeScreen() {
                 onChange={(value) => update("fullName", value)}
                 isInvalid={!!fieldErrors.fullName}
                 errorMessage={fieldErrors.fullName}
+              />
+              <Input
+                className="col-span-full"
+                label="Hospital number"
+                hint="Optional — a walk-in without a number can still be registered"
+                value={form.hospitalNumber}
+                onChange={(value) => update("hospitalNumber", value)}
               />
               <NumberField
                 label="Age in years"
@@ -214,7 +228,10 @@ export default function IntakeScreen() {
             </div>
             <p className="text-body-2-regular text-text-secondary">
               Registering the same name and phone number again reuses the
-              existing patient record
+              existing patient record. Entering a new hospital number here
+              registers a distinct record: it does not add the number to an
+              existing patient who has none. To attach a number to an existing
+              record, open that patient in patient history.
             </p>
           </fieldset>
 
@@ -271,11 +288,18 @@ export default function IntakeScreen() {
                     {encounter.patient.full_name}
                   </p>
                   {/*
-                   * Age and sex sit beside the name so two patients who share a
-                   * name are still distinguishable at the point of selection.
-                   * There is no medical record number in scope, so this is the
-                   * identity the prototype can honestly show.
+                   * The hospital number, and failing that age and sex, sit
+                   * beside the name so two patients who share a name are still
+                   * distinguishable at the point of selection.
                    */}
+                  {encounter.patient.hospital_number ? (
+                    <p className="text-body-2-regular text-text-secondary">
+                      hospital number{" "}
+                      <span className={figureClass}>
+                        {encounter.patient.hospital_number}
+                      </span>
+                    </p>
+                  ) : null}
                   <p className="text-body-2-regular text-text-secondary">
                     age {encounter.patient.age} ·{" "}
                     {sexLabel(encounter.patient.sex)} · encounter #

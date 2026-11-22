@@ -87,6 +87,29 @@ def test_search_matches_a_contact_number(clinical_client: TestClient) -> None:
     assert [patient["full_name"] for patient in results] == ["Ada Lovelace"]
 
 
+# --- search by hospital number --------------------------------------------
+
+
+def test_search_matches_a_hospital_number(clinical_client: TestClient) -> None:
+    register_patient(clinical_client, "Ada Lovelace", "07700 900123")
+    numbered = clinical_client.post(
+        "/api/clinical/patients",
+        json={
+            **PATIENT,
+            "full_name": "Grace Hopper",
+            "contact_phone": "07700 900456",
+            "hospital_number": "MRN 4471",
+        },
+    )
+    assert numbered.status_code == 201, numbered.text
+
+    # The number is a search key of its own, so a patient can be found when the
+    # name cannot be spelled.
+    results = search(clinical_client, "4471")
+
+    assert [patient["full_name"] for patient in results] == ["Grace Hopper"]
+
+
 # --- blank query ----------------------------------------------------------
 
 

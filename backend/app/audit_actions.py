@@ -22,6 +22,7 @@ class AuditAction(str, Enum):
     """
 
     register_patient = "register_patient"
+    attach_hospital_number = "attach_hospital_number"
     open_encounter = "open_encounter"
     correct_visit_reason = "correct_visit_reason"
     end_encounter = "end_encounter"
@@ -41,6 +42,7 @@ AUDIT_ACTIONS: tuple[AuditAction, ...] = tuple(AuditAction)
 # suite rather than reaching the UI as a raw snake_case key.
 AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.register_patient: "Patient registered",
+    AuditAction.attach_hospital_number: "Hospital number attached",
     AuditAction.open_encounter: "Encounter opened",
     AuditAction.correct_visit_reason: "Visit reason corrected",
     AuditAction.end_encounter: "Encounter ended",

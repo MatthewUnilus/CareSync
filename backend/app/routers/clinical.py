@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import record_audit_entry
@@ -10,11 +11,16 @@ from app.departures import encounter_status, end_encounter
 from app.deps import DbSession, require_role
 from app.intake import apply_visit_reason
 from app.models import Encounter, Patient, Role, User
-from app.patients import find_or_create_patient, search_patients as patient_search
+from app.patients import (
+    find_or_create_patient,
+    normalise_hospital_number,
+    search_patients as patient_search,
+)
 from app.schemas import (
     EncounterCreateRequest,
     EncounterListResponse,
     EncounterResponse,
+    HospitalNumberRequest,
     PatientHistoryResponse,
     PatientRegistrationRequest,
     PatientResponse,
@@ -66,6 +72,7 @@ def register_patient(
         sex=payload.sex,
         contact_phone=payload.contact_phone,
         contact_email=payload.contact_email,
+        hospital_number=payload.hospital_number,
     )
     if not created:
         response.status_code = status.HTTP_200_OK
@@ -77,6 +84,79 @@ def register_patient(
             patient=patient,
         )
     db.commit()
+    return patient
+
+
+@router.post(
+    "/patients/{patient_id}/hospital-number",
+    response_model=PatientResponse,
+)
+def attach_hospital_number(
+    patient_id: int,
+    payload: HospitalNumberRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> Patient:
+    """Attach a hospital number to an existing Patient that carries none.
+
+    Registration never lets a supplied number claim an unrelated name-and-phone
+    record, so giving a number to an already-registered Patient is a separate,
+    explicit act on one *chosen* record. The route refuses a blank number
+    (``422``) and any attempt to set a number the Patient already holds or that
+    belongs to another Patient (``409``), so it can never merge two records or
+    silently reassign a number. The change and its audit entry commit together.
+    """
+    patient = db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    if payload.hospital_number is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="hospital_number is required",
+        )
+    hospital_number_key = normalise_hospital_number(payload.hospital_number)
+
+    holder = db.scalar(
+        select(Patient).where(
+            Patient.hospital_number_key == hospital_number_key,
+            Patient.id != patient.id,
+        )
+    )
+    if holder is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Hospital number already belongs to another patient",
+        )
+
+    if patient.hospital_number_key is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Patient already has a hospital number",
+        )
+
+    patient.hospital_number = payload.hospital_number
+    patient.hospital_number_key = hospital_number_key
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.attach_hospital_number,
+        patient=patient,
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent attach claimed the number between the lookup and the
+        # commit; the unique index caught it, so report the conflict rather than
+        # letting the failure surface as a 500.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Hospital number already belongs to another patient",
+        ) from None
     return patient
 
 
@@ -119,12 +199,13 @@ def search_patients(
     q: Annotated[str, Query()] = "",
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> PatientSearchResponse:
-    """Find Patients by a fragment of their name or contact number.
+    """Find Patients by a fragment of their name, contact number or hospital number.
 
-    This is not identity resolution. ``app.patients`` matches an identity only
-    when the whole name and the whole phone are both equal; a search matches
-    part of either and returns candidates for a human to choose between. A
-    blank query returns nothing, so the route is never a bulk export.
+    This is not identity resolution. ``app.patients`` matches an identity on the
+    hospital number when one is present, and otherwise on the whole name
+    together with the whole phone; a search matches part of a name, a contact
+    number or a hospital number and returns candidates for a human to choose
+    between. A blank query returns nothing, so the route is never a bulk export.
     """
     patients = patient_search(db, query=q, limit=limit)
     return PatientSearchResponse(

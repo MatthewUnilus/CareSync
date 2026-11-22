@@ -5,10 +5,11 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
-    UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,21 +69,57 @@ class Patient(Base):
     """A person, independent of any visit.
 
     Registering the same person twice reuses this row. The row carries both the
-    text as it was entered (``full_name``, ``contact_phone``) and the normalised
-    keys used for matching (``name_key``, ``contact_key``). The unique
-    constraint over those two keys is the matching rule, enforced by the data
-    layer rather than by a lookup convention:
+    text as it was entered (``full_name``, ``contact_phone``,
+    ``hospital_number``) and the normalised keys used for matching
+    (``name_key``, ``contact_key``, ``hospital_number_key``).
 
-    a Patient is the same Patient when the normalised name *and* the normalised
-    contact phone are both equal. Name alone is never enough, so two different
-    people who share a name stay separate.
+    Identity turns on the hospital number first, because on a ward several
+    inpatients can share a surname and a family phone number is entered for more
+    than one of them:
+
+    * equal hospital numbers mean the same Patient;
+    * different hospital numbers mean different Patients;
+    * with neither number present, the earlier rule still applies — a Patient
+      matches when the normalised name *and* the normalised contact phone are
+      both equal. Name alone is never enough, so two people who share a name
+      stay separate.
+
+    Both halves are enforced by the data layer rather than by a lookup
+    convention, each as a partial unique index so a concurrent double submission
+    cannot create two rows either:
+
+    * ``uq_patients_hospital_number`` is unique over ``hospital_number_key``
+      where that key is not null, so a number can belong to one Patient only;
+    * ``uq_patients_identity`` is unique over ``(name_key, contact_key)`` where
+      ``hospital_number_key`` is null, so the name-and-phone rule governs the
+      Patients that carry no number and does not apply to the numbered ones.
+
+    Each index states its predicate for SQLite and Postgres (``sqlite_where``
+    and ``postgresql_where`` on one ``Index``), so the model layer stays a single
+    definition across both dialects (ADR 0001). ``hospital_number_key`` is
+    nullable and carries no plain index of its own: the unique index above is
+    the index a number is looked up through.
 
     See ``app.patients`` for the normalisation and README "Patient matching".
     """
 
     __tablename__ = "patients"
     __table_args__ = (
-        UniqueConstraint("name_key", "contact_key", name="uq_patients_identity"),
+        Index(
+            "uq_patients_identity",
+            "name_key",
+            "contact_key",
+            unique=True,
+            sqlite_where=text("hospital_number_key IS NULL"),
+            postgresql_where=text("hospital_number_key IS NULL"),
+        ),
+        Index(
+            "uq_patients_hospital_number",
+            "hospital_number_key",
+            unique=True,
+            sqlite_where=text("hospital_number_key IS NOT NULL"),
+            postgresql_where=text("hospital_number_key IS NOT NULL"),
+        ),
         CheckConstraint(
             "sex IN ('female', 'male', 'other', 'unspecified')",
             name="ck_patients_sex",
@@ -98,6 +135,13 @@ class Patient(Base):
     contact_phone: Mapped[str] = mapped_column(String(40))
     contact_key: Mapped[str] = mapped_column(String(40), index=True)
     contact_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # The hospital number as entered, and the normalised key used for matching.
+    # Optional: a walk-in with no number is still registrable, and a number may
+    # be attached later to one chosen record without merging it with another.
+    hospital_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hospital_number_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

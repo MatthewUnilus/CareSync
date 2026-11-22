@@ -20,6 +20,12 @@ export interface AccessResponse {
 export interface Patient {
   id: number;
   full_name: string;
+  /**
+   * The hospital number a Patient is identified by, when one was recorded.
+   * Optional: a walk-in with no number is still a Patient. Two Patients who
+   * share a name are separate records once both carry a number.
+   */
+  hospital_number: string | null;
   age: number;
   sex: Sex;
   contact_phone: string;
@@ -29,6 +35,8 @@ export interface Patient {
 
 export interface NewPatient {
   full_name: string;
+  /** Optional on registration; sent as `null` when left blank. */
+  hospital_number: string | null;
   age: number;
   sex: Sex;
   contact_phone: string;
@@ -259,6 +267,17 @@ export const api = {
     ),
   patientHistory: (patientId: number) =>
     request<PatientHistory>(`/api/clinical/patients/${patientId}/encounters`),
+  /*
+   * Attach a hospital number to an existing Patient who has none. The server is
+   * the authority on identity: a number already held by another record is
+   * refused with a `409`, and a malformed one with a `422`. The Patient is
+   * returned carrying the number, which the caller mirrors into the view.
+   */
+  attachHospitalNumber: (patientId: number, hospitalNumber: string) =>
+    request<Patient>(`/api/clinical/patients/${patientId}/hospital-number`, {
+      method: "POST",
+      body: JSON.stringify({ hospital_number: hospitalNumber }),
+    }),
   /*
    * Ending a visit takes no body: the end instant is the server's, recorded at
    * the moment of the action. An already-ended visit is a `409`; an unknown

@@ -229,6 +229,33 @@ def test_correcting_a_visit_reason_refuses_vitals(
     )
 
 
+def test_a_visit_carries_the_patients_hospital_number(
+    clinical_client: TestClient,
+) -> None:
+    """The number a nurse checks against rides on the Patient in the visit.
+
+    The history view and the visit read the same Patient shape, so the number
+    captured at registration has to be present wherever the Patient is embedded.
+    """
+    created = clinical_client.post(
+        "/api/clinical/patients",
+        json={
+            "full_name": "Ada Lovelace",
+            "age": 36,
+            "sex": "female",
+            "contact_phone": "07700 900123",
+            "contact_email": None,
+            "hospital_number": "MRN 4471",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    response = open_visit(clinical_client, created.json()["id"])
+
+    assert response.status_code == 201, response.text
+    assert response.json()["patient"]["hospital_number"] == "MRN 4471"
+
+
 def test_a_visit_must_belong_to_a_known_patient(
     clinical_client: TestClient,
 ) -> None:

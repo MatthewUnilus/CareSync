@@ -14,12 +14,20 @@ import { formatInstant, sexLabel } from "./queueDisplay";
  * Find a Patient and read one Patient's Encounters over time.
  *
  * Search here is an aid to discovery, not identity resolution. The registration
- * rule matches a person only when the whole name *and* the whole phone number
- * agree; this box may match part of either and offers candidates for a human to
- * choose between. The results list therefore shows age and sex beside each name,
- * so two Patients who share a name remain distinguishable at the point of
- * selection. A blank query is never sent: the server returns nothing for one,
- * and the view keeps that discipline by not firing the request at all.
+ * rule matches a person by their hospital number, or — when neither record
+ * carries one — by the whole name *and* the whole phone number together. This
+ * box may match part of a name, phone number or hospital number, and offers
+ * candidates for a human to choose between. The results list therefore shows
+ * age, sex and hospital number beside each name, so two Patients who share a
+ * name remain distinguishable at the point of selection. A blank query is never
+ * sent: the server returns nothing for one, and the view keeps that discipline
+ * by not firing the request at all.
+ *
+ * A selected Patient who carries no number offers an explicit attach action.
+ * Attaching is not a search: the reader names the exact record, confirms the
+ * identity shown beside it, and the server refuses a number another record
+ * already holds. On success the view mirrors the server's Patient, so the
+ * heading and the candidate row both show the new number.
  */
 export default function PatientHistoryScreen() {
   const [query, setQuery] = useState("");
@@ -141,6 +149,23 @@ export default function PatientHistoryScreen() {
     await refreshHistory(selected.id);
   }
 
+  /**
+   * A hospital number was just attached server-side. Mirror the server's
+   * Patient into both the selected record and its candidate row, so the header
+   * and the list agree on the number the server now holds. History is untouched:
+   * attaching a number does not alter a Patient's Encounters.
+   */
+  function handleNumberAttached(updated: Patient) {
+    setSelected((current) =>
+      current && current.id === updated.id ? updated : current,
+    );
+    setResults((current) =>
+      current.map((patient) =>
+        patient.id === updated.id ? updated : patient,
+      ),
+    );
+  }
+
   return (
     <>
       <section className={cardClass}>
@@ -148,17 +173,17 @@ export default function PatientHistoryScreen() {
           Find a patient
         </h2>
         <p className={mutedTextClass}>
-          Search by name or contact number. This finds candidates, not an
-          identity: a Patient is only ever recognised by their full name and
-          phone number together, so two people who share a name stay separate.
-          An empty search shows nothing.
+          Search by name, contact number or hospital number. This finds
+          candidates, not an identity: a Patient is recognised by their hospital
+          number, or by their full name and phone number together, so two people
+          who share a name stay separate. An empty search shows nothing.
         </p>
 
         <form className="flex flex-wrap items-end gap-2" onSubmit={handleSearch}>
           <Input
             className="min-w-0 flex-1 basis-64"
-            label="Name or contact number"
-            placeholder="Ada Lovelace · 07700 900123"
+            label="Name, contact number or hospital number"
+            placeholder="Ada Lovelace · 07700 900123 · H12345"
             value={query}
             onChange={setQuery}
           />
@@ -169,7 +194,7 @@ export default function PatientHistoryScreen() {
 
         {searchedQuery === null ? (
           <p className={mutedTextClass}>
-            Enter a name or contact number to search.
+            Enter a name, contact number or hospital number to search.
           </p>
         ) : results.length === 0 ? (
           <p className={mutedTextClass}>
@@ -189,14 +214,24 @@ export default function PatientHistoryScreen() {
                       {patient.full_name}
                     </p>
                     {/*
-                     * Age and sex sit beside the name so two Patients who share
-                     * a name are still distinguishable here. There is no medical
-                     * record number in scope, so this is the identity the
-                     * prototype can honestly show.
+                     * Age, sex and hospital number sit beside the name so two
+                     * Patients who share a name are still distinguishable here.
                      */}
                     <p className="text-body-2-regular text-text-secondary">
                       age {patient.age} · {sexLabel(patient.sex)} ·{" "}
                       <span className={figureClass}>{patient.contact_phone}</span>
+                    </p>
+                    <p className="text-body-2-regular text-text-secondary">
+                      {patient.hospital_number ? (
+                        <>
+                          Hospital number{" "}
+                          <span className={figureClass}>
+                            {patient.hospital_number}
+                          </span>
+                        </>
+                      ) : (
+                        "No hospital number on record"
+                      )}
                     </p>
                   </div>
                   <Button
@@ -218,6 +253,31 @@ export default function PatientHistoryScreen() {
           <h2 className="text-title-3-medium text-text-primary">
             {selected.full_name} — encounters over time
           </h2>
+          <p className={mutedTextClass}>
+            age {selected.age} · {sexLabel(selected.sex)} ·{" "}
+            <span className={figureClass}>{selected.contact_phone}</span>
+          </p>
+          <p className={mutedTextClass}>
+            {selected.hospital_number ? (
+              <>
+                Hospital number{" "}
+                <span className={figureClass}>
+                  {selected.hospital_number}
+                </span>
+              </>
+            ) : (
+              "No hospital number on record"
+            )}
+          </p>
+
+          {selected.hospital_number ? null : (
+            <AttachNumberAction
+              key={selected.id}
+              patient={selected}
+              onAttached={handleNumberAttached}
+            />
+          )}
+
           <p className={mutedTextClass}>
             Every visit for this Patient, oldest first.
           </p>
@@ -315,5 +375,84 @@ function EndVisitAction({
     >
       {saving ? "Ending visit…" : "End visit"}
     </Button>
+  );
+}
+
+/**
+ * Attach a hospital number to the selected Patient.
+ *
+ * Offered only while the Patient carries no number, and kept inside the record
+ * it changes: the confirm copy repeats the name, age, sex and phone so the
+ * reader attaches to the person they mean, not to whichever row was nearest.
+ * Attaching identifies the existing record — it never merges records — and the
+ * server refuses a number another Patient already holds (`409`) or a malformed
+ * one (`422`); both surface as a toast, matching the rest of this screen. The
+ * field and the button disable while the request is in flight so a second click
+ * cannot become a duplicate. On success the server's Patient is handed back so
+ * the heading and candidate row reflect the stored number.
+ */
+function AttachNumberAction({
+  patient,
+  onAttached,
+}: {
+  patient: Patient;
+  onAttached: (updated: Patient) => void;
+}) {
+  const [number, setNumber] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function attach(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = number.trim();
+    if (!trimmed) {
+      toast.error("Enter a hospital number to attach.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.attachHospitalNumber(patient.id, trimmed);
+      toast.success(
+        `Hospital number ${updated.hospital_number} attached to ${updated.full_name}.`,
+      );
+      onAttached(updated);
+    } catch (caught) {
+      toast.error(errorText(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-border-button-default bg-background-primary-default p-4">
+      <p className={mutedTextClass}>
+        Attaching a hospital number identifies this record as this Patient. It
+        does not merge them with anyone else, and the number must not already
+        belong to another record. Confirm this is the right person before
+        attaching:
+      </p>
+      <p className="text-body-medium font-medium text-text-primary">
+        {patient.full_name}
+      </p>
+      <p className="text-body-2-regular text-text-secondary">
+        age {patient.age} · {sexLabel(patient.sex)} ·{" "}
+        <span className={figureClass}>{patient.contact_phone}</span>
+      </p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={attach}
+      >
+        <Input
+          className="min-w-0 flex-1 basis-56"
+          label="Hospital number"
+          placeholder="H12345"
+          value={number}
+          onChange={setNumber}
+          isDisabled={saving}
+        />
+        <Button type="submit" className="min-h-11" disabled={saving}>
+          {saving ? "Attaching…" : "Attach hospital number"}
+        </Button>
+      </form>
+    </div>
   );
 }
