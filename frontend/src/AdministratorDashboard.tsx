@@ -28,20 +28,17 @@ import { usePolling } from "./usePolling";
 const POLL_INTERVAL_MS = 5_000;
 
 /**
- * The six AuditAction values are machine keys (`backend/app/audit_actions.py`).
- * The log shows them in the product's terms, never as the snake_case key.
+ * The action's human label is served from beside the enum
+ * (`backend/app/audit_actions.py`), so the client holds no action-value map of
+ * its own: the set grows for the ward work and a second copy here would drift.
+ * The log renders `entry.action_label`; `entry.action` stays the machine key.
  */
-const ACTION_LABELS: Record<string, string> = {
-  register_patient: "Patient registered",
-  open_encounter: "Encounter opened",
-  correct_intake: "Intake corrected",
-  override: "Final decision overridden",
-  reassessment: "Re-assessment recorded",
-  departure: "Patient departed",
-};
-
-function actionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action;
+function actionLabel(entry: AuditEntry): string {
+  // The server labels every known action and answers "Unknown action" for an
+  // unrecognised value, so this fallback covers only an older server or a
+  // missing field. It stands in for the value rather than showing raw
+  // snake_case to an administrator.
+  return entry.action_label || "Unlabelled action";
 }
 
 export default function AdministratorDashboard() {
@@ -376,7 +373,7 @@ function AuditLogCard({
                       "text-body-medium font-medium whitespace-nowrap text-text-primary",
                     )}
                   >
-                    {actionLabel(entry.action)}
+                    {actionLabel(entry)}
                   </td>
                   <td
                     className={cx(

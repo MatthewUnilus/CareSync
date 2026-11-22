@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app import accuracy, reports
 from app.audit import read_audit_log
+from app.audit_actions import label_for
 from app.deps import DbSession, require_role
 from app.models import Role, User
 from app.queue import administrator_queue
@@ -104,6 +105,7 @@ def get_audit_log(
             AuditEntryResponse(
                 id=entry.id,
                 action=entry.action,
+                action_label=label_for(entry.action),
                 detail=entry.detail,
                 recorded_at=entry.recorded_at,
                 actor=ActorResponse(
