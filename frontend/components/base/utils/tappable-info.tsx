@@ -13,7 +13,7 @@ import { cx, sortCx } from "@/utils/cx";
  * This replaces `title` tooltips which don't work on touch devices.
  */
 export interface TappableInfoProps {
-  /** Brief text always visible (e.g., "Override", "Differs: High → Low") */
+  /** Brief text always visible (e.g., "Archived", "Changed: Draft → Final") */
   summary: ReactNode;
   /** Full explanation shown on desktop or when expanded on mobile */
   detail: ReactNode;

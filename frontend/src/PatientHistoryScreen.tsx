@@ -1,21 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { toast } from "@/components/base/toast/toast";
-import { TappableInfo } from "@/components/base/utils/tappable-info";
-import { cx } from "@/utils/cx";
 
 import { api, errorText } from "./api";
 import type { Encounter, Patient } from "./api";
-import { cardClass, figureClass, mutedTextClass, sectionLabelClass } from "./design";
-import {
-  formatInstant,
-  sexLabel,
-  urgencyBadgeClass,
-  urgencyBorderClass,
-} from "./queueDisplay";
+import { cardClass, figureClass, mutedTextClass } from "./design";
+import { formatInstant, sexLabel } from "./queueDisplay";
 
 /**
  * Find a Patient and read one Patient's Encounters over time.
@@ -39,6 +32,12 @@ export default function PatientHistoryScreen() {
   const [selected, setSelected] = useState<Patient | null>(null);
   const [history, setHistory] = useState<Encounter[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // The Patient whose history the view is allowed to show. Each fetch captures
+  // the id it was started for and, once it resolves, writes nothing unless that
+  // Patient is still selected. Without this, a slow reply for the previous
+  // Patient — or an end-of-visit refresh racing a switch — would drop its rows
+  // under the new Patient's heading.
+  const selectedIdRef = useRef<number | null>(null);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,7 +56,9 @@ export default function PatientHistoryScreen() {
       setResults(patients);
       setSearchedQuery(trimmed);
       // The previously selected Patient may not be among the new results; clear
-      // the history so a stale record cannot sit under a fresh search.
+      // the history so a stale record cannot sit under a fresh search, and
+      // retire any history fetch still in flight for the old selection.
+      selectedIdRef.current = null;
       setSelected(null);
       setHistory([]);
     } catch (caught) {
@@ -68,17 +69,76 @@ export default function PatientHistoryScreen() {
   }
 
   async function openHistory(patient: Patient) {
+    selectedIdRef.current = patient.id;
     setSelected(patient);
     setLoadingHistory(true);
     try {
       const { encounters } = await api.patientHistory(patient.id);
+      if (selectedIdRef.current !== patient.id) {
+        return;
+      }
       setHistory(encounters);
     } catch (caught) {
+      if (selectedIdRef.current !== patient.id) {
+        return;
+      }
       toast.error(errorText(caught));
       setHistory([]);
     } finally {
-      setLoadingHistory(false);
+      if (selectedIdRef.current === patient.id) {
+        setLoadingHistory(false);
+      }
     }
+  }
+
+  /**
+   * Re-read the selected Patient's Encounters. Unlike `openHistory`, a failure
+   * here leaves the list as it was rather than clearing it: the reader did not
+   * ask for a new Patient, so the row they were reading must not vanish.
+   */
+  async function refreshHistory(patientId: number) {
+    // A refresh only speaks for the Patient it was started for. If the operator
+    // has since switched Patient or searched again, drop it: the previous
+    // Patient's rows must not land under the new heading, and this request must
+    // not clear the busy state the new Patient's load owns.
+    if (selectedIdRef.current !== patientId) {
+      return;
+    }
+    setLoadingHistory(true);
+    try {
+      const { encounters } = await api.patientHistory(patientId);
+      if (selectedIdRef.current !== patientId) {
+        return;
+      }
+      setHistory(encounters);
+    } catch (caught) {
+      if (selectedIdRef.current !== patientId) {
+        return;
+      }
+      toast.error(errorText(caught));
+    } finally {
+      if (selectedIdRef.current === patientId) {
+        setLoadingHistory(false);
+      }
+    }
+  }
+
+  /**
+   * A visit has just ended server-side. Show the server's own ended Encounter
+   * at once so the row leaves its open state, then re-read the list so the view
+   * matches the server exactly. The immediate update also keeps the row honest
+   * if the re-read itself fails.
+   */
+  async function handleEncounterEnded(ended: Encounter) {
+    if (!selected) {
+      return;
+    }
+    setHistory((previous) =>
+      previous.map((encounter) =>
+        encounter.id === ended.id ? ended : encounter,
+      ),
+    );
+    await refreshHistory(selected.id);
   }
 
   return (
@@ -159,9 +219,7 @@ export default function PatientHistoryScreen() {
             {selected.full_name} — encounters over time
           </h2>
           <p className={mutedTextClass}>
-            Every visit for this Patient, oldest first, with the Urgency Level
-            that governed it. Evaluation-run rows are excluded, so corpus data
-            never appears as a real visit.
+            Every visit for this Patient, oldest first.
           </p>
 
           {loadingHistory ? (
@@ -175,63 +233,36 @@ export default function PatientHistoryScreen() {
               {history.map((encounter) => (
                 <li
                   key={encounter.id}
-                  className={cx(
-                    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-2xl border bg-background-primary-default p-4 max-sm:grid-cols-1",
-                    encounter.assessment
-                      ? urgencyBorderClass(encounter.assessment.final_decision)
-                      : "border-border-button-default",
-                  )}
+                  className="flex flex-col gap-1 rounded-2xl border border-border-button-default bg-background-primary-default p-4"
                 >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="text-body-semibold text-text-primary">
-                        Encounter #{encounter.id}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-body-semibold text-text-primary">
+                      Encounter #{encounter.id}
+                    </span>
+                    <span
+                      className={`text-body-2-regular ${mutedTextClass} ${figureClass}`}
+                    >
+                      {formatInstant(encounter.arrived_at)}
+                    </span>
+                    {encounter.ended_at ? (
+                      <span className="text-body-2-regular text-text-secondary">
+                        ended {formatInstant(encounter.ended_at)}
                       </span>
-                      <span className={`text-body-2-regular ${mutedTextClass} ${figureClass}`}>
-                        {formatInstant(encounter.arrived_at)}
+                    ) : (
+                      <span className="text-body-2-regular text-text-secondary">
+                        open
                       </span>
-                      {encounter.departed_at ? (
-                        <span className="text-body-2-regular text-text-secondary">
-                          departed {formatInstant(encounter.departed_at)}
-                        </span>
-                      ) : (
-                        <span className="text-body-2-regular text-text-secondary">
-                          awaiting
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-body-regular text-text-primary wrap-anywhere">
-                      {encounter.intake.presenting_complaint}
-                    </p>
+                    )}
                   </div>
-                  {encounter.assessment ? (
-                    <div className="flex flex-col items-end gap-1 max-sm:items-start">
-                      <span className={sectionLabelClass}>Final decision</span>
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-body-semibold ${urgencyBadgeClass(
-                          encounter.assessment.final_decision,
-                        )}`}
-                      >
-                        {encounter.assessment.final_decision}
-                      </span>
-                      {encounter.assessment.final_decision !==
-                      encounter.assessment.machine_recommendation ? (
-                        <TappableInfo
-                          summary="overridden from"
-                          detail="The Final Decision differs from the machine recommendation because an Override was recorded."
-                        >
-                          {({ showDetail }) => (
-                            <span className="text-body-2-regular text-text-secondary">
-                              overridden from{" "}
-                              {showDetail ? encounter.assessment!.machine_recommendation : ""}
-                            </span>
-                          )}
-                        </TappableInfo>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <span className={mutedTextClass}>Not yet assessed</span>
-                  )}
+                  <p className="text-body-regular text-text-primary wrap-anywhere">
+                    {encounter.reason_for_visit}
+                  </p>
+                  {encounter.status === "open" ? (
+                    <EndVisitAction
+                      encounter={encounter}
+                      onEnded={handleEncounterEnded}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -239,5 +270,50 @@ export default function PatientHistoryScreen() {
         </section>
       ) : null}
     </>
+  );
+}
+
+/**
+ * End an open Encounter from its row in the history.
+ *
+ * The action is self-contained so the row reads as a plain record until the
+ * reader chooses to act. It sends no body: the server stamps the end instant.
+ * The button disables while the request is in flight, which both names the busy
+ * state and stops a second click becoming a duplicate end — an already-ended
+ * visit is refused with a `409`. Errors surface as a toast, matching the rest
+ * of this screen; the success path hands the server's Encounter back to the
+ * list so it refreshes to the ended state.
+ */
+function EndVisitAction({
+  encounter,
+  onEnded,
+}: {
+  encounter: Encounter;
+  onEnded: (ended: Encounter) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  async function end() {
+    setSaving(true);
+    try {
+      const ended = await api.endEncounter(encounter.id);
+      toast.success(`Visit #${encounter.id} ended.`);
+      await onEnded(ended);
+    } catch (caught) {
+      toast.error(errorText(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="secondary"
+      className="min-h-11 self-start"
+      disabled={saving}
+      onClick={() => void end()}
+    >
+      {saving ? "Ending visit…" : "End visit"}
+    </Button>
   );
 }

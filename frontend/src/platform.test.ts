@@ -27,8 +27,8 @@ test("an unknown platform falls back to the web build", () => {
   assert.equal(readPlatform(""), "web");
 });
 
-test("the native app lands on intake and the dashboard on the Queue", () => {
+test("the workspace opens on intake on every platform", () => {
   assert.equal(defaultClinicalView("android"), "intake");
   assert.equal(defaultClinicalView("ios"), "intake");
-  assert.equal(defaultClinicalView("web"), "queue");
+  assert.equal(defaultClinicalView("web"), "intake");
 });

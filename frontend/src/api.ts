@@ -5,16 +5,6 @@ export type Role = "clinical" | "administrator";
 
 export type Sex = "female" | "male" | "other" | "unspecified";
 
-export type UrgencyLevel = "High" | "Medium" | "Low";
-
-/**
- * The fixed Override Reason set lives on the server
- * (`backend/app/override_reasons.py`) and is fetched from
- * `GET /api/clinical/override-reasons`, so the client never duplicates it.
- */
-export type OverrideReason = string;
-
-
 export interface CurrentUser {
   id: number;
   email: string;
@@ -50,104 +40,23 @@ export interface BloodPressure {
   diastolic: number;
 }
 
+/**
+ * The reason for a visit, as sent when a visit is opened. A visit no longer
+ * holds vital signs; every set of vitals is its own Observation (ADR 0008), so
+ * only the reason travels here. Matching the server's `VisitReasonPayload`,
+ * which refuses any extra field with a `422`.
+ */
 export interface Intake {
   presenting_complaint: string;
-  pain_level: number;
-  illness_duration_hours: number;
-  temperature_c: number;
-  heart_rate_bpm: number;
-  respiratory_rate_bpm: number;
-  blood_pressure: BloodPressure;
-  oxygen_saturation_percent: number;
-  notes: string | null;
 }
 
 export interface Encounter {
   id: number;
   arrived_at: string;
-  departed_at: string | null;
-  status: "awaiting" | "departed";
+  ended_at: string | null;
+  status: "open" | "ended";
   patient: Patient;
-  intake: Intake;
-  /** The governing (most recent) Assessment. */
-  assessment: Assessment | null;
-  /** Every Assessment, oldest first. Earlier ones keep their Overrides. */
-  assessments: Assessment[];
-}
-
-export interface AssessmentSnapshot {
-  presenting_complaint: string;
-  age: number;
-  pain_level: number;
-  illness_duration_hours: number;
-  temperature_c: number;
-  heart_rate_bpm: number;
-  respiratory_rate_bpm: number;
-  blood_pressure: BloodPressure;
-  oxygen_saturation_percent: number;
-  notes: string | null;
-}
-
-export interface OverrideRecord {
-  reason: OverrideReason;
-  free_text: string | null;
-  performed_at: string;
-  performed_by: {
-    id: number;
-    display_name: string;
-  };
-}
-
-export interface RedFlag {
-  id: string;
-  finding: string;
-  citation: string;
-  /**
-   * Intake field names this rule keyed on, e.g. `oxygen_saturation_percent`.
-   * Empty when the rule keyed on a recognised Symptom Group rather than a
-   * measured value. The board marks exactly these fields as abnormal.
-   */
-  vitals: string[];
-}
-
-export interface Assessment {
-  id: number;
-  assessed_at: string;
-  machine_recommendation: UrgencyLevel;
-  final_decision: UrgencyLevel;
-  recognised_symptom_groups: string[];
-  /**
-   * True when the complaint matched no Symptom Group and the fallback
-   * provider was unavailable or timed out. Distinct from an Override.
-   */
-  unclassified: boolean;
-  /** Every red flag that fired, explaining why this reached High. */
-  red_flags: RedFlag[];
-  override: OverrideRecord | null;
-  snapshot: AssessmentSnapshot;
-  /**
-   * Set by a Re-assessment: the governing Assessment this one replaced.
-   * Null on the first Assessment, so the sequence is reconstructable.
-   */
-  supersedes_assessment_id: number | null;
-}
-
-export interface QueueEntry {
-  encounter_id: number;
-  arrived_at: string;
-  waiting_seconds: number;
-  urgency_level: UrgencyLevel;
-  patient: Patient;
-  intake: Intake;
-  assessment: Assessment;
-  override_flag: boolean;
-  /** Its own state, separate from override_flag. */
-  unclassified_flag: boolean;
-}
-
-export interface QueueSnapshot {
-  as_of: string;
-  entries: QueueEntry[];
+  reason_for_visit: string;
 }
 
 /**
@@ -169,23 +78,6 @@ export interface PatientHistory {
   encounters: Encounter[];
 }
 
-export interface AdministratorQueueEntry {
-  encounter_id: number;
-  arrived_at: string;
-  waiting_seconds: number;
-  urgency_level: UrgencyLevel;
-  patient_name: string;
-  presenting_complaint: string;
-  machine_recommendation: UrgencyLevel;
-  final_decision: UrgencyLevel;
-  final_decision_differs: boolean;
-}
-
-export interface AdministratorQueueSnapshot {
-  as_of: string;
-  entries: AdministratorQueueEntry[];
-}
-
 export interface DailyVisitsReport {
   day: string;
   starts_at: string;
@@ -198,7 +90,7 @@ export interface DailyVisitsReport {
 export interface PerformanceEntry {
   encounter_id: number;
   arrived_at: string;
-  departed_at: string;
+  ended_at: string;
   waiting_seconds: number;
 }
 
@@ -222,7 +114,6 @@ export interface AuditEntry {
   };
   patient_id: number | null;
   encounter_id: number | null;
-  assessment_id: number | null;
 }
 
 export interface AuditLog {
@@ -368,47 +259,15 @@ export const api = {
     ),
   patientHistory: (patientId: number) =>
     request<PatientHistory>(`/api/clinical/patients/${patientId}/encounters`),
-  queue: () => request<QueueSnapshot>("/api/clinical/queue"),
-  overrideReasons: () =>
-    request<{ reasons: OverrideReason[] }>("/api/clinical/override-reasons"),
-  overrideFinalDecision: (
-    encounterId: number,
-    body: {
-      assessment_id: number;
-      final_decision: UrgencyLevel;
-      reason: OverrideReason;
-      free_text: string | null;
-    },
-  ) =>
-    request<Encounter>(`/api/clinical/encounters/${encounterId}/override`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   /*
-   * Departure takes no body: the departure instant is the server's, recorded
-   * at the moment of the action. The Encounter then leaves the awaiting
-   * Queue on the next read.
+   * Ending a visit takes no body: the end instant is the server's, recorded at
+   * the moment of the action. An already-ended visit is a `409`; an unknown
+   * Encounter is a `404`.
    */
-  departEncounter: (encounterId: number) =>
-    request<Encounter>(`/api/clinical/encounters/${encounterId}/departure`, {
+  endEncounter: (encounterId: number) =>
+    request<Encounter>(`/api/clinical/encounters/${encounterId}/end`, {
       method: "POST",
     }),
-  /*
-   * Re-assessment captures the Encounter's current intake and appends a new
-   * Assessment. It is only ever sent from an explicit Clinical action; the
-   * queue reorders on the next read because it sorts on the latest Final
-   * Decision.
-   */
-  reassessEncounter: (encounterId: number, intake: Intake) =>
-    requestDetailed<Encounter>(
-      `/api/clinical/encounters/${encounterId}/reassessment`,
-      {
-        method: "POST",
-        body: JSON.stringify(intake),
-      },
-    ),
-  administratorQueue: () =>
-    request<AdministratorQueueSnapshot>("/api/administrator/queue"),
   /*
    * Reports are read-only derivations. The daily figure defaults to the
    * server's UTC day; the performance figure is a whole-record view.

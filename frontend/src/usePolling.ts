@@ -2,9 +2,8 @@ import { useEffect } from "react";
 
 /**
  * Re-read a resource immediately, every `intervalMs`, and when the window
- * regains focus. This is the single polling mechanism used by both the
- * Clinical Queue board and the Administrator dashboard, so neither needs a
- * manual refresh to show a changed Final Decision or a Departure.
+ * regains focus. This is the single polling mechanism behind the app's live
+ * views, so a change in the record appears without a manual refresh.
  */
 export function usePolling(
   load: () => void | Promise<void>,

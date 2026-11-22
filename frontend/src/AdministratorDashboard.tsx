@@ -1,14 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { RiRefreshLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
-import { TappableInfo } from "@/components/base/utils/tappable-info";
 import { cx } from "@/utils/cx";
 
 import { api, ApiError } from "./api";
-import type { AdministratorQueueSnapshot, AuditEntry } from "./api";
+import type { AuditEntry } from "./api";
 import {
   cardClass,
   figureClass,
@@ -22,10 +20,7 @@ import {
   tableWrapClass,
 } from "./design";
 import AdministratorReports from "./AdministratorReports";
-import { formatInstant, formatWaiting, urgencyTextClass } from "./queueDisplay";
-import { usePolling } from "./usePolling";
-
-const POLL_INTERVAL_MS = 5_000;
+import { formatInstant } from "./queueDisplay";
 
 /**
  * The action's human label is served from beside the enum
@@ -42,12 +37,6 @@ function actionLabel(entry: AuditEntry): string {
 }
 
 export default function AdministratorDashboard() {
-  const [snapshot, setSnapshot] = useState<AdministratorQueueSnapshot | null>(
-    null,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState("");
   const [auditAppliedFilter, setAuditAppliedFilter] = useState<number | null>(
@@ -56,31 +45,27 @@ export default function AdministratorDashboard() {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    try {
-      const next = await api.administratorQueue();
-      setSnapshot(next);
-      setError(null);
-    } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "Unable to reach the server.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /*
+   * Each load claims the next request id as it starts. A resolution writes
+   * only if it still owns the latest id, so an earlier request that lands late
+   * (the mount load racing a filter load, or a React StrictMode effect replay)
+   * cannot overwrite fresher state. Unmounting bumps the id too, invalidating
+   * any in-flight request so it drops its writes on a dead tree.
+   */
+  const auditRequestId = useRef(0);
 
   const loadAudit = useCallback(async (encounterId: number | null) => {
+    const requestId = (auditRequestId.current += 1);
     setAuditLoading(true);
     try {
       const { entries: next } = await api.auditLog(
         encounterId === null ? undefined : encounterId,
       );
+      if (auditRequestId.current !== requestId) return;
       setAuditEntries(next);
       setAuditError(null);
     } catch (caught) {
+      if (auditRequestId.current !== requestId) return;
       setAuditEntries([]);
       setAuditError(
         caught instanceof ApiError
@@ -88,11 +73,21 @@ export default function AdministratorDashboard() {
           : "Unable to reach the server.",
       );
     } finally {
-      setAuditLoading(false);
+      if (auditRequestId.current === requestId) setAuditLoading(false);
     }
   }, []);
 
-  usePolling(load, POLL_INTERVAL_MS);
+  // Populate the unfiltered log on mount so the card does not sit on its
+  // placeholder until the operator submits a filter. The audit log is not
+  // polled; later refreshes come only from the filter actions.
+  useEffect(() => {
+    void loadAudit(null);
+    return () => {
+      // Invalidate whatever is in flight so it cannot write after unmount or
+      // after a StrictMode remount supersedes it.
+      auditRequestId.current += 1;
+    };
+  }, [loadAudit]);
 
   function applyAuditFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -106,140 +101,8 @@ export default function AdministratorDashboard() {
     void loadAudit(valid);
   }
 
-  const entries = snapshot?.entries ?? [];
-
   return (
     <>
-      <section className={cardClass}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-title-3-medium text-text-primary">
-              Queue overview
-            </h2>
-            <p className={mutedTextClass}>
-              {entries.length === 0
-                ? "No encounters waiting"
-                : `${entries.length} waiting`}{" "}
-              · updates every 5 seconds
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            leadingIcon={RiRefreshLine}
-            onClick={() => {
-              void load();
-            }}
-          >
-            Refresh now
-          </Button>
-        </div>
-
-        {error ? (
-          <p className={noticeClass.error} role="status">
-            {error}
-          </p>
-        ) : null}
-
-        {loading && snapshot === null ? (
-          <p className={mutedTextClass}>Loading the queue…</p>
-        ) : null}
-
-        {!loading && entries.length === 0 ? (
-          <p className={mutedTextClass}>No encounters are waiting</p>
-        ) : null}
-
-        {entries.length > 0 ? (
-          <div className={tableWrapClass}>
-            <table className={tableClass}>
-              <caption className={tableCaptionClass}>
-                Awaiting encounters in queue order: urgency level, then arrival
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Urgency
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Patient
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Complaint
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Waiting
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Decision vs recommendation
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.encounter_id} className={tableRowClass}>
-                    <td
-                      className={cx(
-                        tableCellClass,
-                        "text-body-medium font-medium whitespace-nowrap",
-                        urgencyTextClass(entry.urgency_level),
-                      )}
-                    >
-                      {entry.urgency_level}
-                    </td>
-                    <td
-                      className={cx(
-                        tableCellClass,
-                        "font-medium whitespace-nowrap text-text-primary",
-                      )}
-                      title={`Encounter #${entry.encounter_id}`}
-                    >
-                      {entry.patient_name}
-                    </td>
-                    <td
-                      className={cx(tableCellClass, "max-w-md truncate")}
-                      title={entry.presenting_complaint}
-                    >
-                      {entry.presenting_complaint}
-                    </td>
-                    <td
-                      className={cx(
-                        tableCellClass,
-                        "whitespace-nowrap text-text-secondary",
-                        figureClass,
-                      )}
-                    >
-                      {formatWaiting(entry.waiting_seconds)}
-                    </td>
-                    <td className={cx(tableCellClass, "whitespace-nowrap")}>
-                      {entry.final_decision_differs ? (
-                        <TappableInfo
-                          summary={
-                            <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption-1-semibold text-status-orange-text bg-status-orange-background">
-                              Differs: {entry.machine_recommendation} →{" "}
-                              {entry.final_decision}
-                            </span>
-                          }
-                          detail={`Machine recommendation ${entry.machine_recommendation}; final decision ${entry.final_decision}`}
-                        />
-                      ) : (
-                        <TappableInfo
-                          summary={
-                            <span className="text-caption-1-regular text-text-secondary">
-                              Same
-                            </span>
-                          }
-                          detail={`Machine recommendation and final decision are both ${entry.final_decision}`}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
-
       <section
         className={cardClass}
         id="reports"

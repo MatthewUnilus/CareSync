@@ -16,12 +16,14 @@ export function isNativePlatform(platform: ClientPlatform): boolean {
 }
 
 /**
- * The native shell is the bedside client, so it lands on intake. The web
- * dashboard keeps its Queue-first default. Both surfaces remain available in
- * both forms through the existing view switch.
+ * The view the clinical workspace opens on. Intake is the entry point on every
+ * surface: registration is the first thing a nurse does whether they hold the
+ * bedside tablet or a browser, and history is one tap away on the view switch.
+ * The parameter is kept so callers still pass the detected platform, but it no
+ * longer selects the view.
  */
-export type ClinicalView = "queue" | "intake";
+export type ClinicalView = "intake";
 
-export function defaultClinicalView(platform: ClientPlatform): ClinicalView {
-  return isNativePlatform(platform) ? "intake" : "queue";
+export function defaultClinicalView(_platform: ClientPlatform): ClinicalView {
+  return "intake";
 }

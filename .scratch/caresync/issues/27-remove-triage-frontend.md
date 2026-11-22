@@ -1,22 +1,34 @@
 # 27: Remove the triage surfaces from the frontend
 
-**What to build:** The screens that show urgency, a queue or an override are gone, and what is left is a client that can register a patient, open a visit, chart vitals, search, read a history and show the audit log. The intake validation defect gets fixed here, because the ward forms are about to copy whatever pattern is in that file.
+**What to build:** The screens that show urgency, a queue or an override are gone, and what is left is a client that can register a patient, open and end a visit, search, read a history and show the audit log. Vital-sign charting lands with the Observation chart in ticket 30. The intake validation defect gets fixed here, because the ward forms are about to copy whatever pattern is in that file.
 
 **Blocked by:** 26 (the API shapes it mirrors must be final first).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `QueueBoard.tsx` (791 lines) is deleted, along with its three action components.
-- [ ] `TriageKitGallery.tsx` (460 lines) and the entire `frontend/components/triage/` directory are deleted, and the `/triage-kit` branch is removed from `App.tsx`. That gallery is the only consumer of the kit, so nothing else breaks.
-- [ ] `api.ts` loses every triage type and method: `UrgencyLevel`, `OverrideReason`, `AssessmentSnapshot`, `OverrideRecord`, `RedFlag`, `Assessment`, `QueueEntry`, `QueueSnapshot`, `AdministratorQueueEntry`, `AdministratorQueueSnapshot`, `UrgencyLevelCount`, `UrgencyDistributionReport`, and the `queue`, `overrideReasons`, `overrideFinalDecision`, `reassessEncounter` and `administratorQueue` methods.
-- [ ] `queueDisplay.ts` keeps its generic half, being `SEX_OPTIONS`, `sexLabel`, `formatInstant`, `formatWaiting`, `formatWaitingLong`, `formatArrival` and `formatArrivalFull`, and loses the urgency class maps, the wait bands and `abnormalVitalFields`.
-- [ ] `PatientHistoryScreen.tsx` loses the urgency border, the badge and the machine-versus-final difference note, and keeps search and the encounter list.
-- [ ] `IntakeScreen.tsx` loses the re-assessment form, its state, its handler and its render block, and keeps registration, the encounter form and the recent list.
-- [ ] `AdministratorDashboard.tsx` loses the awaiting-queue table and keeps the reports mount and the audit log card.
-- [ ] `brand.tsx` is reworked. `LogoMark` is three bands in rose, yellow and lime, which is the urgency colour scheme rendered as a logo.
-- [ ] `platform.ts` and `platform.test.ts` lose the queue arm of `ClinicalView` and the assertion that web lands on `"queue"`.
-- [ ] **The intake validation defect is fixed.** At `IntakeScreen.tsx:118-121`, age is reported through `painLevel`, sex through `durationHours`, phone through `temperatureC`, and the full-name error is overwritten by the complaint error on the next line, so it can never be seen. The duplicate block at 170-176 goes with the re-assessment form.
-- [ ] `npm run build:web` type-checks and the surviving tests pass.
+- [x] `QueueBoard.tsx` (791 lines) is deleted, along with its three action components.
+- [x] `TriageKitGallery.tsx` (460 lines) and the entire `frontend/components/triage/` directory are deleted, and the `/triage-kit` branch is removed from `App.tsx`. That gallery is the only consumer of the kit, so nothing else breaks.
+- [x] `api.ts` loses every triage type and method: `UrgencyLevel`, `OverrideReason`, `AssessmentSnapshot`, `OverrideRecord`, `RedFlag`, `Assessment`, `QueueEntry`, `QueueSnapshot`, `AdministratorQueueEntry`, `AdministratorQueueSnapshot`, `UrgencyLevelCount`, `UrgencyDistributionReport`, and the `queue`, `overrideReasons`, `overrideFinalDecision`, `reassessEncounter` and `administratorQueue` methods.
+- [x] `queueDisplay.ts` keeps its generic half, being `SEX_OPTIONS`, `sexLabel`, `formatInstant`, `formatWaiting`, `formatWaitingLong`, `formatArrival` and `formatArrivalFull`, and loses the urgency class maps, the wait bands and `abnormalVitalFields`.
+- [x] `PatientHistoryScreen.tsx` loses the urgency border, the badge and the machine-versus-final difference note, and keeps search and the encounter list with a manual end-visit action for open visits.
+- [x] `IntakeScreen.tsx` loses the re-assessment form, its state, its handler and its render block, and keeps registration, the encounter form and the recent list.
+- [x] `AdministratorDashboard.tsx` loses the awaiting-queue table and keeps the reports mount and the audit log card.
+- [x] `brand.tsx` is reworked to remove the existing rose, yellow and lime urgency bands; `LogoMark` uses a neutral non-triage mark.
+- [x] `platform.ts` and `platform.test.ts` lose the queue arm of `ClinicalView` and the assertion that web lands on `"queue"`.
+- [x] **The intake validation defect is fixed.** At `IntakeScreen.tsx:118-121`, age is reported through `painLevel`, sex through `durationHours`, phone through `temperatureC`, and the full-name error is overwritten by the complaint error on the next line, so it can never be seen. The duplicate block at 170-176 goes with the re-assessment form.
+- [x] `npm run build:web` type-checks and the surviving tests pass.
+
+## Backend integration (exposed by ticket 26)
+
+Ticket 26 finishes the API shapes this ticket mirrors. The prune is not deletion alone: the end-of-visit route and three response fields change name, and two fields disappear, so the frontend has to follow or it reads a payload that is no longer sent.
+
+- **End a visit through `POST /api/clinical/encounters/{id}/end`, not the departure route.** `api.ts`'s `departEncounter` (now `POST .../departure`) becomes an end-of-visit call against `/end`. It still takes no body: the server stamps the instant. An already-ended visit is a `409`; an unknown Encounter is a `404`.
+- **`Encounter` is `id`, `arrived_at`, `ended_at`, `status`, `patient`, `reason_for_visit`.** `departed_at` becomes `ended_at`; `status` is `"open" | "ended"` rather than `"awaiting" | "departed"`; `reason_for_visit` carries what `intake` used to show.
+- **`assessment` and `assessments` are gone from `Encounter`, and so is `intake`.** The standalone `Intake` type shrinks to the reason-only shape a visit accepts — `presenting_complaint` alone, matching `VisitReasonPayload` — and its vitals fields go. `openEncounter` keeps sending that reason under the `intake` wrapper, because vitals posted to a visit are refused with a `422` by `extra='forbid'`.
+- **`AuditEntry` drops `assessment_id`.** `patient_id` and `encounter_id` survive as the only subject references, both still nullable.
+- **`PerformanceEntry`'s instant is renamed `ended_at` too**, in step with the Encounter, since neither report field means "left a queue" any more.
+
+`api.ts` is still pruned in place (see Notes); this section only names the surviving contract the pruned file has to land on.
 
 ## Notes
 

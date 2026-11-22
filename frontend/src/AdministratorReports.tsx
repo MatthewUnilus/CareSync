@@ -120,8 +120,7 @@ export default function AdministratorReports() {
                 Daily Visits
               </h3>
               <p className={reportStatNoteClass}>
-                UTC day {reports.dailyVisits.day} · arrivals, departures and
-                backlog
+                UTC day {reports.dailyVisits.day} · arrivals, ends and backlog
               </p>
             </div>
             <dl className={reportStatsClass}>
@@ -137,7 +136,7 @@ export default function AdministratorReports() {
                 <dd className={reportStatFigureClass}>
                   {reports.dailyVisits.throughput}
                 </dd>
-                <span className={reportStatNoteClass}>departed</span>
+                <span className={reportStatNoteClass}>ended</span>
               </div>
               <div className={reportStatClass}>
                 <dt className={reportStatLabelClass}>Awaiting</dt>
@@ -151,7 +150,7 @@ export default function AdministratorReports() {
             </dl>
             <p className={reportNoteClass}>
               Volume counts encounters that arrived on the day; throughput
-              counts those that departed on it, even if they arrived earlier.
+              counts those that ended on it, even if they arrived earlier.
             </p>
           </section>
 
@@ -164,7 +163,7 @@ export default function AdministratorReports() {
                 Performance
               </h3>
               <p className={reportStatNoteClass}>
-                Departed encounters only · {reports.performance.completed}{" "}
+                Ended encounters only · {reports.performance.completed}{" "}
                 completed
               </p>
             </div>
@@ -176,7 +175,7 @@ export default function AdministratorReports() {
                     Math.round(reports.performance.average_waiting_seconds),
                   )}
                 </dd>
-                <span className={reportStatNoteClass}>arrival to departure</span>
+                <span className={reportStatNoteClass}>arrival to end</span>
               </div>
             </dl>
             {reports.performance.entries.length > 0 ? (
@@ -187,7 +186,7 @@ export default function AdministratorReports() {
                 >
                   <table className={tableClass}>
                     <caption className={tableCaptionClass}>
-                      Time waiting for each departed encounter
+                      Time waiting for each ended encounter
                     </caption>
                     <thead>
                       <tr>
@@ -222,7 +221,7 @@ export default function AdministratorReports() {
               </div>
             ) : (
               <p className={mutedTextClass}>
-                No encounter has departed yet, so there is no waiting time to
+                No encounter has ended yet, so there is no waiting time to
                 show
               </p>
             )}

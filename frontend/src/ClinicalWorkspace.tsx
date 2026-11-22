@@ -10,9 +10,8 @@ import { detectPlatform } from "./runtime";
 import { defaultClinicalView } from "./platform";
 import IntakeScreen from "./IntakeScreen";
 import PatientHistoryScreen from "./PatientHistoryScreen";
-import QueueBoard from "./QueueBoard";
 
-type ClinicalView = "queue" | "intake" | "history";
+type ClinicalView = "intake" | "history";
 
 export default function ClinicalWorkspace() {
   const [view, setView] = useState<ClinicalView>(() =>
@@ -31,14 +30,11 @@ export default function ClinicalWorkspace() {
         selectedKeys={new Set([view])}
         onSelectionChange={(keys: Selection) => {
           const next = [...keys][0];
-          if (next === "queue" || next === "intake" || next === "history") {
+          if (next === "intake" || next === "history") {
             setView(next);
           }
         }}
       >
-        <SegmentedControlItem id="queue" className="min-h-11 px-4">
-          Queue
-        </SegmentedControlItem>
         <SegmentedControlItem id="intake" className="min-h-11 px-4">
           Intake
         </SegmentedControlItem>
@@ -47,13 +43,7 @@ export default function ClinicalWorkspace() {
         </SegmentedControlItem>
       </SegmentedControl>
 
-      {view === "queue" ? (
-        <QueueBoard />
-      ) : view === "intake" ? (
-        <IntakeScreen />
-      ) : (
-        <PatientHistoryScreen />
-      )}
+      {view === "intake" ? <IntakeScreen /> : <PatientHistoryScreen />}
     </>
   );
 }
