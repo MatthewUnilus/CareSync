@@ -14,6 +14,7 @@ import type {
   ListBoxItemProps as AriaListBoxItemProps,
   SelectProps as AriaSelectProps,
   SelectValueRenderProps as AriaSelectValueRenderProps,
+  FieldErrorProps as AriaFieldErrorProps,
 } from "react-aria-components";
 import {
   MENU_ITEM,
@@ -26,6 +27,8 @@ import { Label } from "@/components/base/input/label";
 import { ChevronDownSmall } from "@/components/foundations/icons/chevrons";
 import { cx } from "@/utils/cx";
 import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { FieldError as AriaFieldError } from "react-aria-components";
+import { hintTextClassName } from "@/components/base/input/hint-text";
 
 /**
  * Figma source: Board UI → dashboard 1 dropdown triggers ("All prices" filter
@@ -69,6 +72,10 @@ export interface SelectProps<T extends object>
   /** Customise the trigger's rendered value (e.g. a compact flag + dial code).
    *  Falls back to the selected item's own content when omitted. */
   renderValue?: ReactNode | ((values: AriaSelectValueRenderProps<T>) => ReactNode);
+  /** Inline error message shown below the trigger when the select is invalid.
+   *  Mirrors Input's errorMessage pattern: shown in place of hint, via React Aria's FieldError.
+   *  Pass a function to render from the validation result. */
+  errorMessage?: AriaFieldErrorProps["children"];
   ref?: Ref<HTMLDivElement>;
 }
 
@@ -107,9 +114,9 @@ export function Select<T extends object>({
       onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)}
       className={cx("group flex flex-col", label ? "gap-1" : undefined, className)}
     >
-      {({ isOpen, isRequired }) => (
+      {({ isOpen, isRequired, isInvalid }) => (
         <>
-          {label ? <Label isRequired={isRequired}>{label}</Label> : null}
+          {label ? <Label isRequired={isRequired} isInvalid={isInvalid}>{label}</Label> : null}
           <AriaButton
             ref={triggerRef}
             className={cx(
@@ -120,6 +127,7 @@ export function Select<T extends object>({
               "hover:bg-background-primary-hover hover:border-border-button-hover",
               "outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring",
               "disabled:cursor-not-allowed disabled:bg-background-primary-disabled disabled:text-text-tertiary disabled:shadow-none",
+              isInvalid && "border-border-error-default",
               size === "sm"
                 ? "gap-1 px-[7px] py-1 text-body-2-medium"
                 : "gap-1.5 px-2.5 py-2 text-body-medium",
@@ -142,6 +150,13 @@ export function Select<T extends object>({
               )}
             />
           </AriaButton>
+          {isInvalid ? (
+            <AriaFieldError className={hintTextClassName(true)}>
+              {typeof props.errorMessage === "function"
+                ? props.errorMessage({ isInvalid: true } as any)
+                : props.errorMessage ?? "Invalid selection"}
+            </AriaFieldError>
+          ) : null}
           <AriaPopover
             ref={popoverRef}
             isNonModal

@@ -349,6 +349,24 @@ export interface AccuracyEvaluationReport {
   overrides: AccuracyOverrideMetrics;
 }
 
+export interface AuditEntry {
+  id: number;
+  action: string;
+  detail: string | null;
+  recorded_at: string;
+  actor: {
+    id: number;
+    display_name: string;
+  };
+  patient_id: number | null;
+  encounter_id: number | null;
+  assessment_id: number | null;
+}
+
+export interface AuditLog {
+  entries: AuditEntry[];
+}
+
 interface ApiResult<T> {
   body: T;
   status: number;
@@ -525,5 +543,15 @@ export const api = {
   accuracyEvaluationReport: () =>
     request<AccuracyEvaluationReport>(
       "/api/administrator/reports/accuracy-evaluation",
+    ),
+
+  /*
+   * The audit log is an append-only record of clinical mutations, oldest first.
+   * Each entry is recorded in the same transaction as the act it describes.
+   * Optional encounter_id filter narrows to one Encounter.
+   */
+  auditLog: (encounterId?: number) =>
+    request<AuditLog>(
+      `/api/administrator/audit-log${encounterId ? `?encounter_id=${encounterId}` : ""}`,
     ),
 };

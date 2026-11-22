@@ -26,6 +26,7 @@ coverage/
 
 # Local data and models
 *.db
+*.db.*
 *.sqlite3
 data/
 models/artifacts/
@@ -44,3 +45,10 @@ Thumbs.db
 # Desktop agent scratch (machine-local)
 AGENTS-DESKTOP-*.md
 .zcode/
+.tmp-ref/
+.zcode-share/
+.impeccable/
+
+# Generated dissertation artefacts (built from .tmp-ref/build)
+TriageAssist-Chapter*.docx
+TriageAssist-Chapter*.pdf

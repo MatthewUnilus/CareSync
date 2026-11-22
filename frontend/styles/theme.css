@@ -340,8 +340,6 @@
   --color-status-yellow-text:       var(--color-yellow-800);
   --color-status-rose-background:   var(--color-rose-200);
   --color-status-rose-text:         var(--color-rose-800);
-  --color-status-cyan-background:   var(--color-cyan-200);
-  --color-status-cyan-text:         var(--color-cyan-800);
   --color-status-orange-background: var(--color-orange-200);
   --color-status-orange-text: var(--color-orange-800);
   --color-status-blue-background:   var(--color-blue-200);
@@ -576,8 +574,6 @@
   --color-status-yellow-text:       var(--color-yellow-500);
   --color-status-rose-background:   color-mix(in srgb, var(--color-rose-950) 60%, transparent);
   --color-status-rose-text:         var(--color-rose-500);
-  --color-status-cyan-background:   color-mix(in srgb, var(--color-cyan-950) 60%, transparent);
-  --color-status-cyan-text:         var(--color-cyan-400);
   --color-status-orange-background: color-mix(in srgb, var(--color-orange-950) 60%, transparent);
   --color-status-orange-text: var(--color-orange-500);
   --color-status-blue-background:   color-mix(in srgb, var(--color-blue-950) 60%, transparent);
@@ -775,8 +771,6 @@
   --color-status-yellow-text:       var(--color-status-yellow-text);
   --color-status-rose-background:   var(--color-status-rose-background);
   --color-status-rose-text:         var(--color-status-rose-text);
-  --color-status-cyan-background:   var(--color-status-cyan-background);
-  --color-status-cyan-text:         var(--color-status-cyan-text);
   --color-status-orange-background: var(--color-status-orange-background);
   --color-status-orange-text: var(--color-status-orange-text);
   --color-status-blue-background:   var(--color-status-blue-background);

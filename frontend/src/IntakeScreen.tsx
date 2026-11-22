@@ -8,8 +8,8 @@ import { toast } from "@/components/base/toast/toast";
 
 import { api, errorText } from "./api";
 import type { Encounter, Sex } from "./api";
-import { cardClass } from "./design";
-import IntakeFields, { NumberField } from "./IntakeFields";
+import { cardClass, noticeClass } from "./design";
+import IntakeFields, { type IntakeFieldsErrors, NumberField } from "./IntakeFields";
 import { buildIntake, intakeFormValues } from "./intakeForm";
 import type { IntakeFormValues } from "./intakeForm";
 import { SEX_OPTIONS, formatInstant, sexLabel } from "./queueDisplay";
@@ -17,7 +17,7 @@ import { SEX_OPTIONS, formatInstant, sexLabel } from "./queueDisplay";
 interface FormState extends IntakeFormValues {
   fullName: string;
   age: string;
-  sex: Sex | "";
+  sex: Sex;
   phone: string;
   email: string;
 }
@@ -25,7 +25,7 @@ interface FormState extends IntakeFormValues {
 const EMPTY_FORM: FormState = {
   fullName: "",
   age: "",
-  sex: "",
+  sex: "unspecified",
   phone: "",
   email: "",
   complaint: "",
@@ -62,6 +62,8 @@ export default function IntakeScreen() {
   const [savedEncounter, setSavedEncounter] = useState<Encounter | null>(null);
   const [recent, setRecent] = useState<Encounter[]>([]);
   const [pending, setPending] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<IntakeFieldsErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
 
   // A correction to captured intake is expressed as a Re-assessment. The
   // intake on an existing Assessment is frozen; a new Assessment records the
@@ -71,6 +73,8 @@ export default function IntakeScreen() {
     EMPTY_REASSESS_FORM,
   );
   const [reassessPending, setReassessPending] = useState(false);
+  const [reassessFieldErrors, setReassessFieldErrors] = useState<IntakeFieldsErrors>({});
+  const [reassessServerError, setReassessServerError] = useState<string | null>(null);
 
   const refreshRecent = useCallback(async () => {
     try {
@@ -107,11 +111,30 @@ export default function IntakeScreen() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
+    setServerError(null);
+
+    // Validate required fields
+    const errors: IntakeFieldsErrors = {};
+    if (form.fullName.trim() === "") errors.complaint = "Full name is required";
+    if (form.age.trim() === "") errors.painLevel = "Age is required";
+    if (form.sex === "unspecified") errors.durationHours = "Sex is required";
+    if (form.phone.trim() === "") errors.temperatureC = "Contact phone is required";
+    if (form.complaint.trim() === "") errors.complaint = "Presenting complaint is required";
+    if (form.temperatureC.trim() === "") errors.temperatureC = "Temperature is required";
+    if (form.heartRate.trim() === "") errors.heartRate = "Heart rate is required";
+    if (form.respiratoryRate.trim() === "") errors.respiratoryRate = "Respiratory rate is required";
+    if (form.systolic.trim() === "") errors.systolic = "Blood pressure systolic is required";
+    if (form.diastolic.trim() === "") errors.diastolic = "Blood pressure diastolic is required";
+    if (form.oxygenSaturation.trim() === "") errors.oxygenSaturation = "Oxygen saturation is required";
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setPending(false);
+      return;
+    }
+    setFieldErrors({});
+
     try {
-      if (form.sex === "") {
-        toast.error("Select the Patient's sex.");
-        return;
-      }
       const { body: patient, status } = await api.registerPatient({
         full_name: form.fullName.trim(),
         age: Number(form.age),
@@ -128,7 +151,7 @@ export default function IntakeScreen() {
       );
       await refreshRecent();
     } catch (caught) {
-      toast.error(errorText(caught));
+      setServerError(errorText(caught));
     } finally {
       setPending(false);
     }
@@ -140,6 +163,25 @@ export default function IntakeScreen() {
       return;
     }
     setReassessPending(true);
+    setReassessServerError(null);
+
+    // Validate required fields for reassessment
+    const errors: IntakeFieldsErrors = {};
+    if (reassessForm.complaint.trim() === "") errors.complaint = "Presenting complaint is required";
+    if (reassessForm.temperatureC.trim() === "") errors.temperatureC = "Temperature is required";
+    if (reassessForm.heartRate.trim() === "") errors.heartRate = "Heart rate is required";
+    if (reassessForm.respiratoryRate.trim() === "") errors.respiratoryRate = "Respiratory rate is required";
+    if (reassessForm.systolic.trim() === "") errors.systolic = "Blood pressure systolic is required";
+    if (reassessForm.diastolic.trim() === "") errors.diastolic = "Blood pressure diastolic is required";
+    if (reassessForm.oxygenSaturation.trim() === "") errors.oxygenSaturation = "Oxygen saturation is required";
+
+    if (Object.keys(errors).length > 0) {
+      setReassessFieldErrors(errors);
+      setReassessPending(false);
+      return;
+    }
+    setReassessFieldErrors({});
+
     try {
       const { body: updated } = await api.reassessEncounter(
         reassessing.id,
@@ -152,7 +194,7 @@ export default function IntakeScreen() {
       );
       await refreshRecent();
     } catch (caught) {
-      toast.error(errorText(caught));
+      setReassessServerError(errorText(caught));
     } finally {
       setReassessPending(false);
     }
@@ -170,6 +212,11 @@ export default function IntakeScreen() {
         </p>
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          {serverError && (
+            <p className={noticeClass.error} role="alert">
+              {serverError}
+            </p>
+          )}
           <fieldset className={fieldsetClass}>
             <legend className={legendClass}>Patient</legend>
             <div className={gridClass}>
@@ -196,9 +243,9 @@ export default function IntakeScreen() {
                 isRequired
                 placeholder="Select…"
                 className="w-full"
-                selectedKey={form.sex === "" ? null : form.sex}
+                selectedKey={form.sex === "unspecified" ? null : form.sex}
                 onSelectionChange={(key) =>
-                  update("sex", (key as Sex | null) ?? "")
+                  update("sex", (key as Sex | null) ?? "unspecified")
                 }
               >
                 {SEX_OPTIONS.map((option) => (
@@ -237,12 +284,12 @@ export default function IntakeScreen() {
           </fieldset>
 
           <IntakeFields
-            legend="Intake"
             form={form}
             onChange={(next) =>
               setForm((current) => ({ ...current, ...next }))
             }
             complaintRows={3}
+            errors={fieldErrors}
           />
 
           <div className="flex flex-wrap gap-2">
@@ -309,10 +356,15 @@ export default function IntakeScreen() {
           </dl>
 
           <form className="flex flex-col gap-4" onSubmit={handleReassess}>
+            {reassessServerError && (
+              <p className={noticeClass.error} role="alert">
+                {reassessServerError}
+              </p>
+            )}
             <IntakeFields
-              legend="Current intake"
               form={reassessForm}
-              onChange={setReassessForm}
+              onChange={(next) => setReassessForm((current) => ({ ...current, ...next }))}
+              errors={reassessFieldErrors}
             />
             <div className="flex flex-wrap gap-2">
               <Button

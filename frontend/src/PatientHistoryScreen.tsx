@@ -4,6 +4,8 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { toast } from "@/components/base/toast/toast";
+import { TappableInfo } from "@/components/base/utils/tappable-info";
+import { cx } from "@/utils/cx";
 
 import { api, errorText } from "./api";
 import type { Encounter, Patient } from "./api";
@@ -173,11 +175,12 @@ export default function PatientHistoryScreen() {
               {history.map((encounter) => (
                 <li
                   key={encounter.id}
-                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-2xl border border-l-4 border-border-button-default bg-background-primary-default p-4 max-sm:grid-cols-1 ${
+                  className={cx(
+                    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-2xl border bg-background-primary-default p-4 max-sm:grid-cols-1",
                     encounter.assessment
                       ? urgencyBorderClass(encounter.assessment.final_decision)
-                      : ""
-                  }`}
+                      : "border-border-button-default",
+                  )}
                 >
                   <div className="flex min-w-0 flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -213,13 +216,17 @@ export default function PatientHistoryScreen() {
                       </span>
                       {encounter.assessment.final_decision !==
                       encounter.assessment.machine_recommendation ? (
-                        <span
-                          className="text-body-2-regular text-text-secondary"
-                          title="The Final Decision differs from the machine recommendation because an Override was recorded."
+                        <TappableInfo
+                          summary="overridden from"
+                          detail="The Final Decision differs from the machine recommendation because an Override was recorded."
                         >
-                          overridden from{" "}
-                          {encounter.assessment.machine_recommendation}
-                        </span>
+                          {({ showDetail }) => (
+                            <span className="text-body-2-regular text-text-secondary">
+                              overridden from{" "}
+                              {showDetail ? encounter.assessment!.machine_recommendation : ""}
+                            </span>
+                          )}
+                        </TappableInfo>
                       ) : null}
                     </div>
                   ) : (

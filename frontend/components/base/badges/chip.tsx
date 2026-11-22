@@ -17,7 +17,6 @@ import { cx, sortCx } from "@/utils/cx";
  *   lime    light 200/800 · dark 950 @ 60% / 500
  *   rose    light 200/800 · dark 950 @ 60% / 500
  *   yellow  light 200/800 · dark 950 @ 60% / 500
- *   cyan    light 200/800 · dark 950 @ 60% / 400
  *   blue    light 200/800 · dark 950 @ 60% / 300 (same dark status recipe;
  *           first needed by the medical template's "In treatment" status)
  *   purple  light 100/600 · dark 900/300 (AI profile delta chips)
@@ -27,7 +26,7 @@ import { cx, sortCx } from "@/utils/cx";
  */
 
 type ChipVariant = "bold" | "subtle" | "caption";
-export type ChipColor = "orange" | "lime" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral" | "gray" | "soft";
+export type ChipColor = "orange" | "lime" | "rose" | "yellow" | "blue" | "purple" | "neutral" | "gray" | "soft";
 
 /** Background and text pair per colour, shared with Tag Group's tags. */
 export const CHIP_COLORS: Record<ChipColor, string> = {
@@ -35,7 +34,6 @@ export const CHIP_COLORS: Record<ChipColor, string> = {
   lime: "bg-status-lime-background text-status-lime-text",
   rose: "bg-status-rose-background text-status-rose-text",
   yellow: "bg-status-yellow-background text-status-yellow-text",
-  cyan: "bg-status-cyan-background text-status-cyan-text",
   blue: "bg-status-blue-background text-status-blue-text",
   purple: "bg-status-purple-background text-status-purple-text",
   neutral: "bg-background-tertiary-default text-text-secondary",

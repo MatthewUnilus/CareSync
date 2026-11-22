@@ -10,7 +10,7 @@ import {
 } from "react";
 import { Group as AriaGroup, TextArea as AriaTextArea } from "react-aria-components";
 import type { TextAreaProps as AriaTextAreaProps } from "react-aria-components";
-import { HintText } from "@/components/base/input/hint-text";
+import { HintText, hintTextClassName } from "@/components/base/input/hint-text";
 import { Label } from "@/components/base/input/label";
 import {
   TextField,
@@ -19,6 +19,8 @@ import {
   type TextFieldProps,
 } from "@/components/base/input/input";
 import { cx, sortCx } from "@/utils/cx";
+import { FieldError as AriaFieldError } from "react-aria-components";
+import type { FieldErrorProps as AriaFieldErrorProps } from "react-aria-components";
 
 /**
  * Multiline sibling of `Input` — same React Aria plumbing, same field shell,
@@ -89,7 +91,7 @@ const textareaStyles = sortCx({
   textarea: [
     "block w-full min-w-0 bg-transparent border-0 outline-none m-0 p-0 px-1",
     "font-sans text-body-regular text-text-primary",
-    "placeholder:text-text-tertiary",
+    "placeholder:text-text-placeholder",
     "focus:placeholder:text-text-primary",
     "disabled:text-input-disabled-text disabled:placeholder:text-input-disabled-text",
     "disabled:cursor-not-allowed",
@@ -232,6 +234,10 @@ export interface TextareaProps
   maxLength?: number;
   /** Show the character counter under the field (`12/280` with `maxLength`). */
   showCount?: boolean;
+  /** Inline error message shown below the field when invalid.
+   *  Mirrors Input's errorMessage pattern: shown in place of hint, via React Aria's FieldError.
+   *  Pass a function to render from the validation result. */
+  errorMessage?: AriaFieldErrorProps["children"];
 }
 
 export function Textarea({
@@ -299,7 +305,11 @@ export function Textarea({
             maxLength={maxLength}
             fieldClassName={fieldClassName}
           />
-          {(hint || showCount) && (
+          {isInvalid && textFieldProps.errorMessage != null ? (
+            <AriaFieldError className={hintTextClassName(true)}>
+              {textFieldProps.errorMessage}
+            </AriaFieldError>
+          ) : (hint || showCount) ? (
             <div className={textareaStyles.footer}>
               {hint && <HintText isInvalid={isInvalid}>{hint}</HintText>}
               {showCount && (
@@ -313,7 +323,7 @@ export function Textarea({
                 </span>
               )}
             </div>
-          )}
+          ) : null}
         </>
       )}
     </TextField>

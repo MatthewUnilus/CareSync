@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { RiRefreshLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
+import { ScrollFade, useScrollFade } from "@/components/foundations/scroll-fade/scroll-fade";
 import { cx } from "@/utils/cx";
 
 import { api, ApiError } from "./api";
@@ -158,6 +159,9 @@ function RateFigure({
 }
 
 function AccuracyRunView({ run }: { run: AccuracyRun }) {
+  const matrixFade = useScrollFade();
+  const precisionRecallFade = useScrollFade();
+
   return (
     <article className="flex flex-col gap-4 border-t border-separator-border pt-4 first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-start justify-between gap-2 gap-x-4">
@@ -251,129 +255,135 @@ function AccuracyRunView({ run }: { run: AccuracyRun }) {
         </div>
       </dl>
 
-      <div className={tableWrapClass}>
-        <table className={tableClass}>
-          <caption className={tableCaptionClass}>
-            Rows are the machine recommendation; columns are the ground-truth
-            urgency level. The diagonal is correct. Counted per assessment, so a
-            re-assessment adds a row of its own.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col" className={tableHeadCellClass}>
-                Machine recommendation
-              </th>
-              {LEVELS.map((truth) => (
-                <th scope="col" className={tableHeadCellClass} key={truth}>
-                  Truth: {truth}
-                </th>
-              ))}
-              <th scope="col" className={tableHeadCellClass}>
-                Predicted
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {LEVELS.map((machine) => (
-              <tr key={machine} className={tableRowClass}>
-                <th
-                  scope="row"
-                  className={cx(
-                    matrixRowHeaderClass,
-                    urgencyTextClass(machine),
-                  )}
-                >
-                  {machine}
+      <div className="relative min-h-0">
+        <div className={tableWrapClass} onScroll={matrixFade.onScroll}>
+          <table className={tableClass}>
+            <caption className={tableCaptionClass}>
+              Rows are the machine recommendation; columns are the ground-truth
+              urgency level. The diagonal is correct. Counted per assessment, so a
+              re-assessment adds a row of its own.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className={tableHeadCellClass}>
+                  Machine recommendation
                 </th>
                 {LEVELS.map((truth) => (
-                  <td
-                    key={truth}
-                    className={
-                      machine === truth
-                        ? matrixCorrectCellClass
-                        : matrixMissCellClass
-                    }
+                  <th scope="col" className={tableHeadCellClass} key={truth}>
+                    Truth: {truth}
+                  </th>
+                ))}
+                <th scope="col" className={tableHeadCellClass}>
+                  Predicted
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {LEVELS.map((machine) => (
+                <tr key={machine} className={tableRowClass}>
+                  <th
+                    scope="row"
+                    className={cx(
+                      matrixRowHeaderClass,
+                      urgencyTextClass(machine),
+                    )}
                   >
-                    {matrixCell(run, machine, truth)}
+                    {machine}
+                  </th>
+                  {LEVELS.map((truth) => (
+                    <td
+                      key={truth}
+                      className={
+                        machine === truth
+                          ? matrixCorrectCellClass
+                          : matrixMissCellClass
+                      }
+                    >
+                      {matrixCell(run, machine, truth)}
+                    </td>
+                  ))}
+                  <td className={matrixTotalCellClass}>
+                    {matrixTotal(run, "machine_recommendation", machine)}
+                  </td>
+                </tr>
+              ))}
+              <tr className={tableRowClass}>
+                <th scope="row" className={matrixRowHeaderClass}>
+                  Actually
+                </th>
+                {LEVELS.map((truth) => (
+                  <td key={truth} className={matrixTotalCellClass}>
+                    {matrixTotal(run, "ground_truth", truth)}
                   </td>
                 ))}
-                <td className={matrixTotalCellClass}>
-                  {matrixTotal(run, "machine_recommendation", machine)}
-                </td>
+                <td className={matrixTotalCellClass}>{run.total}</td>
               </tr>
-            ))}
-            <tr className={tableRowClass}>
-              <th scope="row" className={matrixRowHeaderClass}>
-                Actually
-              </th>
-              {LEVELS.map((truth) => (
-                <td key={truth} className={matrixTotalCellClass}>
-                  {matrixTotal(run, "ground_truth", truth)}
-                </td>
-              ))}
-              <td className={matrixTotalCellClass}>{run.total}</td>
-            </tr>
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
+        <ScrollFade progress={matrixFade.progress} surfaceClassName="from-background-primary-default" />
       </div>
 
-      <div className={tableWrapClass}>
-        <table className={tableClass}>
-          <caption className={tableCaptionClass}>
-            Precision and recall for each urgency level separately. A dash means
-            the level had no denominator in this run.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col" className={tableHeadCellClass}>
-                Urgency level
-              </th>
-              <th scope="col" className={tableHeadCellClass}>
-                Precision
-              </th>
-              <th scope="col" className={tableHeadCellClass}>
-                Recall
-              </th>
-              <th scope="col" className={tableHeadCellClass}>
-                Correct
-              </th>
-              <th scope="col" className={tableHeadCellClass}>
-                Ground truth
-              </th>
-              <th scope="col" className={tableHeadCellClass}>
-                Predicted
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.levels.map((level) => (
-              <tr key={level.urgency_level} className={tableRowClass}>
-                <th
-                  scope="row"
-                  className={cx(
-                    matrixRowHeaderClass,
-                    urgencyTextClass(level.urgency_level),
-                  )}
-                >
-                  {level.urgency_level}
+      <div className="relative min-h-0">
+        <div className={tableWrapClass} onScroll={precisionRecallFade.onScroll}>
+          <table className={tableClass}>
+            <caption className={tableCaptionClass}>
+              Precision and recall for each urgency level separately. A dash means
+              the level had no denominator in this run.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className={tableHeadCellClass}>
+                  Urgency level
                 </th>
-                <td className={matrixTotalCellClass}>
-                  {percent(level.precision)}
-                </td>
-                <td className={matrixTotalCellClass}>
-                  {percent(level.recall)}
-                </td>
-                <td className={matrixTotalCellClass}>{level.correct}</td>
-                <td className={matrixTotalCellClass}>
-                  {level.ground_truth_count}
-                </td>
-                <td className={matrixTotalCellClass}>
-                  {level.predicted_count}
-                </td>
+                <th scope="col" className={tableHeadCellClass}>
+                  Precision
+                </th>
+                <th scope="col" className={tableHeadCellClass}>
+                  Recall
+                </th>
+                <th scope="col" className={tableHeadCellClass}>
+                  Correct
+                </th>
+                <th scope="col" className={tableHeadCellClass}>
+                  Ground truth
+                </th>
+                <th scope="col" className={tableHeadCellClass}>
+                  Predicted
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {run.levels.map((level) => (
+                <tr key={level.urgency_level} className={tableRowClass}>
+                  <th
+                    scope="row"
+                    className={cx(
+                      matrixRowHeaderClass,
+                      urgencyTextClass(level.urgency_level),
+                    )}
+                  >
+                    {level.urgency_level}
+                  </th>
+                  <td className={matrixTotalCellClass}>
+                    {percent(level.precision)}
+                  </td>
+                  <td className={matrixTotalCellClass}>
+                    {percent(level.recall)}
+                  </td>
+                  <td className={matrixTotalCellClass}>{level.correct}</td>
+                  <td className={matrixTotalCellClass}>
+                    {level.ground_truth_count}
+                  </td>
+                  <td className={matrixTotalCellClass}>
+                    {level.predicted_count}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <ScrollFade progress={precisionRecallFade.progress} surfaceClassName="from-background-primary-default" />
       </div>
 
       {run.classifier_only ? (
@@ -570,6 +580,8 @@ export default function AdministratorReports() {
   const [reports, setReports] = useState<ReportSet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const performanceFade = useScrollFade();
 
   const load = useCallback(async () => {
     try {
@@ -793,50 +805,56 @@ export default function AdministratorReports() {
               </div>
             </dl>
             {reports.performance.entries.length > 0 ? (
-              <div className={cx(tableWrapClass, "max-h-72 overflow-y-auto")}>
-                <table className={tableClass}>
-                  <caption className={tableCaptionClass}>
-                    Time waiting and processing for each departed encounter
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col" className={tableHeadCellClass}>
-                        Encounter
-                      </th>
-                      <th scope="col" className={tableHeadCellClass}>
-                        Waiting
-                      </th>
-                      <th scope="col" className={tableHeadCellClass}>
-                        Processing
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reports.performance.entries.map((entry) => (
-                      <tr key={entry.encounter_id} className={tableRowClass}>
-                        <td className={tableCellClass}>
-                          #{entry.encounter_id}
-                        </td>
-                        <td
-                          className={cx(
-                            tableCellClass,
-                            "whitespace-nowrap tabular-nums",
-                          )}
-                        >
-                          {formatWaiting(entry.waiting_seconds)}
-                        </td>
-                        <td
-                          className={cx(
-                            tableCellClass,
-                            "whitespace-nowrap tabular-nums",
-                          )}
-                        >
-                          {formatWaiting(entry.processing_seconds)}
-                        </td>
+              <div className="relative min-h-0">
+                <div
+                  className={cx(tableWrapClass, "max-h-72 overflow-y-auto")}
+                  onScroll={performanceFade.onScroll}
+                >
+                  <table className={tableClass}>
+                    <caption className={tableCaptionClass}>
+                      Time waiting and processing for each departed encounter
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Encounter
+                        </th>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Waiting
+                        </th>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Processing
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {reports.performance.entries.map((entry) => (
+                        <tr key={entry.encounter_id} className={tableRowClass}>
+                          <td className={tableCellClass}>
+                            #{entry.encounter_id}
+                          </td>
+                          <td
+                            className={cx(
+                              tableCellClass,
+                              "whitespace-nowrap tabular-nums",
+                            )}
+                          >
+                            {formatWaiting(entry.waiting_seconds)}
+                          </td>
+                          <td
+                            className={cx(
+                              tableCellClass,
+                              "whitespace-nowrap tabular-nums",
+                            )}
+                          >
+                            {formatWaiting(entry.processing_seconds)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <ScrollFade progress={performanceFade.progress} surfaceClassName="from-background-primary-default" />
               </div>
             ) : (
               <p className={mutedTextClass}>

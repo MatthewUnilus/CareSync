@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { RiRefreshLine } from "@remixicon/react";
-import { Chip } from "@/components/base/badges/chip";
 import { Button } from "@/components/base/buttons/button";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Textarea } from "@/components/base/textarea/textarea";
+import { TappableInfo } from "@/components/base/utils/tappable-info";
 import { cx } from "@/utils/cx";
 
 import { api, ApiError } from "./api";
@@ -30,6 +30,7 @@ import {
   abnormalVitalFields,
   formatArrival,
   formatArrivalFull,
+  formatInstant,
   formatWaiting,
   formatWaitingLong,
   urgencyBadgeClass,
@@ -205,6 +206,10 @@ function OverrideAction({
  * The Departure action is its own component and handler, self-contained so
  * that another action (the Re-assessment ticket) can sit beside it without
  * touching it. It sends no body: the server records the departure instant.
+ *
+ * Two-step inline confirm: the first press arms the button and names the
+ * patient, so a mis-aimed tap on a moving queue card cannot remove someone
+ * from the board in one action. The arm resets when the selection changes.
  */
 function DepartureAction({
   entry,
@@ -215,12 +220,16 @@ function DepartureAction({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const [recorded, setRecorded] = useState<string | null>(null);
 
   async function depart() {
     setSaving(true);
     setError(null);
     try {
-      await api.departEncounter(entry.encounter_id);
+      const departed = await api.departEncounter(entry.encounter_id);
+      setRecorded(departed.departed_at);
+      setArmed(false);
       onDeparted();
     } catch (caught) {
       setError(
@@ -228,6 +237,7 @@ function DepartureAction({
           ? caught.message
           : "Unable to reach the server.",
       );
+      setArmed(false);
     } finally {
       setSaving(false);
     }
@@ -241,22 +251,49 @@ function DepartureAction({
         the awaiting board. The patient, assessments and overrides stay on
         record.
       </p>
+      {recorded ? (
+        <p className={noticeClass.success} role="status">
+          Departure recorded at {formatInstant(recorded)}.
+        </p>
+      ) : null}
       {error ? (
         <p className={noticeClass.error} role="status">
           {error}
         </p>
       ) : null}
       <div>
-        <Button
-          variant="secondary"
-          className="min-h-11"
-          disabled={saving}
-          onClick={() => {
-            void depart();
-          }}
-        >
-          {saving ? "Departing…" : "Depart"}
-        </Button>
+        {armed ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              className="min-h-11"
+              disabled={saving}
+              onClick={() => {
+                void depart();
+              }}
+            >
+              {saving
+                ? "Departing…"
+                : `Confirm depart — ${entry.patient.full_name}`}
+            </Button>
+            <Button
+              variant="secondary"
+              className="min-h-11"
+              disabled={saving}
+              onClick={() => setArmed(false)}
+            >
+              Keep waiting
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            disabled={saving}
+            onClick={() => setArmed(true)}
+          >
+            Depart
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -318,9 +355,8 @@ function ReassessmentAction({
       </p>
       <form className="flex flex-col gap-4" onSubmit={submit}>
         <IntakeFields
-          legend="Current intake"
           form={form}
-          onChange={setForm}
+          onChange={(next) => setForm((current) => ({ ...current, ...next }))}
         />
         {error ? (
           <p className={noticeClass.error} role="status">
@@ -609,7 +645,7 @@ export default function QueueBoard() {
               <li
                 key={entry.encounter_id}
                 className={cx(
-                  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-3 rounded-2xl border border-l-4 bg-background-primary-default p-4 max-sm:grid-cols-1",
+                  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-3 rounded-2xl border bg-background-primary-default p-4 max-sm:grid-cols-1",
                   urgencyBorderClass(entry.urgency_level),
                   /*
                    * An escalated wait is carried by the 4px urgency band, the
@@ -656,34 +692,34 @@ export default function QueueBoard() {
                           : ""}
                     </span>
                     {entry.override_flag ? (
-                      <Chip
-                        variant="caption"
-                        color="orange"
-                        title={`Final decision ${entry.assessment.final_decision} differs from machine recommendation ${entry.assessment.machine_recommendation}`}
-                      >
-                        Override
-                      </Chip>
+                      <TappableInfo
+                        summary={
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption-1-semibold text-status-orange-text bg-status-orange-background">
+                            Override
+                          </span>
+                        }
+                        detail={`Final decision ${entry.assessment.final_decision} differs from machine recommendation ${entry.assessment.machine_recommendation}`}
+                      />
                     ) : null}
                     {entry.unclassified_flag ? (
-                      <Chip
-                        variant="caption"
-                        color="purple"
-                        title="No symptom group matched and the fallback provider was unavailable or timed out; this recommendation came from the safety layer's default and needs review."
-                      >
-                        Unclassified
-                      </Chip>
+                      <TappableInfo
+                        summary={
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption-1-semibold text-status-purple-text bg-status-purple-background">
+                            Unclassified
+                          </span>
+                        }
+                        detail="No symptom group matched and the fallback provider was unavailable or timed out; this recommendation came from the safety layer's default and needs review."
+                      />
                     ) : null}
                     {redFlags.length > 0 ? (
-                      <Chip
-                        variant="caption"
-                        color="rose"
-                        title={redFlags
-                          .map((flag) => flag.finding)
-                          .join(" · ")}
-                      >
-                        {redFlags.length} red flag
-                        {redFlags.length === 1 ? "" : "s"}
-                      </Chip>
+                      <TappableInfo
+                        summary={
+                          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-caption-1-semibold text-status-rose-text bg-status-rose-background">
+                            {redFlags.length} red flag{redFlags.length === 1 ? "" : "s"}
+                          </span>
+                        }
+                        detail={redFlags.map((flag) => flag.finding).join(" · ")}
+                      />
                     ) : null}
                   </div>
 
