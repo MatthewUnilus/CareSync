@@ -1,10 +1,13 @@
-"""The ward's HTTP surface: admission, location move, discharge and the board.
+"""The ward's HTTP surface: admission, move, discharge, the board and notes.
 
 Admission is separate from Encounter (ADR 0008): a visit has a reason and an
 end, a stay has a location and a discharge. Every mutation here is a Clinical
 action that writes exactly one audit entry in the same transaction as the change
 (ADR 0007). The board is a read: it recalculates from the record on every
-request and writes nothing.
+request and writes nothing. Nursing Notes and the Note Template vocabulary live
+here too (ticket 32): the templates are a fixed code vocabulary (ADR 0013) and a
+note is written from one, its fields one row each, prefilled from the patient's
+latest Observation.
 """
 
 from typing import Annotated
@@ -13,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import ward
+from app import notes, ward
 from app.admissions import (
     admission_status,
     admit,
@@ -23,13 +26,20 @@ from app.admissions import (
 from app.audit import record_audit_entry
 from app.audit_actions import AuditAction
 from app.deps import DbSession, require_role
-from app.models import Admission, Encounter, Patient, Role, User
+from app.models import Admission, Encounter, NursingNote, Patient, Role, User
 from app.observations import observation_response
 from app.schemas import (
+    ActorResponse,
     AdmissionCreateRequest,
     AdmissionListResponse,
     AdmissionMoveRequest,
     AdmissionResponse,
+    NotePrefillResponse,
+    NotePrefillSourceResponse,
+    NoteTemplatesResponse,
+    NursingNoteCreateRequest,
+    NursingNoteListResponse,
+    NursingNoteResponse,
     PatientResponse,
     WardBoardEntryResponse,
     WardBoardResponse,
@@ -43,6 +53,9 @@ PATIENT_NOT_FOUND_DETAIL = "Patient not found"
 ENCOUNTER_NOT_FOUND_DETAIL = "Encounter not found"
 ENCOUNTER_OWNER_MISMATCH_DETAIL = "Encounter belongs to another patient"
 ADMISSION_NOT_FOUND_DETAIL = "Admission not found"
+DISCHARGED_STAY_NOTE_DETAIL = (
+    "A discharged Admission cannot take new Notes, except a Discharge Summary"
+)
 
 
 @router.post(
@@ -216,6 +229,167 @@ def list_admissions(
             for admission in admissions
         ]
     )
+
+
+@router.get("/note-templates", response_model=NoteTemplatesResponse)
+def get_note_templates(user: ClinicalUser) -> NoteTemplatesResponse:
+    """The fixed Note Template vocabulary, so a note starts from a shape.
+
+    The definitions live in code (``app.notes``); this is a plain read of them.
+    Adding a field to a template is a code change with no schema change and no
+    client change, because the client reads the fields from here (ADR 0013).
+    """
+    return NoteTemplatesResponse(templates=notes.template_responses())
+
+
+@router.get(
+    "/admissions/{admission_id}/note-prefill",
+    response_model=NotePrefillResponse,
+)
+def get_note_prefill(
+    admission_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+    template_key: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=64,
+            description="The template the note will be written from",
+        ),
+    ],
+) -> NotePrefillResponse:
+    """The values to start a note with, drawn from the patient's latest vitals.
+
+    The prefill is visible, not silent: the ``vital_signs`` free text names where
+    each number came from, and ``source_observation`` names the Observation it was
+    read from, so a nurse who sees the source amends rather than retypes. An
+    unknown Admission is a 404; an unknown template is a 422.
+    """
+    admission = _get_admission(db, admission_id)
+    template = notes.resolve_template(template_key)
+    values, source = notes.prefill(db, admission, template)
+    return NotePrefillResponse(
+        fields=values,
+        source_observation=(
+            None
+            if source is None
+            else NotePrefillSourceResponse(
+                taken_at=source.taken_at,
+                actor=ActorResponse(
+                    id=source.actor.id,
+                    display_name=source.actor.display_name,
+                ),
+            )
+        ),
+    )
+
+
+@router.get(
+    "/admissions/{admission_id}/notes",
+    response_model=NursingNoteListResponse,
+)
+def list_nursing_notes(
+    admission_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> NursingNoteListResponse:
+    """One Admission's notes in time order, oldest first.
+
+    A discharged stay is closed, not deleted, so its notes are still returned in
+    full. An unknown Admission is a 404.
+    """
+    admission = _get_admission(db, admission_id)
+    return NursingNoteListResponse(notes=notes.notes_response(db, admission))
+
+
+@router.post(
+    "/admissions/{admission_id}/notes",
+    response_model=NursingNoteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def write_nursing_note(
+    admission_id: int,
+    payload: NursingNoteCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> NursingNoteResponse:
+    """Write a Nursing Note from a template, or append a correction to one.
+
+    The note and its single audit entry commit together, with the Admission as
+    the entry's subject (ADR 0007). A correction names the note it corrects, which
+    must be on the same Admission and use the same template; the corrected note is
+    never edited and still reads back, showing the note that corrects it. An
+    unknown Admission or correction note is a 404; an unknown template, an
+    incomplete field set or an unknown field key is a 422.
+
+    A stay that has already been discharged takes no new note, because it is no
+    longer on the ward, except a Discharge Summary: that records the stay and the
+    state at leaving, so it follows the discharge rather than being refused by it.
+    """
+    admission = _get_admission(db, admission_id)
+    template = notes.resolve_template(payload.template_key)
+    if (
+        admission.discharged_at is not None
+        and template.key != notes.DISCHARGE_SUMMARY_KEY
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=DISCHARGED_STAY_NOTE_DETAIL,
+        )
+    notes.validate_fields(template, payload.fields)
+
+    corrects: NursingNote | None = None
+    if payload.corrects_note_id is not None:
+        corrects = db.get(NursingNote, payload.corrects_note_id)
+        if corrects is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=notes.NOTE_NOT_FOUND_DETAIL,
+            )
+        if corrects.admission_id != admission.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=notes.CORRECTION_OTHER_ADMISSION_DETAIL,
+            )
+        if corrects.template_key != template.key:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=notes.CORRECTION_TEMPLATE_MISMATCH_DETAIL,
+            )
+        if notes.corrected_by(db, corrects) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=notes.ALREADY_CORRECTED_DETAIL,
+            )
+
+    note = notes.stage_note(
+        db,
+        admission=admission,
+        actor=user,
+        template=template,
+        fields=payload.fields,
+        corrects=corrects,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=(
+            AuditAction.correct_nursing_note
+            if corrects is not None
+            else AuditAction.write_nursing_note
+        ),
+        patient=admission.patient,
+        admission=admission,
+        detail=(
+            f"template {template.key}"
+            if corrects is None
+            else f"template {template.key} corrects note {corrects.id}"
+        ),
+    )
+    db.commit()
+    return notes.note_response(db, note)
 
 
 def _get_admission(db: Session, admission_id: int) -> Admission:

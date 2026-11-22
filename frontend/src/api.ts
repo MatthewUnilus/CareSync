@@ -201,6 +201,86 @@ export interface WardBoard {
   admissions: BoardAdmission[];
 }
 
+/**
+ * One field of a Note Template, as the server defines it. The client renders the
+ * fields a template carries and never hard-codes what a template holds, so a
+ * change to a template's fields is a server change with no client change.
+ */
+export interface NoteTemplateField {
+  key: string;
+  label: string;
+}
+
+/**
+ * One Note Template: a fixed vocabulary of fields a nurse writes against. The
+ * definitions live on the server (ADR 0013); the client asks for them and builds
+ * the form from whatever comes back.
+ */
+export interface NoteTemplate {
+  key: string;
+  label: string;
+  fields: NoteTemplateField[];
+}
+
+/** The Note Templates, served as a fixed vocabulary. */
+export interface NoteTemplates {
+  templates: NoteTemplate[];
+}
+
+/**
+ * The values a new note starts with, taken from the patient's latest
+ * Observation so the vitals are there to confirm or amend rather than to
+ * retype. `source_observation` names where the values came from and is null
+ * when nothing could be prefilled, so the client can say so rather than
+ * implying the numbers are the nurse's own.
+ */
+export interface NotePrefill {
+  /** The prefilled values, keyed by the template's field keys. */
+  fields: Record<string, string>;
+  source_observation: {
+    taken_at: string;
+    actor: { id: number; display_name: string };
+  } | null;
+}
+
+/** One field of a written note: the key it was written against and its free text. */
+export interface NursingNoteField {
+  key: string;
+  value: string;
+}
+
+/**
+ * One nursing note as the server returns it: the Admission it belongs to, the
+ * template it was written from, its author and time, the fields it carries, and
+ * the correction links. A note that corrects another names it in
+ * `corrects_note_id`; a note that has been corrected names its replacement in
+ * `corrected_by_note_id` and stays in the record, shown as corrected. Both links
+ * are one-directional: a correction points back, the corrected note is marked
+ * forward.
+ */
+export interface NursingNote {
+  id: number;
+  admission_id: number;
+  template_key: string;
+  author: { id: number; display_name: string };
+  recorded_at: string;
+  corrects_note_id: number | null;
+  corrected_by_note_id: number | null;
+  fields: NursingNoteField[];
+}
+
+/** One Admission's notes, already in time order by the server. */
+export interface NursingNotes {
+  notes: NursingNote[];
+}
+
+/** The shape sent to write a note: a template, its fields as free text, and the note this one corrects (or null). */
+export interface NursingNotePayload {
+  template_key: string;
+  fields: NursingNoteField[];
+  corrects_note_id: number | null;
+}
+
 export interface DailyVisitsReport {
   day: string;
   starts_at: string;
@@ -472,6 +552,31 @@ export const api = {
   dischargeAdmission: (admissionId: number) =>
     request<WardAdmission>(`/api/ward/admissions/${admissionId}/discharge`, {
       method: "POST",
+    }),
+  /*
+   * Nursing notes and their templates.
+   *
+   * The templates are a fixed vocabulary served from one module; the client
+   * renders whatever fields a template carries and never hard-codes a
+   * template-specific schema, so adding a field is a server change alone. A new
+   * note prefills from the patient's latest Observation: the prefill route
+   * returns the values keyed by the template's field keys, plus the Observation
+   * they came from so the client can show the source rather than imply the nurse
+   * typed them. A note is append-only — correcting one writes a new note that
+   * points at the note it corrects, and the corrected note stays in the record.
+   * The notes read is already in time order.
+   */
+  noteTemplates: () => request<NoteTemplates>("/api/ward/note-templates"),
+  admissionNotePrefill: (admissionId: number, templateKey: string) =>
+    request<NotePrefill>(
+      `/api/ward/admissions/${admissionId}/note-prefill?template_key=${encodeURIComponent(templateKey)}`,
+    ),
+  admissionNotes: (admissionId: number) =>
+    request<NursingNotes>(`/api/ward/admissions/${admissionId}/notes`),
+  writeAdmissionNote: (admissionId: number, payload: NursingNotePayload) =>
+    request<NursingNote>(`/api/ward/admissions/${admissionId}/notes`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
   /*
    * Reports are read-only derivations. The daily figure defaults to the

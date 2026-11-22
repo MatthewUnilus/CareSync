@@ -306,6 +306,113 @@ def _refuse_editing_an_observation(_mapper, _connection, _target) -> None:
     )
 
 
+class NursingNote(Base):
+    """One free-text entry written against an Admission from a Note Template.
+
+    A Nursing Note is stamped with the instant it was recorded and attributed to
+    the Clinical user who wrote it, and the author is a foreign key exposed
+    through the ``author`` relationship rather than a copied name, so a renamed
+    account is reported consistently everywhere (CONTEXT.md, "Nursing Note").
+
+    ``template_key`` is the key of one of the templates in ``app.notes`` — the
+    fixed vocabulary served by ``GET /api/ward/note-templates``. It is stored as
+    the key, not the whole template, so revising a template is a code change with
+    no schema change and no client change (ADR 0013).
+
+    A correction is a new note whose ``corrects_note_id`` points at the note it
+    corrects, the one-directional link ``TriageAssessment`` used for the row it
+    replaced. The corrected note is never edited: the reverse link is derived
+    at read time rather than stored, so the original row stays exactly as it was
+    written. One note may be corrected once; a later change corrects the
+    correction instead.
+
+    The note's fields are ``NursingNoteField`` rows — one row per field — so a
+    template's field set can change without a schema change (ADR 0013, and the
+    reason: this repo has no migration tool, so a new column would never appear
+    on the existing table).
+
+    Rows are append-only, enforced in the application layer (see the guard
+    below), because ADR 0001 forbids database triggers: a note is written once
+    and corrected by a new note, never rewritten.
+    """
+
+    __tablename__ = "nursing_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admission_id: Mapped[int] = mapped_column(
+        ForeignKey("admissions.id"), index=True
+    )
+    template_key: Mapped[str] = mapped_column(String(64))
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    # The note this one corrects, or null on an original. One-directional: the
+    # corrected note is left untouched and its ``corrected_by_note_id`` is
+    # derived by reading the notes that point at it.
+    corrects_note_id: Mapped[int | None] = mapped_column(
+        ForeignKey("nursing_notes.id"), nullable=True, index=True
+    )
+
+    admission: Mapped[Admission] = relationship(lazy="joined")
+    author: Mapped[User] = relationship(lazy="joined")
+    corrects: Mapped["NursingNote | None"] = relationship(remote_side=[id])
+    fields: Mapped[list["NursingNoteField"]] = relationship(
+        back_populates="note",
+        cascade="all, delete-orphan",
+        order_by="NursingNoteField.id",
+    )
+
+
+class NursingNoteField(Base):
+    """One named field of a Nursing Note, as a single row per field (ADR 0013).
+
+    ``key`` names the field in the note's template and ``value`` is free text.
+    There is no controlled clinical terminology in scope, so a value is never
+    interpreted or validated as a coded concept; the template is a vocabulary,
+    not a form with validation. One row per field means a new template field is
+    a code change with no schema change and no client change.
+
+    Rows are append-only, enforced in the application layer (see the guard
+    below), for the same reason as the note they belong to.
+    """
+
+    __tablename__ = "nursing_note_fields"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(
+        ForeignKey("nursing_notes.id"), index=True
+    )
+    key: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(String(2000))
+
+    note: Mapped[NursingNote] = relationship(back_populates="fields")
+
+
+@event.listens_for(NursingNote, "before_update")
+def _refuse_editing_a_nursing_note(_mapper, _connection, _target) -> None:
+    """Application-layer append-only guarantee (ADR 0001, no DB triggers).
+
+    The guard refuses *any* in-place change: a nursing note has no field that is
+    ever legitimately updated, because a correction is a new note rather than an
+    edit of the old one.
+    """
+    raise ValueError(
+        "A Nursing Note is append-only; it cannot be edited after it is written"
+    )
+
+
+@event.listens_for(NursingNoteField, "before_update")
+def _refuse_editing_a_nursing_note_field(_mapper, _connection, _target) -> None:
+    """Application-layer append-only guarantee (ADR 0001, no DB triggers)."""
+    raise ValueError(
+        "A Nursing Note field is append-only; it cannot be edited after it is "
+        "written"
+    )
+
+
 class AuditEntry(Base):
     """One attributable record of a clinical mutation.
 

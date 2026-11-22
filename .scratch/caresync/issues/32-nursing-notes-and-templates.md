@@ -4,20 +4,20 @@
 
 **Blocked by:** 31 (a note belongs to an Admission).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] New tables: `nursing_notes`, holding the Admission, the template, the author and the time, and `nursing_note_fields`, holding one row per field.
-- [ ] Five Note Templates are defined: Shift Assessment, Ward Round Entry, Intervention Record, Handover Entry, Discharge Summary.
-- [ ] Template definitions live in one module as a fixed vocabulary and are served by `GET /api/ward/note-templates`. Adding a field to a template is a code change with no schema change and no client change.
-- [ ] The five templates carry field sets drawn from standard nursing documentation practice, since the hospital has not supplied their chart yet. Expect to revise them.
-- [ ] A new note prefills from the patient's latest Observation, so the vitals are already there to confirm or amend rather than to retype.
-- [ ] Each note is stamped with its time and its author, and the author is a foreign key exposed through a relationship rather than a copied name.
-- [ ] Correcting a note appends a new note that points at the one it corrects. The corrected note stays in the record and is shown as corrected.
-- [ ] A patient's notes read in time order, so the shift reads back front to back.
-- [ ] Field values are free text. No coded clinical values, because there is no controlled terminology in scope.
-- [ ] Writing a note and correcting a note each write exactly one Audit Entry in the same transaction as the change.
-- [ ] The board's outstanding-work counts are unaffected by this ticket, which is correct: a note is not outstanding work.
-- [ ] Tests: a note from each of the five templates saves and reads back with its fields; a correction leaves the corrected note in place and linked; a note renders with the latest Observation's values prefilled; the template route serves all five with their fields; writing a note appends one audit entry.
+- [x] New tables: `nursing_notes`, holding the Admission, the template, the author and the time, and `nursing_note_fields`, holding one row per field.
+- [x] Five Note Templates are defined: Shift Assessment, Ward Round Entry, Intervention Record, Handover Entry, Discharge Summary.
+- [x] Template definitions live in one module as a fixed vocabulary and are served by `GET /api/ward/note-templates`. Adding a field to a template is a code change with no schema change and no client change.
+- [x] The five templates carry field sets drawn from standard nursing documentation practice, since the hospital has not supplied their chart yet. Expect to revise them.
+- [x] A new note prefills from the patient's latest Observation, so the vitals are already there to confirm or amend rather than to retype.
+- [x] Each note is stamped with its time and its author, and the author is a foreign key exposed through a relationship rather than a copied name.
+- [x] Correcting a note appends a new note that points at the one it corrects. The corrected note stays in the record and is shown as corrected.
+- [x] A patient's notes read in time order, so the shift reads back front to back.
+- [x] Field values are free text. No coded clinical values, because there is no controlled terminology in scope.
+- [x] Writing a note and correcting a note each write exactly one Audit Entry in the same transaction as the change.
+- [x] The board's outstanding-work counts are unaffected by this ticket, which is correct: a note is not outstanding work.
+- [x] Tests: a note from each of the five templates saves and reads back with its fields; a correction leaves the corrected note in place and linked; a note renders with the latest Observation's values prefilled; the template route serves all five with their fields; writing a note appends one audit entry.
 
 ## Notes
 

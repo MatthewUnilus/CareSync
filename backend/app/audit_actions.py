@@ -30,6 +30,8 @@ class AuditAction(str, Enum):
     admit_patient = "admit_patient"
     move_admission = "move_admission"
     discharge_patient = "discharge_patient"
+    write_nursing_note = "write_nursing_note"
+    correct_nursing_note = "correct_nursing_note"
 
 
 AUDIT_ACTIONS: tuple[AuditAction, ...] = tuple(AuditAction)
@@ -54,6 +56,8 @@ AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.admit_patient: "Patient admitted",
     AuditAction.move_admission: "Admission location moved",
     AuditAction.discharge_patient: "Patient discharged",
+    AuditAction.write_nursing_note: "Nursing note written",
+    AuditAction.correct_nursing_note: "Nursing note corrected",
 }
 
 # What to show for a value the table does not name. Deliberate and readable: the

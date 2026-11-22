@@ -19,6 +19,7 @@ import {
   sectionLabelClass,
 } from "./design";
 import ObservationChart from "./ObservationChart";
+import NursingNotes from "./NursingNotes";
 import { formatInstant, sexLabel } from "./queueDisplay";
 
 /**
@@ -48,6 +49,9 @@ export default function WardBoard() {
   // The Admission whose chart is open. One at a time keeps the board a list at
   // a glance rather than a stack of open charts.
   const [openChartId, setOpenChartId] = useState<number | null>(null);
+  // The Admission whose nursing notes are open, tracked separately from the
+  // chart so a nurse can read the notes beside the vitals or on their own.
+  const [openNotesId, setOpenNotesId] = useState<number | null>(null);
 
   // The board the view is allowed to show. Every fetch takes the next token and,
   // once it resolves, writes nothing unless it is still the newest — so a slow
@@ -136,6 +140,12 @@ export default function WardBoard() {
                         current === admission.id ? null : admission.id,
                       )
                     }
+                    notesOpen={openNotesId === admission.id}
+                    onToggleNotes={() =>
+                      setOpenNotesId((current) =>
+                        current === admission.id ? null : admission.id,
+                      )
+                    }
                     onChanged={load}
                   />
                 ))}
@@ -170,11 +180,15 @@ function BoardAdmissionRow({
   admission,
   chartOpen,
   onToggleChart,
+  notesOpen,
+  onToggleNotes,
   onChanged,
 }: {
   admission: BoardAdmission;
   chartOpen: boolean;
   onToggleChart: () => void;
+  notesOpen: boolean;
+  onToggleNotes: () => void;
   onChanged: () => Promise<void> | void;
 }) {
   const { patient } = admission;
@@ -299,6 +313,13 @@ function BoardAdmissionRow({
         >
           {chartOpen ? "Hide chart" : "View chart"}
         </Button>
+        <Button
+          variant={notesOpen ? "primary" : "secondary"}
+          className="min-h-11"
+          onClick={onToggleNotes}
+        >
+          {notesOpen ? "Hide notes" : "Nursing notes"}
+        </Button>
         <MoveAction admission={admission} onMoved={onChanged} />
         <DischargeAction admission={admission} onDischarged={onChanged} />
       </footer>
@@ -310,6 +331,8 @@ function BoardAdmissionRow({
           title={`Vitals for ${patient.full_name}`}
         />
       ) : null}
+
+      {notesOpen ? <NursingNotes admissionId={admission.id} /> : null}
     </li>
   );
 }

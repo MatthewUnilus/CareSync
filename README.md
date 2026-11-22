@@ -678,6 +678,20 @@ new writes.
 
 No migration is implemented; the steps above are the manual operator work.
 
+### Ticket 32 — nursing notes
+
+Ticket 32 adds the `nursing_notes` and `nursing_note_fields` tables plus two more
+audit actions (`write_nursing_note`, `correct_nursing_note`). `create_all` builds
+the new tables, but it still cannot widen the SQLite `audit_log` action `CHECK`,
+so a database created before this change rejects the new writes with the same
+failure described above.
+
+- **Local SQLite** — back up `caresync.db`, then recreate and reseed
+  (`npm run seed`, or just `npm run dev`), or widen the check with an explicit
+  migration.
+- **Postgres demo** — `nursing_notes` and `nursing_note_fields` may be created in
+  place, but `audit_log` needs the same hand migration or a database rebuild.
+
 ## Environment variables
 
 All variables use the `CARESYNC_` prefix. A `.env` file in `backend/` is

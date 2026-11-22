@@ -40,6 +40,17 @@ _WARD = Annotated[
 _BED = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
 ]
+#: A note template key and the key of one of its fields: short snake_case
+#: identifiers, matching the vocabulary in ``app.notes``. The key is stored as
+#: written; the vocabulary, not the schema, decides which keys exist (ADR 0013).
+_NOTE_KEY = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+]
+#: A note field's value: free text. There is no controlled clinical terminology
+#: in scope, so a value is never validated as a coded concept; it may be blank.
+_NOTE_VALUE = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=2000)
+]
 
 # SQLite round-trips aware timestamps as naive; responses always speak UTC.
 UtcDatetime = Annotated[datetime, BeforeValidator(as_utc)]
@@ -296,6 +307,36 @@ class AdmissionMoveRequest(BaseModel):
     bed: _BED
 
 
+class NursingNoteFieldPayload(BaseModel):
+    """One named field of a note to write, its value free text.
+
+    The key is checked by the route against the named template; the value is
+    stored as written, with no coded meaning and no clinical validation (ADR
+    0013). An unknown key in the object is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: _NOTE_KEY
+    value: _NOTE_VALUE
+
+
+class NursingNoteCreateRequest(BaseModel):
+    """Write a note against an Admission from a template.
+
+    ``template_key`` names one of the fixed templates. ``fields`` carry the note's
+    field values, one per template field. ``corrects_note_id`` is null on an
+    original and names the note this one corrects on a correction; the corrected
+    note is left untouched. An unknown key is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_key: _NOTE_KEY
+    fields: list[NursingNoteFieldPayload]
+    corrects_note_id: int | None = Field(default=None, gt=0)
+
+
 class AdmissionResponse(BaseModel):
     """One Admission, open or discharged.
 
@@ -316,6 +357,92 @@ class AdmissionResponse(BaseModel):
 
 class AdmissionListResponse(BaseModel):
     admissions: list[AdmissionResponse]
+
+
+class NoteTemplateFieldResponse(BaseModel):
+    """One field of a note template: its key and the label a reader sees."""
+
+    key: str
+    label: str
+
+
+class NoteTemplateResponse(BaseModel):
+    """One template of the fixed vocabulary, served to build a note from.
+
+    The definitions live in code (ADR 0013), so this is a plain read of the
+    vocabulary: a change to a template field needs no schema change here and no
+    client change.
+    """
+
+    key: str
+    label: str
+    fields: list[NoteTemplateFieldResponse]
+
+
+class NoteTemplatesResponse(BaseModel):
+    """The whole Note Template vocabulary."""
+
+    templates: list[NoteTemplateResponse]
+
+
+class NotePrefillSourceResponse(BaseModel):
+    """The Observation a note's prefilled values came from, so the source shows.
+
+    The nurse who cannot see where the numbers came from would retype them, so
+    the instant the set was taken and the Clinical user who took it travel with
+    the prefill.
+    """
+
+    taken_at: UtcDatetime
+    actor: ActorResponse
+
+
+class NotePrefillResponse(BaseModel):
+    """The values to start a note with, and where they came from.
+
+    ``fields`` maps a template field key to the prefilled free text; it holds the
+    ``vital_signs`` field drawn from the patient's latest Observation, or is
+    empty when none is charted. ``source_observation`` is the Observation the
+    values came from, or null when there was none. The prefill is a starting
+    point, never a stored interpretation: the nurse confirms or amends it and the
+    values are written into the note as ordinary free text.
+    """
+
+    fields: dict[str, str]
+    source_observation: NotePrefillSourceResponse | None = None
+
+
+class NursingNoteFieldResponse(BaseModel):
+    """One named field of a note, its value as written."""
+
+    key: str
+    value: str
+
+
+class NursingNoteResponse(BaseModel):
+    """One Nursing Note, as written and read back.
+
+    ``author`` is a shared actor shape, so an author reads the same wherever
+    shown. ``corrects_note_id`` names the note this one corrects, or null on an
+    original; ``corrected_by_note_id`` names the note that corrects this one, or
+    null, derived at read time so the corrected note is never edited. ``fields``
+    is in template order.
+    """
+
+    id: int
+    admission_id: int
+    template_key: str
+    author: ActorResponse
+    recorded_at: UtcDatetime
+    corrects_note_id: int | None = None
+    corrected_by_note_id: int | None = None
+    fields: list[NursingNoteFieldResponse]
+
+
+class NursingNoteListResponse(BaseModel):
+    """One Admission's notes in time order, oldest first."""
+
+    notes: list[NursingNoteResponse]
 
 
 class PatientSearchResponse(BaseModel):
