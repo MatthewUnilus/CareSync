@@ -64,3 +64,29 @@ action rather than per action-plus-name.
 - No retention policy, export, or tamper-evident hashing is claimed. Those are
   operational concerns a local prototype cannot honestly demonstrate, the same
   position ADR 0001 takes on availability and encryption at rest.
+
+## Amendment (2026-11-22)
+
+The decision stands: one append-only `audit_log` table, the entry written in the
+mutation's transaction, append-only enforced by an application-layer
+`before_update` guard, the actor stored as a foreign key. ADR 0014 removes the
+triage engine, and this surface is kept because its subject is the clinical
+record, not the engine.
+
+The action set grows to cover the ward. Admission, Discharge, location move,
+Nursing Note, Medication Order, Medication Administration, Investigation and
+Task mutations each append one entry, in the same transaction as the change, as
+registration and intake already did.
+
+The subject foreign keys change with the domain. An Admission is the anchor ADR
+0008 introduces, so the Assessment subject goes and the Admission subject
+replaces it; Patient and Encounter remain. The Assessment subject is not renamed,
+because a Triage Assessment no longer exists for a row to name.
+
+The action's human label moves to one source of truth beside the enum. The set is
+now large enough that a client-side copy would drift from the server, so the
+label is served from beside the enum rather than hard-coded in the client, which
+is the same discipline the vocabulary's other fixed sets follow.
+
+Authentication events remain out of the log, and the retention, export and
+tamper-evidence position is unchanged.

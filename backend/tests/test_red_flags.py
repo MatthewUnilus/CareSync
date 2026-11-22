@@ -277,6 +277,7 @@ def test_every_rule_and_citation_is_visible_in_the_documentation() -> None:
     docs = (
         Path(__file__).resolve().parents[2]
         / "docs"
+        / "archive"
         / "red-flag-safety-layer.md"
     ).read_text(encoding="utf-8")
 

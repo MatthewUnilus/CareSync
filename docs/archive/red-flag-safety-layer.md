@@ -1,3 +1,10 @@
+> **Archived.** This document describes the red-flag safety layer of the
+> Prioritization Engine, which no longer ships. It was removed by
+> [ADR 0014](../adr/0014-remove-triage-engine.md). It is kept because the
+> dissertation may cite it, and it does not describe the current design. The
+> reference range it cited for marking an out-of-range reading survives in
+> [ADR 0010](../adr/0010-observation-range-marked-for-display.md).
+
 # Red-flag safety layer
 
 `backend/app/red_flags.py` is the deterministic safety layer between the trained

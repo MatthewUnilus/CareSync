@@ -1,3 +1,8 @@
+> **Archived.** This document describes the cached fallback for unrecognised
+> complaints, a layer of the Prioritization Engine, which no longer ships. It was
+> removed by [ADR 0014](../adr/0014-remove-triage-engine.md). It is kept because
+> the dissertation may cite it, and it does not describe the current design.
+
 # Cached fallback for unrecognised complaints
 
 `backend/app/fallback.py` is layer (3) of the Prioritization Engine described in

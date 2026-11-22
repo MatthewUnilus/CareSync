@@ -1,6 +1,6 @@
 # 0006 — Escalate the display of a long wait, never the decision
 
-**Status:** Accepted (2026-11-10)
+**Status:** Superseded (2026-11-22) by [ADR 0014](0014-remove-triage-engine.md). The rule it records, that the system never acts on a timer, survives in [ADR 0010](0010-observation-range-marked-for-display.md).
 
 ## Context
 

@@ -1,3 +1,9 @@
+> **Archived.** This document describes the Accuracy Evaluation Report, the
+> TriageAssist system's flagship reporting view, which no longer ships. It was
+> removed by [ADR 0014](../adr/0014-remove-triage-engine.md), which also records
+> what replaces its evidence. It is kept because the dissertation may cite it,
+> and it does not describe the current design.
+
 # The Accuracy Evaluation Report
 
 The flagship reporting view. It compares the Prioritization Engine's **Machine
