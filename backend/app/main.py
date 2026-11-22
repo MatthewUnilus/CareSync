@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.db import Base, build_engine, build_session_factory
-from app.routers import administrator, auth, clinical, meta
+from app.routers import administrator, auth, clinical, meta, ward
 from app.seed import seed_demo_users
 
 
@@ -46,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(meta.router)
     app.include_router(clinical.router)
+    app.include_router(ward.router)
     app.include_router(administrator.router)
     return app
 

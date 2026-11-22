@@ -2,13 +2,16 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/base/buttons/button";
+import { Chip } from "@/components/base/badges/chip";
 import { Input } from "@/components/base/input/input";
 import { toast } from "@/components/base/toast/toast";
+import { cx } from "@/utils/cx";
 
 import { api, errorText } from "./api";
-import type { Encounter, Patient } from "./api";
+import type { Encounter, Patient, WardAdmission } from "./api";
 import { cardClass, figureClass, mutedTextClass } from "./design";
 import ObservationChart from "./ObservationChart";
+import { AdmitPatientForm } from "./WardBoard";
 import { formatInstant, sexLabel } from "./queueDisplay";
 
 /**
@@ -41,6 +44,8 @@ export default function PatientHistoryScreen() {
   const [selected, setSelected] = useState<Patient | null>(null);
   const [history, setHistory] = useState<Encounter[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [admissions, setAdmissions] = useState<WardAdmission[]>([]);
+  const [loadingAdmissions, setLoadingAdmissions] = useState(false);
   // The open Encounter the chart writes against, chosen explicitly from the
   // Patient's visits. Null means the chart is read-only: nothing is charted
   // until the reader names a visit, so an ambiguous history never silently
@@ -77,6 +82,7 @@ export default function PatientHistoryScreen() {
       selectedIdRef.current = null;
       setSelected(null);
       setHistory([]);
+      setAdmissions([]);
       setChartingEncounterId(null);
     } catch (caught) {
       toast.error(errorText(caught));
@@ -91,6 +97,9 @@ export default function PatientHistoryScreen() {
     // A new Patient has no charting subject until the reader names one.
     setChartingEncounterId(null);
     setLoadingHistory(true);
+    // The stays load beside the visits, from the same Patient. A failure here
+    // is reported by `refreshAdmissions` itself and leaves the visits alone.
+    void refreshAdmissions(patient.id);
     try {
       const { encounters } = await api.patientHistory(patient.id);
       if (selectedIdRef.current !== patient.id) {
@@ -138,6 +147,34 @@ export default function PatientHistoryScreen() {
     } finally {
       if (selectedIdRef.current === patientId) {
         setLoadingHistory(false);
+      }
+    }
+  }
+
+  /**
+   * Re-read the selected Patient's Admissions. Like `refreshHistory`, a failure
+   * leaves the list as it was and a reply only speaks for the Patient it was
+   * started for.
+   */
+  async function refreshAdmissions(patientId: number) {
+    if (selectedIdRef.current !== patientId) {
+      return;
+    }
+    setLoadingAdmissions(true);
+    try {
+      const { admissions } = await api.patientAdmissions(patientId);
+      if (selectedIdRef.current !== patientId) {
+        return;
+      }
+      setAdmissions(admissions);
+    } catch (caught) {
+      if (selectedIdRef.current !== patientId) {
+        return;
+      }
+      toast.error(errorText(caught));
+    } finally {
+      if (selectedIdRef.current === patientId) {
+        setLoadingAdmissions(false);
       }
     }
   }
@@ -368,6 +405,99 @@ export default function PatientHistoryScreen() {
       ) : null}
 
       {/*
+       * The Patient's inpatient stays, including discharged ones, so a closed
+       * Admission keeps its place in the history beside the visits. An open stay
+       * is also on the ward board. Admitting from here starts a stay for this
+       * Patient, optionally linked to one of their visits.
+       */}
+      {selected ? (
+        <section className={cardClass}>
+          <h2 className="text-title-3-medium text-text-primary">
+            {selected.full_name} — admissions
+          </h2>
+          <p className={mutedTextClass}>
+            Every inpatient stay for this Patient, newest first, including
+            discharged stays. An open stay is also on the ward board; a
+            discharged stay keeps its full history here.
+          </p>
+
+          {loadingAdmissions ? (
+            <p className={mutedTextClass}>Loading admissions…</p>
+          ) : admissions.length === 0 ? (
+            <p className={mutedTextClass}>
+              This patient has no admissions on record.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {[...admissions]
+                .sort((left, right) =>
+                  right.admitted_at.localeCompare(left.admitted_at),
+                )
+                .map((admission) => (
+                  <li key={admission.id} className={cardClass}>
+                    <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <h3 className="text-body-semibold text-text-primary">
+                        Admission #{admission.id}
+                      </h3>
+                      <Chip
+                        variant="bold"
+                        color={
+                          admission.status === "open" ? "lime" : "neutral"
+                        }
+                      >
+                        {admission.status === "open"
+                          ? "On the ward"
+                          : "Discharged"}
+                      </Chip>
+                    </header>
+                    <p className={mutedTextClass}>
+                      Ward{" "}
+                      <data value={admission.ward} className={figureClass}>
+                        {admission.ward}
+                      </data>
+                      {" · Bed "}
+                      <data value={admission.bed} className={figureClass}>
+                        {admission.bed}
+                      </data>
+                      {admission.encounter_id != null
+                        ? ` · linked to encounter #${admission.encounter_id}`
+                        : " · no linked visit"}
+                    </p>
+                    <p className={mutedTextClass}>
+                      Admitted{" "}
+                      <time
+                        dateTime={admission.admitted_at}
+                        className={figureClass}
+                      >
+                        {formatInstant(admission.admitted_at)}
+                      </time>
+                      {admission.discharged_at !== null ? (
+                        <>
+                          {" · Discharged "}
+                          <time
+                            dateTime={admission.discharged_at}
+                            className={figureClass}
+                          >
+                            {formatInstant(admission.discharged_at)}
+                          </time>
+                        </>
+                      ) : null}
+                    </p>
+                  </li>
+                ))}
+            </ul>
+          )}
+
+          <AdmitToWardAction
+            key={selected.id}
+            patient={selected}
+            encounters={history}
+            onAdmitted={() => refreshAdmissions(selected.id)}
+          />
+        </section>
+      ) : null}
+
+      {/*
        * The Observation chart sits with the selected Patient, so the latest
        * vitals are read without walking back to the ward. Charting a repeat set
        * is reachable here: once the reader names an open visit above, the chart
@@ -506,5 +636,65 @@ function AttachNumberAction({
         </Button>
       </form>
     </div>
+  );
+}
+
+/**
+ * Admit the selected Patient to a ward from their history.
+ *
+ * The action reads as a plain record until chosen, then opens the shared admit
+ * form. The visits already loaded for the Patient are passed in, so a stay can
+ * be linked to the visit it came from — keeping the visit and the stay one
+ * history — or left unlinked for a direct admission. On success the admissions
+ * list is re-read, so the new stay appears at once.
+ */
+function AdmitToWardAction({
+  patient,
+  encounters,
+  onAdmitted,
+}: {
+  patient: Patient;
+  encounters: Encounter[];
+  onAdmitted: () => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <Button
+        variant="secondary"
+        className="min-h-11"
+        onClick={() => setOpen(true)}
+      >
+        Admit to ward
+      </Button>
+    );
+  }
+
+  return (
+    <section className={cx(cardClass, "gap-3")}>
+      <p className={mutedTextClass}>
+        Admitting <bdi>{patient.full_name}</bdi> records an inpatient stay on a
+        ward. Link the visit they were seen in first to keep the visit and the
+        stay one history; leaving it unlinked admits them directly.
+      </p>
+      <AdmitPatientForm
+        patient={patient}
+        encounters={encounters}
+        onAdmitted={async () => {
+          setOpen(false);
+          await onAdmitted();
+        }}
+      />
+      <footer className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          className="min-h-11"
+          onClick={() => setOpen(false)}
+        >
+          Cancel
+        </Button>
+      </footer>
+    </section>
   );
 }

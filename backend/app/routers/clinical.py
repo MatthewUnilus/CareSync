@@ -12,10 +12,8 @@ from app.deps import DbSession, require_role
 from app.intake import apply_visit_reason
 from app.models import Admission, Encounter, Observation, Patient, Role, User
 from app.observations import (
-    REFERENCE_RANGE_NOTE,
-    abnormal_fields,
-    previous_observation,
-    reference_range_applies,
+    observation_response,
+    observation_response_for,
     stage_observation,
 )
 from app.patients import (
@@ -24,15 +22,12 @@ from app.patients import (
     search_patients as patient_search,
 )
 from app.schemas import (
-    ActorResponse,
-    BloodPressure,
     EncounterCreateRequest,
     EncounterListResponse,
     EncounterResponse,
     HospitalNumberRequest,
     IntakePayload,
     ObservationPayload,
-    ObservationReadings,
     ObservationResponse,
     PatientHistoryResponse,
     PatientObservationsResponse,
@@ -344,7 +339,7 @@ def chart_encounter_observation(
         encounter=encounter,
     )
     db.commit()
-    return _observation_response(db, observation)
+    return observation_response(db, observation)
 
 
 @router.post(
@@ -389,12 +384,12 @@ def chart_admission_observation(
         actor=user,
         action=AuditAction.chart_observation,
         patient=admission.patient,
-        # The audit log's subjects are Patient and Encounter; a stay is named in
-        # the detail until ticket 31 adds its own actions and subject column.
-        detail=f"admission_id={admission.id}",
+        # A set charted on the ward is attributed to the stay it belongs to, so a
+        # stay's history reads in one place alongside its admissions and moves.
+        admission=admission,
     )
     db.commit()
-    return _observation_response(db, observation)
+    return observation_response(db, observation)
 
 
 @router.get(
@@ -428,7 +423,7 @@ def get_patient_observations(
     responses: list[ObservationResponse] = []
     previous: Observation | None = None
     for observation in observations:
-        responses.append(_observation_response_for(observation, previous))
+        responses.append(observation_response_for(observation, previous))
         previous = observation
     responses.reverse()
     return PatientObservationsResponse(observations=responses)
@@ -503,61 +498,4 @@ def _encounter_response(encounter: Encounter) -> EncounterResponse:
         status=encounter_status(encounter),
         patient=PatientResponse.model_validate(encounter.patient),
         reason_for_visit=encounter.reason_for_visit,
-    )
-
-
-def _observation_response(
-    db: Session, observation: Observation
-) -> ObservationResponse:
-    return _observation_response_for(
-        observation, previous_observation(db, observation)
-    )
-
-
-def _observation_response_for(
-    observation: Observation,
-    previous: Observation | None,
-) -> ObservationResponse:
-    applies = reference_range_applies(observation)
-    return ObservationResponse(
-        id=observation.id,
-        encounter_id=observation.encounter_id,
-        admission_id=observation.admission_id,
-        taken_at=observation.taken_at,
-        actor=ActorResponse(
-            id=observation.actor.id,
-            display_name=observation.actor.display_name,
-        ),
-        pain_level=observation.pain_level,
-        illness_duration_hours=observation.illness_duration_hours,
-        temperature_c=observation.temperature_c,
-        heart_rate_bpm=observation.heart_rate_bpm,
-        respiratory_rate_bpm=observation.respiratory_rate_bpm,
-        blood_pressure=BloodPressure(
-            systolic=observation.systolic,
-            diastolic=observation.diastolic,
-        ),
-        oxygen_saturation_percent=observation.oxygen_saturation_percent,
-        notes=observation.notes,
-        abnormal_fields=abnormal_fields(observation),
-        reference_range_applies=applies,
-        reference_range_note=None if applies else REFERENCE_RANGE_NOTE,
-        previous=None if previous is None else _readings(previous),
-    )
-
-
-def _readings(observation: Observation) -> ObservationReadings:
-    return ObservationReadings(
-        taken_at=observation.taken_at,
-        pain_level=observation.pain_level,
-        illness_duration_hours=observation.illness_duration_hours,
-        temperature_c=observation.temperature_c,
-        heart_rate_bpm=observation.heart_rate_bpm,
-        respiratory_rate_bpm=observation.respiratory_rate_bpm,
-        blood_pressure=BloodPressure(
-            systolic=observation.systolic,
-            diastolic=observation.diastolic,
-        ),
-        oxygen_saturation_percent=observation.oxygen_saturation_percent,
-        notes=observation.notes,
     )

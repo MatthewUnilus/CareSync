@@ -52,7 +52,13 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Observation
-from app.schemas import ObservationPayload
+from app.schemas import (
+    ActorResponse,
+    BloodPressure,
+    ObservationPayload,
+    ObservationReadings,
+    ObservationResponse,
+)
 
 #: Age at which the adult resting intervals begin to apply, in whole years.
 ADULT_MINIMUM_AGE = 18
@@ -225,4 +231,72 @@ def previous_observation(
         )
         .order_by(Observation.taken_at.desc(), Observation.id.desc())
         .limit(1)
+    )
+
+
+def observation_response(
+    session: Session, observation: Observation
+) -> ObservationResponse:
+    """Render one Observation, with the preceding set read back as ``previous``.
+
+    This is the one rendering of an Observation anywhere in the API, so a set on
+    the chart and the same set on the Ward Board read identically.
+    """
+    return observation_response_for(
+        observation, previous_observation(session, observation)
+    )
+
+
+def observation_response_for(
+    observation: Observation,
+    previous: Observation | None,
+) -> ObservationResponse:
+    """Render one Observation given the set taken before it (or None).
+
+    The caller supplies ``previous`` so a chart can walk the series in order
+    without reading each predecessor twice.
+    """
+    applies = reference_range_applies(observation)
+    return ObservationResponse(
+        id=observation.id,
+        encounter_id=observation.encounter_id,
+        admission_id=observation.admission_id,
+        taken_at=observation.taken_at,
+        actor=ActorResponse(
+            id=observation.actor.id,
+            display_name=observation.actor.display_name,
+        ),
+        pain_level=observation.pain_level,
+        illness_duration_hours=observation.illness_duration_hours,
+        temperature_c=observation.temperature_c,
+        heart_rate_bpm=observation.heart_rate_bpm,
+        respiratory_rate_bpm=observation.respiratory_rate_bpm,
+        blood_pressure=BloodPressure(
+            systolic=observation.systolic,
+            diastolic=observation.diastolic,
+        ),
+        oxygen_saturation_percent=observation.oxygen_saturation_percent,
+        notes=observation.notes,
+        abnormal_fields=abnormal_fields(observation),
+        reference_range_applies=applies,
+        reference_range_note=None if applies else REFERENCE_RANGE_NOTE,
+        previous=None if previous is None else observation_readings(previous),
+    )
+
+
+def observation_readings(observation: Observation) -> ObservationReadings:
+    """The readings of an Observation, the shape ``previous`` carries."""
+    return ObservationReadings(
+        taken_at=observation.taken_at,
+        pain_level=observation.pain_level,
+        illness_duration_hours=observation.illness_duration_hours,
+        temperature_c=observation.temperature_c,
+        heart_rate_bpm=observation.heart_rate_bpm,
+        respiratory_rate_bpm=observation.respiratory_rate_bpm,
+        blood_pressure=BloodPressure(
+            systolic=observation.systolic,
+            diastolic=observation.diastolic,
+        ),
+        oxygen_saturation_percent=observation.oxygen_saturation_percent,
+        notes=observation.notes,
     )

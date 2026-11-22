@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit_actions import AuditAction
-from app.models import AuditEntry, Encounter, Patient, User
+from app.models import Admission, AuditEntry, Encounter, Patient, User
 from app.timeutils import utc_now
 
 
@@ -33,14 +33,16 @@ def record_audit_entry(
     action: AuditAction,
     patient: Patient | None = None,
     encounter: Encounter | None = None,
+    admission: Admission | None = None,
     detail: str | None = None,
 ) -> AuditEntry:
     """Stage one audit entry for a clinical mutation, without committing.
 
     The caller commits. The subjects are passed as objects, not ids, because an
     action may reference a subject that is still pending in the same flush —
-    registration's Patient and open-encounter's Encounter both are — and the
-    relationship lets SQLAlchemy resolve the key when that happens.
+    registration's Patient, open-encounter's Encounter and a new Admission all
+    are — and the relationship lets SQLAlchemy resolve the key when that
+    happens.
     """
     entry = AuditEntry(
         actor=actor,
@@ -49,6 +51,7 @@ def record_audit_entry(
         recorded_at=utc_now(),
         patient=patient,
         encounter=encounter,
+        admission=admission,
     )
     session.add(entry)
     return entry
@@ -58,15 +61,19 @@ def read_audit_log(
     session: Session,
     *,
     encounter_id: int | None = None,
+    admission_id: int | None = None,
 ) -> list[AuditEntry]:
-    """Return the log oldest-first, optionally narrowed to one Encounter.
+    """Return the log oldest-first, optionally narrowed to one subject.
 
     Oldest-first is the order the acts happened, which is the order a reader
-    reconstructs a visit in. ``encounter_id`` filters to a single Encounter so
-    one visit's history can be read on its own; entries with no Encounter
-    (registration) are naturally excluded by that filter.
+    reconstructs a visit or a stay in. ``encounter_id`` filters to a single
+    Encounter so one visit's history can be read on its own, and
+    ``admission_id`` does the same for one stay; entries that touch no such
+    subject are naturally excluded by that filter.
     """
     statement = select(AuditEntry).order_by(AuditEntry.id)
     if encounter_id is not None:
         statement = statement.where(AuditEntry.encounter_id == encounter_id)
+    if admission_id is not None:
+        statement = statement.where(AuditEntry.admission_id == admission_id)
     return list(session.scalars(statement).all())

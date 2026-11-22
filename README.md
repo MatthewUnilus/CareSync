@@ -661,6 +661,23 @@ In bash, use `export CARESYNC_DATABASE_URL=...` instead. To stop Postgres:
 docker compose down
 ```
 
+## Schema changes (ticket 31)
+
+After ticket 30, `audit_log` gained a nullable `admission_id` column (with its
+foreign key) and a widened allowed-action set covering the ward actions
+(`admit_patient`, `move_admission`, `discharge_patient`). This build has **no
+migration tool**, and `Base.metadata.create_all` only creates missing tables —
+it does **not** alter an existing one. A database created before this change
+keeps the old `audit_log` shape and its old action check, and will reject the
+new writes.
+
+- **Local SQLite** — back up `caresync.db` first, then recreate it and reseed
+  (`npm run seed`, or just `npm run dev`) so the schema is rebuilt.
+- **Postgres demo** — the schema is not upgraded in place; migrate `audit_log`
+  by hand or recreate the database before running this build.
+
+No migration is implemented; the steps above are the manual operator work.
+
 ## Environment variables
 
 All variables use the `CARESYNC_` prefix. A `.env` file in `backend/` is

@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.admissions import AdmissionStatus
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
 from app.models import Role, Sex
@@ -29,6 +30,15 @@ _OPTIONAL_TEXT = Annotated[
 _EMAIL = Annotated[str, StringConstraints(strip_whitespace=True, max_length=320)]
 _HOSPITAL_NUMBER = Annotated[
     str, StringConstraints(strip_whitespace=True, max_length=64)
+]
+#: Where an Admission is: a ward and a bed or location, both required and
+#: non-blank. The lengths match the model's columns so a stored value is never
+#: silently truncated.
+_WARD = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+]
+_BED = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
 ]
 
 # SQLite round-trips aware timestamps as naive; responses always speak UTC.
@@ -261,6 +271,53 @@ class EncounterListResponse(BaseModel):
     encounters: list[EncounterResponse]
 
 
+class AdmissionCreateRequest(BaseModel):
+    """Admit a Patient: where they are, and the visit that led here.
+
+    ``encounter_id`` is optional and nullable: a direct admission has no prior
+    visit, while an admission from a visit links the Encounter so the two read
+    as one history. An unknown key is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    patient_id: int = Field(gt=0)
+    ward: _WARD
+    bed: _BED
+    encounter_id: int | None = Field(default=None, gt=0)
+
+
+class AdmissionMoveRequest(BaseModel):
+    """Move a stay to another ward and bed. Both are required and non-blank."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ward: _WARD
+    bed: _BED
+
+
+class AdmissionResponse(BaseModel):
+    """One Admission, open or discharged.
+
+    ``status`` is derived from ``discharged_at`` rather than stored: open while
+    the instant is null, discharged once it is set. A discharged Admission is
+    still returned in full, with its Patient and the Encounter it came from.
+    """
+
+    id: int
+    patient: PatientResponse
+    ward: str
+    bed: str
+    admitted_at: UtcDatetime
+    discharged_at: UtcDatetime | None = None
+    encounter_id: int | None = None
+    status: AdmissionStatus
+
+
+class AdmissionListResponse(BaseModel):
+    admissions: list[AdmissionResponse]
+
+
 class PatientSearchResponse(BaseModel):
     """Patients matching a search fragment.
 
@@ -365,6 +422,7 @@ class AuditEntryResponse(BaseModel):
     actor: ActorResponse
     patient_id: int | None
     encounter_id: int | None
+    admission_id: int | None = None
 
 
 class AuditLogResponse(BaseModel):
@@ -395,3 +453,36 @@ class PerformanceReportResponse(BaseModel):
     completed: int
     average_waiting_seconds: float
     entries: list[PerformanceEntryResponse]
+
+
+class WardBoardEntryResponse(BaseModel):
+    """One open Admission on the Ward Board, with its outstanding work.
+
+    The Admission fields are inlined so a board row is a single object, matching
+    ``AdmissionResponse`` field-for-field. ``latest_observation`` is the
+    Patient's most recent Observation, rendered exactly as the chart renders it,
+    or null when none is charted. The counts are what the record shows is
+    outstanding; each is zero where the later feature does not exist yet, and
+    none is a score or a judgement (CONTEXT.md, "Ward Board").
+    """
+
+    id: int
+    patient: PatientResponse
+    ward: str
+    bed: str
+    admitted_at: UtcDatetime
+    discharged_at: UtcDatetime | None = None
+    encounter_id: int | None = None
+    status: AdmissionStatus
+    latest_observation: ObservationResponse | None = None
+    outstanding_medication_count: int
+    overdue_medication_count: int
+    due_medication_count: int
+    open_task_count: int
+    unreviewed_result_count: int
+
+
+class WardBoardResponse(BaseModel):
+    """The ward's open Admissions, ordered by outstanding work."""
+
+    admissions: list[WardBoardEntryResponse]

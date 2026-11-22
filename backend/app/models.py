@@ -317,10 +317,15 @@ class AuditEntry(Base):
 
     The subject references are nullable because the actions do not all have the
     same scope: registration touches only a Patient, while opening an Encounter
-    also names that Encounter. Keeping one column per subject — rather than a
-    polymorphic pair — means a filter to one Encounter is a plain indexed lookup
+    also names that Encounter, and a ward action also names the Admission it
+    changed. Keeping one column per subject — rather than a polymorphic pair —
+    means a filter to one Encounter or one Admission is a plain indexed lookup
     and the row stays reconstructable without a join through whatever type it
     happened to point at.
+
+    ADR 0007's amendment records the change: the Admission is the anchor the
+    ward entities name (ADR 0008), so an Admission subject joins Patient and
+    Encounter.
 
     Rows are append-only, enforced in the application layer (see the guard
     below), because ADR 0001 forbids database triggers. An audit record that can
@@ -356,10 +361,14 @@ class AuditEntry(Base):
     encounter_id: Mapped[int | None] = mapped_column(
         ForeignKey("encounters.id"), nullable=True, index=True
     )
+    admission_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admissions.id"), nullable=True, index=True
+    )
 
     actor: Mapped[User] = relationship(lazy="joined")
     patient: Mapped[Patient | None] = relationship()
     encounter: Mapped[Encounter | None] = relationship()
+    admission: Mapped[Admission | None] = relationship()
 
 
 @event.listens_for(AuditEntry, "before_update")

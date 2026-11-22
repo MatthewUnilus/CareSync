@@ -45,13 +45,20 @@ def get_audit_log(
             description="Narrow the log to one Encounter's history",
         ),
     ] = None,
+    admission_id: Annotated[
+        int | None,
+        Query(
+            gt=0,
+            description="Narrow the log to one Admission's history",
+        ),
+    ] = None,
 ) -> AuditLogResponse:
     """The append-only log of clinical mutations, oldest first.
 
     Read-only, like the Reports beside it: oversight stays separate from care,
     so this route offers no action and is refusable to a Clinical user. One
-    Encounter may be named, which reconstructs a single visit; entries that
-    touch no Encounter (registration) are excluded by that filter.
+    Encounter or one Admission may be named, which reconstructs a single visit
+    or a single stay; entries that touch neither are excluded by that filter.
     """
     return AuditLogResponse(
         entries=[
@@ -67,8 +74,11 @@ def get_audit_log(
                 ),
                 patient_id=entry.patient_id,
                 encounter_id=entry.encounter_id,
+                admission_id=entry.admission_id,
             )
-            for entry in read_audit_log(db, encounter_id=encounter_id)
+            for entry in read_audit_log(
+                db, encounter_id=encounter_id, admission_id=admission_id
+            )
         ]
     )
 

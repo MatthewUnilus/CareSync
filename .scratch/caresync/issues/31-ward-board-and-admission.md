@@ -4,19 +4,19 @@
 
 **Blocked by:** 30 (the board shows the latest Observation, so the chart must exist).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `admissions` table records the Patient, the ward, the bed or location, the admission instant, the discharge instant, and an optional link to the Encounter the patient was seen in first.
-- [ ] Admitting a patient directly, with no prior visit, works.
-- [ ] Admitting from an existing Encounter links the two, so the visit and the stay read as one history.
-- [ ] A location move is recorded and shows on the board, so the board always says where a patient is.
-- [ ] Discharging ends the stay. A discharged patient leaves the board and keeps their full history, including their Observations and everything the later tickets attach.
-- [ ] `GET /api/ward/board` returns the open Admissions with, for each, the latest Observation, the outstanding medication count, the open Task count and the count of results awaiting review. The counts return zero where the later features do not exist yet, so this ticket lands before them and still works.
-- [ ] The board orders by outstanding work: patients with overdue medication doses first, then doses due now, then results awaiting review, then open Tasks, with bed order breaking ties.
-- [ ] The board recalculates on every read and stores nothing. A test asserts that reading it adds no rows.
-- [ ] A new `WardBoard.tsx` is added as a view in `ClinicalWorkspace.tsx`, following the three-line pattern the existing views use.
-- [ ] Admission and discharge each write exactly one Audit Entry in the same transaction as the change, and a location move does too.
-- [ ] Tests: admit, see on the board, discharge, gone from the board and still in history; the board's order changes when an item becomes overdue; a discharged Admission keeps its data; the board's read writes nothing.
+- [x] A new `admissions` table records the Patient, the ward, the bed or location, the admission instant, the discharge instant, and an optional link to the Encounter the patient was seen in first.
+- [x] Admitting a patient directly, with no prior visit, works.
+- [x] Admitting from an existing Encounter links the two, so the visit and the stay read as one history.
+- [x] A location move is recorded and shows on the board, so the board always says where a patient is.
+- [x] Discharging ends the stay. A discharged patient leaves the board and keeps their full history, including their Observations and everything the later tickets attach.
+- [x] `GET /api/ward/board` returns the open Admissions with, for each, the latest Observation, the outstanding medication count, the open Task count and the count of results awaiting review. The counts return zero where the later features do not exist yet, so this ticket lands before them and still works.
+- [x] The board orders by outstanding work: patients with overdue medication doses first, then doses due now, then results awaiting review, then open Tasks, with bed order breaking ties.
+- [x] The board recalculates on every read and stores nothing. A test asserts that reading it adds no rows.
+- [x] A new `WardBoard.tsx` is added as a view in `ClinicalWorkspace.tsx`, following the three-line pattern the existing views use.
+- [x] Admission and discharge each write exactly one Audit Entry in the same transaction as the change, and a location move does too.
+- [x] Tests: admit, see on the board, discharge, gone from the board and still in history; the board's order changes when an item becomes overdue; a discharged Admission keeps its data; the board's read writes nothing.
 
 ## Notes
 

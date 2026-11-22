@@ -158,6 +158,49 @@ export interface PatientHistory {
   encounters: Encounter[];
 }
 
+/**
+ * An inpatient stay on a ward: where the Patient is, for how long, and the
+ * Encounter it came from when the patient was seen first (ADR 0008). An
+ * Admission is separate from an Encounter — an Encounter is a visit with a
+ * reason and an end, an Admission is a period of inpatient care with a
+ * location — so a ward and a bed never sit on an Encounter.
+ */
+export interface WardAdmission {
+  id: number;
+  patient: Patient;
+  ward: string;
+  bed: string;
+  admitted_at: string;
+  discharged_at: string | null;
+  /** The Encounter this stay came from, or null for a direct admission. */
+  encounter_id: number | null;
+  status: "open" | "discharged";
+}
+
+/**
+ * One open Admission as the Ward Board returns it: the stay plus the latest
+ * Observation charted against it and the counts of outstanding work the later
+ * ward features fill in.
+ *
+ * Every count is tallied from the record on read and stored nowhere, so none of
+ * it can drift. The board's order and these figures are the server's; the client
+ * renders them as given and never computes a score, a priority or a re-order
+ * from them.
+ */
+export interface BoardAdmission extends WardAdmission {
+  latest_observation: Observation | null;
+  outstanding_medication_count: number;
+  overdue_medication_count: number;
+  due_medication_count: number;
+  open_task_count: number;
+  unreviewed_result_count: number;
+}
+
+/** The open Admissions, already ordered by outstanding work by the server. */
+export interface WardBoard {
+  admissions: BoardAdmission[];
+}
+
 export interface DailyVisitsReport {
   day: string;
   starts_at: string;
@@ -383,6 +426,51 @@ export const api = {
    */
   endEncounter: (encounterId: number) =>
     request<Encounter>(`/api/clinical/encounters/${encounterId}/end`, {
+      method: "POST",
+    }),
+
+  /*
+   * Ward admissions and the board.
+   *
+   * Admitting records an inpatient stay on a ward, optionally linking the visit
+   * the patient was seen in first so the visit and the stay read as one history.
+   * A direct admission leaves `encounter_id` null. A location move keeps the
+   * board honest about where a patient is; discharging closes the stay and keeps
+   * its history. Each mutation writes one Audit Entry in the same transaction as
+   * the change (the server's job, not the client's).
+   *
+   * The board is derived on every read and stores nothing: the server returns the
+   * open Admissions ordered by outstanding work, with the latest Observation and
+   * the counts the later ward features fill in. The client shows the server's
+   * order and counts and never re-ranks them.
+   */
+  wardBoard: () => request<WardBoard>("/api/ward/board"),
+  patientAdmissions: (patientId: number) =>
+    request<{ admissions: WardAdmission[] }>(
+      `/api/ward/admissions?patient_id=${patientId}`,
+    ),
+  admitPatient: (
+    patientId: number,
+    ward: string,
+    bed: string,
+    encounterId: number | null,
+  ) =>
+    request<WardAdmission>("/api/ward/admissions", {
+      method: "POST",
+      body: JSON.stringify({
+        patient_id: patientId,
+        ward,
+        bed,
+        encounter_id: encounterId,
+      }),
+    }),
+  moveAdmission: (admissionId: number, ward: string, bed: string) =>
+    request<WardAdmission>(`/api/ward/admissions/${admissionId}/move`, {
+      method: "POST",
+      body: JSON.stringify({ ward, bed }),
+    }),
+  dischargeAdmission: (admissionId: number) =>
+    request<WardAdmission>(`/api/ward/admissions/${admissionId}/discharge`, {
       method: "POST",
     }),
   /*
