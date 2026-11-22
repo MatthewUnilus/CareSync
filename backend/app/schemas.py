@@ -347,11 +347,14 @@ class AuditEntryResponse(BaseModel):
     The subject ids are nullable because the six actions do not all reach the
     same subjects: registration names only a Patient. ``actor`` is the same
     shape the Override response uses, so an actor reads the same wherever it
-    appears.
+    appears. ``action`` is the machine key the log filters on; ``action_label``
+    is its human read, computed server-side beside the enum so the client holds
+    no copy of the mapping.
     """
 
     id: int
     action: AuditAction
+    action_label: str
     detail: str | None
     recorded_at: UtcDatetime
     actor: ActorResponse

@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import record_audit_entry
-from app.audit_actions import AuditAction
+from app.audit_actions import AUDIT_ACTION_LABELS, AuditAction, label_for
 from app.departures import perform_departure
 from app.intake import apply_intake
 from app.models import AuditEntry, Encounter, Patient, Sex, User
@@ -117,6 +117,89 @@ def audit_log(client: TestClient, **params: Any) -> list[dict[str, Any]]:
 
 def actions(entries: list[dict[str, Any]]) -> list[str]:
     return [entry["action"] for entry in entries]
+
+
+def test_every_action_has_a_label() -> None:
+    """The label table covers the enum exactly, so a new action cannot ship unlabelled.
+
+    Adding an action to ``AuditAction`` without a label is the drift this ticket
+    removes; the suite must fail rather than let the raw key reach the UI.
+    """
+    missing = [
+        action for action in AuditAction if action not in AUDIT_ACTION_LABELS
+    ]
+    assert missing == []
+
+    # And no label names an action that is not in the set, which would be a
+    # stale row left behind by a renamed or deleted action.
+    unknown = [key for key in AUDIT_ACTION_LABELS if key not in AuditAction]
+    assert unknown == []
+
+
+def test_a_label_is_never_the_raw_key() -> None:
+    """A label is the human read; the key must not leak through it."""
+    for action in AuditAction:
+        label = AUDIT_ACTION_LABELS[action]
+        assert label and label != action.value
+        assert "_" not in label
+
+
+def test_the_audit_log_serves_each_actions_label(
+    clinical_client: TestClient,
+) -> None:
+    """Every entry carries its human label beside its machine key."""
+    patient_id = register_patient(clinical_client, age=HIGH_AGE)
+    encounter = open_encounter(clinical_client, patient_id, LOW_INTAKE)
+    assert override(clinical_client, encounter, final_decision="High").status_code == 200
+    assert reassess(clinical_client, encounter, LOW_INTAKE).status_code == 201
+    assert depart(clinical_client, encounter["id"]).status_code == 200
+
+    entries = audit_log(clinical_client)
+
+    assert actions(entries) == [
+        AuditAction.register_patient.value,
+        AuditAction.open_encounter.value,
+        AuditAction.override.value,
+        AuditAction.reassessment.value,
+        AuditAction.departure.value,
+    ]
+    for entry in entries:
+        expected = AUDIT_ACTION_LABELS[AuditAction(entry["action"])]
+        assert entry["action_label"] == expected
+
+
+def test_a_correction_entry_carries_its_label(
+    clinical_client: TestClient,
+) -> None:
+    """The sixth action, reachable only for an Assessment-less Encounter."""
+    patient_id = register_patient(clinical_client)
+    encounter_id = _encounter_without_assessment(clinical_client, patient_id)
+    response = clinical_client.put(
+        f"/api/clinical/encounters/{encounter_id}/intake",
+        json={**LOW_INTAKE, "pain_level": 3},
+    )
+    assert response.status_code == 200, response.text
+
+    (entry,) = [
+        item
+        for item in audit_log(clinical_client)
+        if item["action"] == AuditAction.correct_intake.value
+    ]
+    assert entry["action_label"] == AUDIT_ACTION_LABELS[AuditAction.correct_intake]
+
+
+def test_label_for_falls_back_deliberately() -> None:
+    """An unrecognised value gets a defined fallback, not the raw snake_case key.
+
+    The fallback lives server-side beside the table so both the API and any
+    future caller share one rule, rather than each inventing its own.
+    """
+    assert label_for(AuditAction.register_patient) == (
+        AUDIT_ACTION_LABELS[AuditAction.register_patient]
+    )
+    fallback = label_for("something_not_in_the_set")
+    assert fallback != "something_not_in_the_set"
+    assert "_" not in fallback
 
 
 def test_registering_a_patient_writes_one_audit_entry(

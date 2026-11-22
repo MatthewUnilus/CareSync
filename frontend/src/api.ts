@@ -351,7 +351,10 @@ export interface AccuracyEvaluationReport {
 
 export interface AuditEntry {
   id: number;
+  /** The machine key, used for filtering and counting. */
   action: string;
+  /** The action's human label, served from beside the enum; render this. */
+  action_label: string;
   detail: string | null;
   recorded_at: string;
   actor: {
