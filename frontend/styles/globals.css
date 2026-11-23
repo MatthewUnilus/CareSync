@@ -2,6 +2,7 @@
 @import "./theme.css";
 @import "./typography.css";
 @import "./brand.css";
+@import "./print.css";
 
 /* ---------------------------------------------------------------------------
  * Dark mode strategy
