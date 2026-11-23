@@ -212,7 +212,7 @@ export function HandoverSheet({
   }
 
   return (
-    <div className="print-sheet" data-print-sheet>
+    <div className="print-sheet">
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Ward Handover Sheet</h1>
         <p className="print-sheet-meta">
@@ -413,7 +413,7 @@ export function MedicationRoundSheet({
   );
 
   return (
-    <div className="print-sheet" data-print-sheet>
+    <div className="print-sheet">
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Medication Round Sheet</h1>
         <p className="print-sheet-meta">
@@ -570,7 +570,7 @@ export function WardWorklistSheet({
   );
 
   return (
-    <div className="print-sheet" data-print-sheet>
+    <div className="print-sheet">
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Ward Worklist</h1>
         <p className="print-sheet-meta">
