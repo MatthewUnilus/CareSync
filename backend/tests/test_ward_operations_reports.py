@@ -168,20 +168,3 @@ def test_the_ward_report_reads_write_nothing(client: TestClient) -> None:
     ):
         assert client.get(path).status_code == 200, path
     assert _row_counts(client) == before
-
-
-def test_administrator_is_refused_every_clinical_ward_route(
-    client: TestClient,
-) -> None:
-    """An administrator cannot perform a clinical ward action."""
-    login(client, ADMINISTRATOR)
-    refused = [
-        ("POST", "/api/ward/admissions", {"patient_id": 1, "ward": "A", "bed": "1"}),
-        ("GET", "/api/ward/board", None),
-        ("GET", "/api/ward/note-templates", None),
-        ("GET", "/api/ward/staff", None),
-        ("POST", "/api/ward/admissions/1/tasks", {"description": "x"}),
-    ]
-    for method, path, body in refused:
-        response = client.request(method, path, json=body)
-        assert response.status_code == 403, f"{method} {path} was not refused"

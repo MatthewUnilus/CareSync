@@ -40,19 +40,6 @@ def instrumented_client(db_path: Path) -> Iterator[TestClient]:
         yield test_client
 
 
-@pytest.fixture
-def uninstrumented_client(db_path: Path) -> Iterator[TestClient]:
-    """A client with the instrumentation left off, as normal ward use is."""
-    settings = Settings(
-        database_url=f"sqlite:///{db_path.as_posix()}",
-        session_ttl_seconds=3600,
-        seed_demo_users=True,
-        study_instrumentation_enabled=False,
-    )
-    with TestClient(create_app(settings)) as test_client:
-        yield test_client
-
-
 def test_instrumentation_off_records_nothing(client: TestClient) -> None:
     """With the setting off, every study route is refused and no run exists."""
     _login(client)
