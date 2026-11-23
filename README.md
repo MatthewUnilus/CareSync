@@ -740,6 +740,20 @@ created before this change rejects the new writes.
 - **Postgres demo** — `medication_administrations` may be created in place, but
   `audit_log` needs the same hand migration or a database rebuild.
 
+### Ticket 36 — investigations
+
+Ticket 36 adds the `investigations` table and four more audit actions
+(`record_investigation`, `record_investigation_sample`,
+`record_investigation_result`, `review_investigation`). As before, `create_all`
+builds the new table but cannot widen the SQLite `audit_log` action `CHECK`, so a
+database created before this change rejects the new writes.
+
+- **Local SQLite** — back up `caresync.db`, then recreate and reseed
+  (`npm run seed`, or just `npm run dev`), or widen the check with an explicit
+  migration, before the API uses it.
+- **Postgres demo** — `investigations` may be created in place, but `audit_log`
+  needs the same hand migration or a database rebuild.
+
 ## Environment variables
 
 All variables use the `CARESYNC_` prefix. A `.env` file in `backend/` is

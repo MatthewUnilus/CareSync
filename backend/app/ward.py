@@ -10,8 +10,9 @@ One read captures one clock (``utc_now``) and passes it down, so every count on 
 board is measured against the same instant. The medication figures for an
 admission are read through one seam, ``medication_counts``, which derives all
 three from a single pass of that admission's schedule rather than scanning once
-per count. The open Task count (ticket 33) is read the same way; investigations
-(ticket 36) fill in their own count.
+per count. The open Task count (ticket 33) is read the same way, and the
+results-awaiting-review count (ticket 36) is a count of the admission's
+``result_available`` Investigations.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import medications
-from app.models import Admission, Observation, Task
+from app.models import Admission, Investigation, Observation, Task
 from app.timeutils import utc_now
 
 
@@ -58,8 +59,32 @@ def medication_counts(
 
 
 def unreviewed_result_count(session: Session, admission: Admission) -> int:
-    """Results awaiting review. Investigations fill this in; zero until then."""
-    return 0
+    """Results awaiting review on this Admission, counted from the record.
+
+    The figure the Ward Board shows in the results column: an Investigation in
+    the ``result_available`` state, so a result that has arrived and not been
+    reviewed. The state is derived from the instants, so the count is the same
+    read the awaiting-review worklist uses. A requested or reviewed test is not
+    counted.
+
+    The stay must still be open: a discharged Admission has left the board, so
+    its results are never asked for here, and the predicate makes that true even
+    if this is called directly with a discharged stay rather than relying on the
+    caller to have filtered it.
+
+    Kept at the ``(session, admission)`` signature the board reads every count
+    through, so the ordering seam ticket 31/34 tests stub is unchanged.
+    """
+    return session.scalar(
+        select(func.count())
+        .select_from(Investigation)
+        .where(
+            Investigation.admission_id == admission.id,
+            Investigation.admission.has(Admission.discharged_at.is_(None)),
+            Investigation.result_available_at.is_not(None),
+            Investigation.reviewed_at.is_(None),
+        )
+    )
 
 
 def open_task_count(session: Session, admission: Admission) -> int:

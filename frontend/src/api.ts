@@ -261,6 +261,74 @@ export interface NewTaskPayload {
 }
 
 /**
+ * The four states an Investigation moves through, in order: requested, then a
+ * sample taken, then a result available, then reviewed. The set is fixed and
+ * nothing else is inferable from it; a fifth a hospital's workflow needs belongs
+ * on the server rather than being encoded in the free text.
+ */
+export type InvestigationState =
+  | "requested"
+  | "sample_taken"
+  | "result_available"
+  | "reviewed";
+
+/**
+ * One Investigation: a test a Clinical user requested against an Admission, and
+ * the progress of that request to its result and its review (ticket 36, ADR
+ * 0012).
+ *
+ * The system tracks progress and the review act and nothing else. `test_name`
+ * and `result_note` are free text as given — there is no controlled vocabulary
+ * over the test name and no fuzzy matching, and the result note is the words the
+ * laboratory gave, not a value. The system never reads, parses, flags or
+ * interprets a result value: it shows no reference range and marks nothing
+ * abnormal. `state` is the server's; the client shows it as given and derives no
+ * clinical meaning from it.
+ */
+export interface Investigation {
+  id: number;
+  admission_id: number;
+  patient: Patient;
+  /** The test as requested, free text (e.g. `FBC`, `Urgent CT head`). */
+  test_name: string;
+  requested_at: string;
+  requested_by: { id: number; display_name: string };
+  state: InvestigationState;
+  sample_taken_at: string | null;
+  result_available_at: string | null;
+  /**
+   * The result as the laboratory gave it, free text and nothing more. It is
+   * recorded and shown as received; it is never read, parsed or interpreted.
+   */
+  result_note: string | null;
+  reviewed_at: string | null;
+  reviewed_by: { id: number; display_name: string } | null;
+  /**
+   * Who requested the test, as free text, or null when it was not recorded. It
+   * is the requesting doctor's own name as given, not the signed-in user.
+   */
+  instructed_by: string | null;
+}
+
+/**
+ * Investigations as the server returns them: one worklist, or one Admission's
+ * own history.
+ */
+export interface Investigations {
+  investigations: Investigation[];
+}
+
+/**
+ * The fields of a new Investigation, as sent to request one. `instructed_by` is
+ * the requesting doctor's name as free text, or null when the nurse records the
+ * test without it.
+ */
+export interface NewInvestigationPayload {
+  test_name: string;
+  instructed_by: string | null;
+}
+
+/**
  * One frequency's round times: the clock times of day the frequency maps to, as
  * the ward's convention holds them (ADR 0011). The policy is served from one
  * module so a hospital's own set replaces the default in one place, and it is
@@ -971,6 +1039,50 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ assignee_user_id: assigneeUserId }),
     }),
+  /*
+   * Investigations and the two chase lists (ticket 36, ADR 0012).
+   *
+   * An Investigation records a test a Clinical user requested against an
+   * Admission and follows it to its result and its review. The system is not a
+   * results viewer: `test_name` and `result_note` are free text as given, and the
+   * client never reads, parses, flags or interprets a value, so it shows no
+   * reference range and marks nothing abnormal. The four states are the server's;
+   * the client shows them and derives nothing.
+   * Recording one, moving its state and reviewing a result each write one Audit
+   * Entry in the same transaction as the change (the server's job, not the
+   * client's). The two lists are the same record read two ways — results awaiting
+   * review, and tests awaiting a result.
+   */
+  admissionInvestigations: (admissionId: number) =>
+    request<Investigations>(
+      `/api/ward/admissions/${admissionId}/investigations`,
+    ),
+  recordInvestigation: (
+    admissionId: number,
+    payload: NewInvestigationPayload,
+  ) =>
+    request<Investigation>(
+      `/api/ward/admissions/${admissionId}/investigations`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  markInvestigationSampleTaken: (investigationId: number) =>
+    request<Investigation>(
+      `/api/ward/investigations/${investigationId}/sample-taken`,
+      { method: "POST" },
+    ),
+  recordInvestigationResult: (investigationId: number, resultNote: string) =>
+    request<Investigation>(
+      `/api/ward/investigations/${investigationId}/result`,
+      { method: "POST", body: JSON.stringify({ result_note: resultNote }) },
+    ),
+  reviewInvestigation: (investigationId: number) =>
+    request<Investigation>(`/api/ward/investigations/${investigationId}/review`, {
+      method: "POST",
+    }),
+  investigationsAwaitingReview: () =>
+    request<Investigations>("/api/ward/investigations/awaiting-review"),
+  investigationsAwaitingResult: () =>
+    request<Investigations>("/api/ward/investigations/awaiting-result"),
   /*
    * Nursing notes and their templates.
    *

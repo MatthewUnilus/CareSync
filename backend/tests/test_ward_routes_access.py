@@ -46,6 +46,13 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "reason_key": None,
         "reason_text": None,
     },
+    ("POST", "/api/ward/admissions/{id}/investigations"): {
+        "test_name": "Full blood count",
+        "instructed_by": None,
+    },
+    ("POST", "/api/ward/investigations/{id}/result"): {
+        "result_note": "Normal",
+    },
 }
 
 _PATH_PARAMS = {"admission_id": "1", "order_id": "1", "id": "1"}

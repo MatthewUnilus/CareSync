@@ -4,18 +4,18 @@
 
 **Blocked by:** 31 (an Investigation belongs to an Admission).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `investigations` table records the Admission, the name of the test, who requested it, the state, an optional free-text result note, and the review act's actor and time.
-- [ ] The state set is fixed and four values long: requested, sample taken, result available, reviewed.
-- [ ] A result note is free text, recorded as the laboratory gave it. The system never reads a value, never flags an abnormal result and never suggests anything from one.
-- [ ] Marking a result reviewed records who and when. It is the accountable act.
-- [ ] A result can be marked reviewed only once it is available. Marking an unavailable result reviewed is refused.
-- [ ] A worklist shows every result awaiting review across the ward, so nothing goes unread.
-- [ ] A second worklist shows every test still awaiting a result, so the nurse knows what to chase.
-- [ ] The ward board's results-awaiting-review count starts returning a real figure, replacing the zero that ticket 31 stubbed.
-- [ ] Recording an investigation, moving its state and marking a result reviewed each write exactly one Audit Entry in the same transaction as the change.
-- [ ] Tests: the four states move in order and an out-of-order move is refused; a result cannot be reviewed before it is available; the review records its actor and time; both worklists cover several patients; an interpretation is never produced, asserted by the absence of any value parsing.
+- [x] A new `investigations` table records the Admission, the name of the test, who requested it, the state, an optional free-text result note, and the review act's actor and time.
+- [x] The state set is fixed and four values long: requested, sample taken, result available, reviewed.
+- [x] A result note is free text, recorded as the laboratory gave it. The system never reads a value, never flags an abnormal result and never suggests anything from one.
+- [x] Marking a result reviewed records who and when. It is the accountable act.
+- [x] A result can be marked reviewed only once it is available. Marking an unavailable result reviewed is refused.
+- [x] A worklist shows every result awaiting review across the ward, so nothing goes unread.
+- [x] A second worklist shows every test still awaiting a result, so the nurse knows what to chase.
+- [x] The ward board's results-awaiting-review count starts returning a real figure, replacing the zero that ticket 31 stubbed.
+- [x] Recording an investigation, moving its state and marking a result reviewed each write exactly one Audit Entry in the same transaction as the change.
+- [x] Tests: the four states move in order and an out-of-order move is refused; a result cannot be reviewed before it is available; the review records its actor and time; both worklists cover several patients; an interpretation is never produced, asserted by the absence of any value parsing.
 
 ## Notes
 

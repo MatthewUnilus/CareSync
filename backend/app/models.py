@@ -838,6 +838,144 @@ def _refuse_editing_a_raised_task(_mapper, _connection, target) -> None:
             )
 
 
+class InvestigationState(str, Enum):
+    """The fixed four states an Investigation's progress moves through.
+
+    One module vocabulary for the set, in the order the work moves: a test is
+    requested, a sample is taken, a result comes back, and the result is
+    reviewed. Four values, no more (ADR 0012, CONTEXT.md "Investigation").
+    """
+
+    requested = "requested"
+    sample_taken = "sample_taken"
+    result_available = "result_available"
+    reviewed = "reviewed"
+
+
+class Investigation(Base):
+    """A test or procedure a doctor requested, tracked to result and review.
+
+    An Investigation belongs to an Admission (ADR 0008 is the anchor) and
+    records the name of the test as free text. It is *not* a results viewer
+    (ADR 0012): the system never reads a result value, never flags an abnormal
+    result and never suggests anything from one, so ``result_note`` is free text
+    recorded as the laboratory gave it and no reference range is held or used
+    anywhere here. The Observation chart's range logic is deliberately not
+    reused, because a laboratory result's range is assay-specific and printed
+    by the laboratory, not a published range for a reading the nurse took.
+
+    ``requested_by_user_id`` is the Clinical user who recorded the request. The
+    doctor who ordered the test is not a user of this system, so who requested
+    it is the free-text ``instructed_by``, the same shape a Medication Order
+    uses for its instruction's author.
+
+    The state is derived from the row's instants, never stored a second time
+    (the reduced shape an Admission, a Medication Order and a Task use): no
+    sample is ``requested``, a sample without a result is ``sample_taken``, a
+    result without a review is ``result_available``, and a reviewed result is
+    ``reviewed``. There is no state column that could contradict the instants.
+    Marking a result reviewed is the accountable act, and it records who and
+    when through ``reviewed_by``/``reviewed_at``.
+
+    The requested test -- its Admission, name, free-text instruction and who
+    recorded it -- is frozen once written (see the guard below). The only
+    legitimate updates are the instants and note a state move records, so a
+    closed record is never quietly rewritten.
+    """
+
+    __tablename__ = "investigations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admission_id: Mapped[int] = mapped_column(
+        ForeignKey("admissions.id"), index=True
+    )
+    test_name: Mapped[str] = mapped_column(String(200))
+    # The doctor who requested it as text: the doctor is not a user of this
+    # system. Optional, because the requester may not be known at the time.
+    instructed_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # The Clinical user who recorded it, so the act is attributable.
+    requested_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    # The instants of the three moves; the state is derived from these.
+    sample_taken_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    result_available_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # The result as the laboratory gave it, free text, never parsed.
+    result_note: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # The review act's actor and time, the accountable act.
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+
+    admission: Mapped[Admission] = relationship(lazy="joined")
+    requested_by: Mapped[User] = relationship(
+        lazy="joined", foreign_keys=[requested_by_user_id]
+    )
+    reviewed_by: Mapped[User | None] = relationship(
+        lazy="joined", foreign_keys=[reviewed_by_user_id]
+    )
+
+
+def investigation_state(investigation: Investigation) -> InvestigationState:
+    """The Investigation's progress, derived from its instants.
+
+    Reviewed once there is a review, otherwise result available once a result has
+    come back, otherwise sample taken once a sample was taken, otherwise
+    requested. Derived so there is no second source of truth.
+    """
+    if investigation.reviewed_at is not None:
+        return InvestigationState.reviewed
+    if investigation.result_available_at is not None:
+        return InvestigationState.result_available
+    if investigation.sample_taken_at is not None:
+        return InvestigationState.sample_taken
+    return InvestigationState.requested
+
+
+#: The fields an Investigation may legitimately change after it is recorded: the
+#: instants and note a state move records. Everything else is the requested test
+#: and is frozen.
+_INVESTIGATION_MUTABLE_FIELDS = frozenset(
+    {
+        "sample_taken_at",
+        "result_available_at",
+        "result_note",
+        "reviewed_at",
+        "reviewed_by_user_id",
+    }
+)
+
+
+@event.listens_for(Investigation, "before_update")
+def _refuse_editing_a_recorded_investigation(_mapper, _connection, target) -> None:
+    """Freeze the requested test; only its progress and review may change.
+
+    Application-layer, not a database trigger (ADR 0001). An Investigation is
+    recorded once with its Admission, name, instruction and recorder; changing
+    any of those would leave the record saying the test was always something
+    else. The state moves and the review are the only acts it takes afterwards.
+    """
+    state = inspect(target)
+    for attribute in state.mapper.column_attrs:
+        if attribute.key in _INVESTIGATION_MUTABLE_FIELDS:
+            continue
+        if state.attrs[attribute.key].history.has_changes():
+            raise ValueError(
+                "An Investigation's requested test is frozen; only its progress "
+                "and review may change"
+            )
+
+
 class UserSession(Base):
     """One signed-in session on one device.
 

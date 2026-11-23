@@ -17,6 +17,7 @@ from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
 from app.models import (
     AdministrationOutcome,
+    InvestigationState,
     MedicationOrderStatus,
     Role,
     Sex,
@@ -73,6 +74,11 @@ _ROUTE = Annotated[
 ]
 _INSTRUCTED_BY = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+#: An Investigation's optional free-text requester: the doctor is not a user of
+#: this system, so who requested the test is text. Optional, so it may be absent.
+_OPTIONAL_INSTRUCTED_BY = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=200)
 ]
 #: A round-frequency key. Checked against the fixed vocabulary in ``app.medications``
 #: by the route, so an unknown frequency — or one the ticket deliberately does not
@@ -993,3 +999,74 @@ class StaffResponse(BaseModel):
     clinical, so they are not offered as an assignee."""
 
     users: list[StaffMemberResponse]
+
+
+class InvestigationCreateRequest(BaseModel):
+    """Record a test the doctor requested against an Admission.
+
+    ``test_name`` is free text, because a controlled test vocabulary is out of
+    scope and the free text absorbs the variation. ``instructed_by`` is the
+    doctor who requested it as free text: the doctor is not a user of this
+    system, so who requested it is recorded as text alongside the Clinical user
+    who transcribed it. An unknown key is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_name: _NAME
+    instructed_by: _OPTIONAL_INSTRUCTED_BY | None = None
+
+    @field_validator("instructed_by")
+    @classmethod
+    def _blank_instructed_by_is_absent(cls, value: str | None) -> str | None:
+        """A blank instruction is no instruction, the same rule an Observation's
+        blank notes follow."""
+        return value or None
+
+
+class InvestigationResultRequest(BaseModel):
+    """Record a result for an Investigation, as the laboratory gave it.
+
+    ``result_note`` is free text, required and non-blank, and stored verbatim:
+    the system never reads a value, flags an abnormal one or suggests anything
+    from it, so there is nothing to validate it against (ADR 0012). An unknown
+    key is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_note: _TEXT
+
+
+class InvestigationResponse(BaseModel):
+    """One Investigation, its progress derived from its instants.
+
+    ``state`` is derived from the instants rather than stored: requested, then
+    sample taken, then result available, then reviewed. ``requested_by`` is the
+    Clinical user who recorded it and ``instructed_by`` the doctor who requested
+    it as free text. ``result_note`` is the result as the laboratory gave it,
+    free text with no value parsed from it; ``reviewed_by`` and ``reviewed_at``
+    record the accountable act. Nothing here marks a result overdue or otherwise
+    reads a clinical meaning into its arrival: the states carry the progress and
+    no threshold is applied.
+    """
+
+    id: int
+    admission_id: int
+    patient: PatientResponse
+    test_name: str
+    instructed_by: str | None = None
+    requested_at: UtcDatetime
+    requested_by: ActorResponse
+    state: InvestigationState
+    sample_taken_at: UtcDatetime | None = None
+    result_available_at: UtcDatetime | None = None
+    result_note: str | None = None
+    reviewed_at: UtcDatetime | None = None
+    reviewed_by: ActorResponse | None = None
+
+
+class InvestigationListResponse(BaseModel):
+    """One Admission's Investigations, or one of the ward's two worklists."""
+
+    investigations: list[InvestigationResponse]

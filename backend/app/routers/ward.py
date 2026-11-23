@@ -9,7 +9,10 @@ here too (ticket 32): the templates are a fixed code vocabulary (ADR 0013) and a
 note is written from one, its fields one row each, prefilled from the patient's
 latest Observation. Tasks live here too (ticket 33): a Task is raised by hand or
 from a Ward Round Entry, and the ward's cross-patient list reads the open Tasks
-across every patient.
+across every patient. Investigations live here too (ticket 36): a test is recorded
+from a doctor's request, followed through its four states to the review, and the
+ward's two worklists -- results awaiting review and tests awaiting a result -- read
+the same table two ways.
 """
 
 from datetime import datetime
@@ -20,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import administrations, medications, notes, tasks, ward
+from app import administrations, investigations, medications, notes, tasks, ward
 from app.admissions import (
     admission_status,
     admit,
@@ -34,6 +37,7 @@ from app.deps import DbSession, require_role
 from app.models import (
     Admission,
     Encounter,
+    Investigation,
     MedicationOrder,
     NursingNote,
     Patient,
@@ -51,6 +55,10 @@ from app.schemas import (
     AdmissionResponse,
     AssignTaskRequest,
     DueListResponse,
+    InvestigationCreateRequest,
+    InvestigationListResponse,
+    InvestigationResponse,
+    InvestigationResultRequest,
     MedicationAdministrationCreateRequest,
     MedicationAdministrationGridResponse,
     MedicationAdministrationReasonsResponse,
@@ -89,6 +97,12 @@ DISCHARGED_STAY_NOTE_DETAIL = (
     "A discharged Admission cannot take new Notes, except a Discharge Summary"
 )
 DISCHARGED_STAY_TASK_DETAIL = "A discharged Admission cannot take new Tasks"
+DISCHARGED_STAY_INVESTIGATION_DETAIL = (
+    "A discharged Admission cannot take new Investigations"
+)
+DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL = (
+    "An Investigation on a discharged Admission cannot be changed"
+)
 
 
 @router.post(
@@ -258,6 +272,16 @@ def _get_task(db: Session, task_id: int) -> Task:
             detail=tasks.TASK_NOT_FOUND_DETAIL,
         )
     return task
+
+
+def _get_investigation(db: Session, investigation_id: int) -> Investigation:
+    investigation = db.get(Investigation, investigation_id)
+    if investigation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=investigations.INVESTIGATION_NOT_FOUND_DETAIL,
+        )
+    return investigation
 
 
 @router.get("/medications/round-times", response_model=RoundTimesResponse)
@@ -983,6 +1007,216 @@ def assign_task(
     )
     db.commit()
     return tasks.task_response(task)
+
+
+@router.post(
+    "/admissions/{id}/investigations",
+    response_model=InvestigationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_investigation(
+    id: int,
+    payload: InvestigationCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationResponse:
+    """Record a test the doctor requested against an Admission, in ``requested``.
+
+    The test name is free text and ``instructed_by`` records who requested it as
+    a free-text name, because the doctor is not a user of this system; the signed
+    in Clinical user is recorded as ``requested_by``. An unknown Admission is a
+    ``404``; a discharged Admission is a ``409``, because a stay that has left the
+    ward does not take new tests, and its closed record is not reopened. The
+    Investigation and its single audit entry commit together.
+    """
+    admission = _get_admission(db, id)
+    ensure_open(admission, DISCHARGED_STAY_INVESTIGATION_DETAIL)
+    investigation = investigations.stage_investigation(
+        db,
+        admission=admission,
+        actor=user,
+        test_name=payload.test_name,
+        instructed_by=payload.instructed_by,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.record_investigation,
+        patient=admission.patient,
+        admission=admission,
+        detail=f"investigation {investigation.id} {payload.test_name}",
+    )
+    db.commit()
+    return investigations.investigation_response(investigation)
+
+
+@router.get(
+    "/admissions/{id}/investigations",
+    response_model=InvestigationListResponse,
+)
+def list_admission_investigations(
+    id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationListResponse:
+    """One Admission's Investigations, newest first, in every state.
+
+    A reviewed or still-requested test is part of the record, so all of them read
+    back here; this is the stay's history rather than a working list. An unknown
+    Admission is a ``404``. Reading it writes nothing.
+    """
+    admission = _get_admission(db, id)
+    return InvestigationListResponse(
+        investigations=investigations.investigation_responses(
+            investigations.admission_investigations(db, admission)
+        )
+    )
+
+
+@router.get(
+    "/investigations/awaiting-review",
+    response_model=InvestigationListResponse,
+)
+def list_investigations_awaiting_review(
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationListResponse:
+    """Every result awaiting review across the ward, longest waiting first.
+
+    A result that has arrived and not been reviewed, so nothing goes unread. One
+    of the two worklists over the same read; only the ward's open Admissions are
+    read, because a discharged stay has left the working view. Reading it writes
+    nothing.
+    """
+    return InvestigationListResponse(
+        investigations=investigations.investigation_responses(
+            investigations.awaiting_review(db)
+        )
+    )
+
+
+@router.get(
+    "/investigations/awaiting-result",
+    response_model=InvestigationListResponse,
+)
+def list_investigations_awaiting_result(
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationListResponse:
+    """Every test still awaiting a result across the ward: the chase list.
+
+    The requested and sample-taken Investigations, so the nurse knows what to
+    chase. The other worklist over the same read; only the ward's open Admissions
+    are read, because a discharged stay has left the working view. Reading it
+    writes nothing.
+    """
+    return InvestigationListResponse(
+        investigations=investigations.investigation_responses(
+            investigations.awaiting_result(db)
+        )
+    )
+
+
+@router.post(
+    "/investigations/{id}/sample-taken",
+    response_model=InvestigationResponse,
+)
+def mark_investigation_sample_taken(
+    id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationResponse:
+    """Move an Investigation from ``requested`` to ``sample_taken``.
+
+    The instant is the server's clock, never a value the caller supplies. An
+    unknown Investigation is a ``404``; any other current state -- a repeated
+    move, or one out of order -- is a ``409`` with nothing written. An
+    Investigation on a discharged Admission is a ``409``: a closed record is not
+    rewritten, even though it still reads back. The move and its single audit
+    entry commit together.
+    """
+    investigation = _get_investigation(db, id)
+    ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
+    investigations.mark_sample_taken(db, investigation)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.record_investigation_sample,
+        patient=investigation.admission.patient,
+        admission=investigation.admission,
+        detail=f"investigation {investigation.id}",
+    )
+    db.commit()
+    return investigations.investigation_response(investigation)
+
+
+@router.post(
+    "/investigations/{id}/result",
+    response_model=InvestigationResponse,
+)
+def record_investigation_result(
+    id: int,
+    payload: InvestigationResultRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationResponse:
+    """Record a result, moving an Investigation from ``sample_taken`` to
+    ``result_available``.
+
+    The note is free text, stored verbatim as the laboratory gave it; the system
+    never reads a value from it. An unknown Investigation is a ``404``; a result
+    cannot be recorded before a sample is taken, or twice, so any other current
+    state is a ``409`` with nothing written. An Investigation on a discharged
+    Admission is a ``409``. The move and its single audit entry commit together.
+    """
+    investigation = _get_investigation(db, id)
+    ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
+    investigations.record_result(db, investigation, result_note=payload.result_note)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.record_investigation_result,
+        patient=investigation.admission.patient,
+        admission=investigation.admission,
+        detail=f"investigation {investigation.id}",
+    )
+    db.commit()
+    return investigations.investigation_response(investigation)
+
+
+@router.post(
+    "/investigations/{id}/review",
+    response_model=InvestigationResponse,
+)
+def review_investigation_result(
+    id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> InvestigationResponse:
+    """Mark a result reviewed, moving an Investigation from ``result_available``
+    to ``reviewed``, recording the reviewer and the instant.
+
+    The accountable act: it records who reviewed it and when, so "nothing goes
+    unread" is checkable rather than asserted. A result cannot be reviewed before
+    it is available, and it is reviewed once, so any other current state is a
+    ``409`` with nothing written; an unknown Investigation is a ``404``. An
+    Investigation on a discharged Admission is a ``409``. The review and its
+    single audit entry commit together.
+    """
+    investigation = _get_investigation(db, id)
+    ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
+    investigations.review_result(db, investigation, reviewer=user)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.review_investigation,
+        patient=investigation.admission.patient,
+        admission=investigation.admission,
+        detail=f"investigation {investigation.id}",
+    )
+    db.commit()
+    return investigations.investigation_response(investigation)
 
 
 def _admission_fields(admission: Admission) -> dict:

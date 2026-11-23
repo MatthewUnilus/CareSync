@@ -26,6 +26,9 @@ import {
 } from "./design";
 import ObservationChart from "./ObservationChart";
 import NursingNotes from "./NursingNotes";
+import InvestigationWorklists, {
+  AdmissionInvestigations,
+} from "./Investigations";
 import TaskList, { AdmissionTasks } from "./TaskList";
 import {
   MedicationDueList,
@@ -223,6 +226,8 @@ export default function WardBoard() {
         onRecorded={handleMedicationChanged}
       />
 
+      <InvestigationWorklists admissions={board ?? []} onChanged={load} />
+
       <TaskList admissions={board ?? []} onTasksChanged={load} />
 
       <section className={cardClass}>
@@ -272,6 +277,9 @@ function BoardAdmissionRow({
   // The patient's Tasks are a fourth disclosure: raised by hand from their own
   // page, and read back as the record of open and done work.
   const [tasksOpen, setTasksOpen] = useState(false);
+  // The patient's Investigations are a fifth disclosure: requested from their
+  // own page and followed to their results and review.
+  const [investigationsOpen, setInvestigationsOpen] = useState(false);
 
   // The server's counts, shown as given, in the board's own order: overdue
   // doses, then doses due now, then results awaiting review, then open tasks.
@@ -414,6 +422,13 @@ function BoardAdmissionRow({
         >
           {tasksOpen ? "Hide tasks" : "Tasks"}
         </Button>
+        <Button
+          variant={investigationsOpen ? "primary" : "secondary"}
+          className="min-h-11"
+          onClick={() => setInvestigationsOpen((current) => !current)}
+        >
+          {investigationsOpen ? "Hide investigations" : "Investigations"}
+        </Button>
         <MoveAction admission={admission} onMoved={onChanged} />
         <DischargeAction admission={admission} onDischarged={onChanged} />
       </footer>
@@ -432,6 +447,13 @@ function BoardAdmissionRow({
 
       {tasksOpen ? (
         <AdmissionTasks admissionId={admission.id} onTasksChanged={onChanged} />
+      ) : null}
+
+      {investigationsOpen ? (
+        <AdmissionInvestigations
+          admissionId={admission.id}
+          onInvestigationsChanged={onChanged}
+        />
       ) : null}
 
       {medicationOpen ? (
