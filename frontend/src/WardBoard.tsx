@@ -13,10 +13,13 @@ import { api, errorText } from "./api";
 import type {
   BoardAdmission,
   Encounter,
+  Investigation,
   MedicationRoundTime,
   Observation,
   Patient,
+  Task,
 } from "./api";
+import { PrintSheetLauncher } from "./PrintSheets";
 import {
   cardClass,
   figureClass,
@@ -77,6 +80,10 @@ export default function WardBoard() {
   // The Admission whose nursing notes are open, tracked separately from the
   // chart so a nurse can read the notes beside the vitals or on their own.
   const [openNotesId, setOpenNotesId] = useState<number | null>(null);
+  // All investigations across the ward, for the print sheets.
+  const [allInvestigations, setAllInvestigations] = useState<Investigation[] | null>(null);
+  // All tasks across the ward, for the print sheets.
+  const [allTasks, setAllTasks] = useState<Task[] | null>(null);
 
   // The board the view is allowed to show. Every fetch takes the next token and,
   // once it resolves, writes nothing unless it is still the newest — so a slow
@@ -136,6 +143,62 @@ export default function WardBoard() {
       roundTimesRequestRef.current += 1;
     };
   }, [loadRoundTimes]);
+
+  // Fetch all investigations across the ward for print sheets.
+  const investigationsRequestRef = useRef(0);
+  const loadAllInvestigations = useCallback(async () => {
+    const requestId = ++investigationsRequestRef.current;
+    try {
+      const [awaitingReview, awaitingResult] = await Promise.all([
+        api.investigationsAwaitingReview(),
+        api.investigationsAwaitingResult(),
+      ]);
+      if (investigationsRequestRef.current !== requestId) {
+        return;
+      }
+      setAllInvestigations([
+        ...awaitingReview.investigations,
+        ...awaitingResult.investigations,
+      ]);
+    } catch {
+      if (investigationsRequestRef.current !== requestId) {
+        return;
+      }
+      // Error is silently ignored; the print buttons will be disabled until data loads.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAllInvestigations();
+    return () => {
+      investigationsRequestRef.current += 1;
+    };
+  }, [loadAllInvestigations]);
+
+  // Fetch all tasks across the ward for print sheets.
+  const tasksRequestRef = useRef(0);
+  const loadAllTasks = useCallback(async () => {
+    const requestId = ++tasksRequestRef.current;
+    try {
+      const { tasks } = await api.wardTasks(false, true); // mine=false, includeDone=true
+      if (tasksRequestRef.current !== requestId) {
+        return;
+      }
+      setAllTasks(tasks);
+    } catch {
+      if (tasksRequestRef.current !== requestId) {
+        return;
+      }
+      // Error is silently ignored; the print buttons will be disabled until data loads.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAllTasks();
+    return () => {
+      tasksRequestRef.current += 1;
+    };
+  }, [loadAllTasks]);
 
   // A written or stopped order changes both the board's counts and the due list,
   // so the board is re-read and the list is told the medication view moved on.
@@ -229,6 +292,14 @@ export default function WardBoard() {
       <InvestigationWorklists admissions={board ?? []} onChanged={load} />
 
       <TaskList admissions={board ?? []} onTasksChanged={load} />
+
+      {board !== null && allInvestigations !== null && allTasks !== null && (
+        <PrintSheetLauncher
+          admissions={board}
+          allInvestigations={allInvestigations}
+          allTasks={allTasks}
+        />
+      )}
 
       <section className={cardClass}>
         <h2 className="text-title-3-medium text-text-primary">

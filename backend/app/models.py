@@ -1020,3 +1020,31 @@ class UserSession(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="sessions", lazy="joined")
+
+
+class StudyTaskRun(Base):
+    """One timed run of a study task by an anonymised participant.
+
+    This table is separate from clinical data and never joins to a Patient.
+    It records the task label, start/end instants, and an anonymised study
+    identifier so the run cannot be traced back to a nurse. The instrumentation
+    is opt-in via a setting and off by default for normal ward use.
+
+    A run can be abandoned, which records it as abandoned rather than as a
+    very long run. The export format states its own limitations.
+    """
+
+    __tablename__ = "study_task_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # The study task being timed, e.g. "handover_sheet", "medication_round", "ward_worklist".
+    task_label: Mapped[str] = mapped_column(String(128), index=True)
+    # Anonymised study identifier (e.g. "P01", "P02"). Not the nurse's name or user id.
+    participant_id: Mapped[str] = mapped_column(String(64), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # "running" while in progress; "completed" when ended; "abandoned" when the
+    # participant ended early (e.g. interrupted) rather than running long.
+    status: Mapped[str] = mapped_column(String(32), default="running")
+
+    # No relationship to Patient, User, Admission, etc. — this is deliberate.

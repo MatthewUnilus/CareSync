@@ -20,6 +20,7 @@ import {
   tableWrapClass,
 } from "./design";
 import AdministratorReports from "./AdministratorReports";
+import WardOperationsDashboard from "./WardOperationsDashboard";
 import { formatInstant } from "./queueDisplay";
 
 /**
@@ -111,6 +112,8 @@ export default function AdministratorDashboard() {
         <h2 className="text-title-3-medium text-text-primary">Reports</h2>
         <AdministratorReports />
       </section>
+
+      <WardOperationsDashboard />
 
       <AuditLogCard
         entries={auditEntries}

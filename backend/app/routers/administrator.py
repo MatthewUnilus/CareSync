@@ -15,6 +15,12 @@ from app.schemas import (
     DailyVisitsReportResponse,
     PerformanceEntryResponse,
     PerformanceReportResponse,
+    WardCensusReportResponse,
+    LengthOfStayReportResponse,
+    LengthOfStayDistributionItem,
+    MedicationTimelinessReportResponse,
+    InvestigationReviewReportResponse,
+    TaskCompletionReportResponse,
 )
 from app.timeutils import utc_now
 
@@ -136,3 +142,79 @@ def get_performance_report(
             for entry in report.entries
         ],
     )
+
+
+@router.get(
+    "/reports/ward-census",
+    response_model=WardCensusReportResponse,
+)
+def get_ward_census(
+    db: DbSession,
+    user: AdministratorUser,
+) -> WardCensusReportResponse:
+    """Current patients on the ward, grouped by location."""
+    report = reports.ward_census(db)
+    return WardCensusReportResponse(**report.__dict__)
+
+
+@router.get(
+    "/reports/length-of-stay",
+    response_model=LengthOfStayReportResponse,
+)
+def get_length_of_stay(
+    db: DbSession,
+    user: AdministratorUser,
+) -> LengthOfStayReportResponse:
+    """Length of stay for current inpatients."""
+    report = reports.length_of_stay(db)
+    return LengthOfStayReportResponse(
+        average_seconds=report.average_seconds,
+        distribution=[LengthOfStayDistributionItem(**item) for item in report.distribution],
+    )
+
+
+@router.get(
+    "/reports/medication-timeliness",
+    response_model=MedicationTimelinessReportResponse,
+)
+def get_medication_timeliness(
+    db: DbSession,
+    user: AdministratorUser,
+    days: Annotated[
+        int,
+        Query(ge=1, le=90, description="Period in days to report on"),
+    ] = 7,
+) -> MedicationTimelinessReportResponse:
+    """Doses recorded on time, late, and not given over a period."""
+    report = reports.medication_timeliness(db, days)
+    return MedicationTimelinessReportResponse(**report.__dict__)
+
+
+@router.get(
+    "/reports/investigation-review",
+    response_model=InvestigationReviewReportResponse,
+)
+def get_investigation_review(
+    db: DbSession,
+    user: AdministratorUser,
+) -> InvestigationReviewReportResponse:
+    """Results awaiting review and how long the oldest has waited."""
+    report = reports.investigation_review(db)
+    return InvestigationReviewReportResponse(**report.__dict__)
+
+
+@router.get(
+    "/reports/task-completion",
+    response_model=TaskCompletionReportResponse,
+)
+def get_task_completion(
+    db: DbSession,
+    user: AdministratorUser,
+    days: Annotated[
+        int,
+        Query(ge=1, le=90, description="Period in days to report on"),
+    ] = 7,
+) -> TaskCompletionReportResponse:
+    """Tasks completed vs raised over a period."""
+    report = reports.task_completion(db, days)
+    return TaskCompletionReportResponse(**report.__dict__)

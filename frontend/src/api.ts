@@ -671,10 +671,113 @@ export interface AuditEntry {
   };
   patient_id: number | null;
   encounter_id: number | null;
+  admission_id: number | null;
 }
 
 export interface AuditLog {
   entries: AuditEntry[];
+}
+
+/**
+ * The current ward census: how many patients are on the ward, by ward and by
+ * bed. Derived on demand from the open Admissions and stored nowhere, so the
+ * count cannot drift from the rows behind it.
+ */
+export interface WardCensusReport {
+  total_patients: number;
+  by_ward: Record<string, number>;
+  by_bed: Record<string, number>;
+}
+
+/** One current inpatient's length of stay, as the distribution reports it. */
+export interface LengthOfStayDistributionItem {
+  admission_id: number;
+  patient: string;
+  ward: string;
+  bed: string;
+  seconds: number;
+  days: number;
+}
+
+/**
+ * Length of stay across the current inpatients: each open Admission's time from
+ * admission to the read, and their average. Derived on demand, never stored.
+ */
+export interface LengthOfStayReport {
+  average_seconds: number;
+  distribution: LengthOfStayDistributionItem[];
+}
+
+/**
+ * Doses recorded on time, late and not given over a period, as a proportion.
+ * On time means recorded at or before the due instant; late means recorded after
+ * it; not given covers withheld, refused and unavailable. Derived on demand.
+ */
+export interface MedicationTimelinessReport {
+  on_time: number;
+  late: number;
+  not_given: number;
+  total: number;
+  on_time_pct: number;
+}
+
+/**
+ * Results awaiting review across the ward, and how long the oldest has waited
+ * since its result became available. Derived on demand from the Investigations.
+ */
+export interface InvestigationReviewReport {
+  awaiting_review_count: number;
+  oldest_wait_seconds: number | null;
+}
+
+/**
+ * Tasks completed against tasks raised over a period. Derived on demand from
+ * the Tasks; overdue tasks are not escalated, so this counts closing the loop.
+ */
+export interface TaskCompletionReport {
+  raised: number;
+  completed: number;
+  completion_pct: number;
+}
+
+/**
+ * The fields sent to begin a timed study task run (ticket 40). `task_label`
+ * names the task; `participant_id` is the anonymised study identifier, never a
+ * nurse's name or user id.
+ */
+export interface StudyTaskRunCreateRequest {
+  task_label: string;
+  participant_id: string;
+}
+
+/** The fields sent to end a run: the participant id the run belongs to. */
+export interface StudyTaskRunEndRequest {
+  participant_id: string;
+}
+
+/** The fields sent to abandon a run: the participant id the run belongs to. */
+export interface StudyTaskRunAbandonRequest {
+  participant_id: string;
+}
+
+/**
+ * One timed study task run, as read back for export. `status` is `running`
+ * while in progress, `completed` when ended, or `abandoned` when the
+ * participant ended it early (e.g. interrupted) rather than running long.
+ * The run carries a study identifier and never a nurse's identity.
+ */
+export interface StudyTaskRunResponse {
+  id: number;
+  task_label: string;
+  participant_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: string;
+}
+
+/** All study task runs, for the write-up's export. */
+export interface StudyTaskRunListResponse {
+  runs: StudyTaskRunResponse[];
 }
 
 interface ApiResult<T> {
@@ -1116,6 +1219,53 @@ export const api = {
     request<DailyVisitsReport>("/api/administrator/reports/daily-visits"),
   performanceReport: () =>
     request<PerformanceReport>("/api/administrator/reports/performance"),
+  /*
+   * Ward Operations reports. Every figure is derived on demand from stored rows
+   * and never stored, so it cannot drift. The timeliness and task figures take a
+   * period in days (the server caps it); the rest are whole-record views.
+   */
+  wardCensusReport: () =>
+    request<WardCensusReport>("/api/administrator/reports/ward-census"),
+  lengthOfStayReport: () =>
+    request<LengthOfStayReport>("/api/administrator/reports/length-of-stay"),
+  medicationTimelinessReport: (days = 7) =>
+    request<MedicationTimelinessReport>(
+      `/api/administrator/reports/medication-timeliness?days=${days}`,
+    ),
+  investigationReviewReport: () =>
+    request<InvestigationReviewReport>(
+      "/api/administrator/reports/investigation-review",
+    ),
+  taskCompletionReport: (days = 7) =>
+    request<TaskCompletionReport>(
+      `/api/administrator/reports/task-completion?days=${days}`,
+    ),
+
+  /*
+   * Study instrumentation (ticket 40). Off unless the deployment enables it, in
+   * which case these routes surface explicitly. A run carries an anonymised
+   * participant identifier, never the nurse's identity; begin, end and abandon
+   * are explicit actions, so a run is deliberate rather than inferred from
+   * activity, and an abandoned run is recorded as abandoned rather than as a
+   * very long one. The instrumented figure supports an observer's stopwatch.
+   */
+  startStudyTaskRun: (payload: StudyTaskRunCreateRequest) =>
+    request<StudyTaskRunResponse>("/api/clinical/study-task-runs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  endStudyTaskRun: (runId: number, payload: StudyTaskRunEndRequest) =>
+    request<StudyTaskRunResponse>(
+      `/api/clinical/study-task-runs/${runId}/end`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ),
+  abandonStudyTaskRun: (runId: number, payload: StudyTaskRunAbandonRequest) =>
+    request<StudyTaskRunResponse>(
+      `/api/clinical/study-task-runs/${runId}/abandon`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ),
+  listStudyTaskRuns: () =>
+    request<StudyTaskRunListResponse>("/api/clinical/study-task-runs"),
 
   /*
    * The audit log is an append-only record of clinical mutations, oldest first.

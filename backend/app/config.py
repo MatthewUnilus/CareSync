@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     seed_demo_users: bool = False
 
+    # Study instrumentation (ticket 40). Off by default; normal ward use
+    # records nothing. When enabled, the UI surfaces explicit begin/end/abandon
+    # actions for timed tasks. The table stores only an anonymised participant
+    # id and task label — no nurse identity, no patient data.
+    study_instrumentation_enabled: bool = False
+
     # Comma-separated. The native shell has its own WebView origin, so it calls
     # the API cross-origin; these are the only origins granted credentials.
     cors_origins: str = (

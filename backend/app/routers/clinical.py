@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,7 +10,15 @@ from app.audit_actions import AuditAction
 from app.departures import encounter_status, end_encounter, ensure_open
 from app.deps import DbSession, require_role
 from app.intake import apply_visit_reason
-from app.models import Admission, Encounter, Observation, Patient, Role, User
+from app.models import (
+    Admission,
+    Encounter,
+    Observation,
+    Patient,
+    Role,
+    StudyTaskRun,
+    User,
+)
 from app.observations import (
     observation_response,
     observation_response_for,
@@ -34,8 +42,14 @@ from app.schemas import (
     PatientRegistrationRequest,
     PatientResponse,
     PatientSearchResponse,
+    StudyTaskRunAbandonRequest,
+    StudyTaskRunCreateRequest,
+    StudyTaskRunEndRequest,
+    StudyTaskRunListResponse,
+    StudyTaskRunResponse,
     VisitReasonPayload,
 )
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
@@ -498,4 +512,136 @@ def _encounter_response(encounter: Encounter) -> EncounterResponse:
         status=encounter_status(encounter),
         patient=PatientResponse.model_validate(encounter.patient),
         reason_for_visit=encounter.reason_for_visit,
+    )
+
+
+# =============================================================================
+# Study Instrumentation (ticket 40)
+#
+# A timed study task run, behind a setting that is off in normal ward use. The
+# run carries an anonymised participant identifier and a task label, never the
+# nurse's identity, and never joins to a Patient. Begin, end and abandon are
+# explicit actions, so a run is deliberate rather than inferred from activity,
+# and an abandoned run is recorded as abandoned rather than as a very long one.
+# =============================================================================
+
+
+def _require_instrumentation(request: Request) -> None:
+    """Refuse the study routes when the instrumentation is switched off."""
+    if not request.app.state.settings.study_instrumentation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Study instrumentation is not enabled",
+        )
+
+
+def _get_study_run(db: Session, run_id: int) -> StudyTaskRun:
+    run = db.get(StudyTaskRun, run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study task run not found",
+        )
+    return run
+
+
+def _ensure_owned_and_open(run: StudyTaskRun, participant_id: str) -> None:
+    """A run is only ended or abandoned by its own participant, and only once."""
+    if run.participant_id != participant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Participant id does not match the run",
+        )
+    if run.ended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Run already ended",
+        )
+
+
+@router.post(
+    "/study-task-runs",
+    response_model=StudyTaskRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def start_study_task_run(
+    payload: StudyTaskRunCreateRequest,
+    request: Request,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """Begin a timed study task run and record its start instant."""
+    _require_instrumentation(request)
+    run = StudyTaskRun(
+        task_label=payload.task_label,
+        participant_id=payload.participant_id,
+        started_at=utc_now(),
+        status="running",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.patch(
+    "/study-task-runs/{run_id}/end",
+    response_model=StudyTaskRunResponse,
+)
+def end_study_task_run(
+    run_id: int,
+    payload: StudyTaskRunEndRequest,
+    request: Request,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """End a run, recording its end instant. Only its own participant may."""
+    _require_instrumentation(request)
+    run = _get_study_run(db, run_id)
+    _ensure_owned_and_open(run, payload.participant_id)
+    run.ended_at = utc_now()
+    run.status = "completed"
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.patch(
+    "/study-task-runs/{run_id}/abandon",
+    response_model=StudyTaskRunResponse,
+)
+def abandon_study_task_run(
+    run_id: int,
+    payload: StudyTaskRunAbandonRequest,
+    request: Request,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """Mark a run abandoned rather than recording a very long duration."""
+    _require_instrumentation(request)
+    run = _get_study_run(db, run_id)
+    _ensure_owned_and_open(run, payload.participant_id)
+    run.ended_at = utc_now()
+    run.status = "abandoned"
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.get(
+    "/study-task-runs",
+    response_model=StudyTaskRunListResponse,
+)
+def list_study_task_runs(
+    request: Request,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunListResponse:
+    """List every study task run, oldest first, for the write-up's export."""
+    _require_instrumentation(request)
+    runs = db.scalars(
+        select(StudyTaskRun).order_by(StudyTaskRun.started_at)
+    ).all()
+    return StudyTaskRunListResponse(
+        runs=[StudyTaskRunResponse.model_validate(run) for run in runs]
     )

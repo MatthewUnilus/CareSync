@@ -11,8 +11,9 @@ import { defaultClinicalView } from "./platform";
 import IntakeScreen from "./IntakeScreen";
 import PatientHistoryScreen from "./PatientHistoryScreen";
 import WardBoard from "./WardBoard";
+import StudyInstrumentation from "./StudyInstrumentation";
 
-type ClinicalView = "board" | "intake" | "history";
+type ClinicalView = "board" | "intake" | "history" | "study";
 
 export default function ClinicalWorkspace() {
   const [view, setView] = useState<ClinicalView>(() =>
@@ -31,7 +32,7 @@ export default function ClinicalWorkspace() {
         selectedKeys={new Set([view])}
         onSelectionChange={(keys: Selection) => {
           const next = [...keys][0];
-          if (next === "board" || next === "intake" || next === "history") {
+          if (next === "board" || next === "intake" || next === "history" || next === "study") {
             setView(next);
           }
         }}
@@ -45,14 +46,19 @@ export default function ClinicalWorkspace() {
         <SegmentedControlItem id="history" className="min-h-11 px-4">
           Patient history
         </SegmentedControlItem>
+        <SegmentedControlItem id="study" className="min-h-11 px-4">
+          Study timing
+        </SegmentedControlItem>
       </SegmentedControl>
 
       {view === "board" ? (
         <WardBoard />
       ) : view === "intake" ? (
         <IntakeScreen />
-      ) : (
+      ) : view === "history" ? (
         <PatientHistoryScreen />
+      ) : (
+        <StudyInstrumentation />
       )}
     </>
   );
