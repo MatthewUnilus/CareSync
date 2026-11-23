@@ -347,6 +347,11 @@ suite (`node --test` over `frontend/src/*.test.ts`, covering API base URL
 resolution, platform detection and default clinical view). Use `npm run test:api`
 or `npm run test:web` to run either half alone.
 
+The client has no automated test harness, by a deliberate scope decision; the
+screens are verified by hand. [`MANUAL-CHECKLIST.md`](MANUAL-CHECKLIST.md) is the
+smoke and manual script for a fresh stack — run it before a demonstration, a
+study session or a release.
+
 ## Postgres demo path
 
 The Compose file provisions Postgres only; the API and client still run as
@@ -648,6 +653,7 @@ docs/
   adr/                 decision records 0001–0014
   archive/             removed-subsystem documents (triage era) behind a header
   agents/              issue-tracker and domain-doc consumer rules
+MANUAL-CHECKLIST.md    the smoke and manual test script for a fresh stack
 ```
 
 There is no migration tool. Tables are created at API startup; deleting

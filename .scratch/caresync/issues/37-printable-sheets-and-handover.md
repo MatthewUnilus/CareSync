@@ -57,3 +57,12 @@ outstanding work only.
 sheets render in the browser's print preview at A4. There is no frontend test
 harness in scope, so this stays manual; the checklist item is the print preview
 of all three sheets at the paper size the ward uses.
+
+**Follow-up: the manual checklist now exists (2026-11-23).** Ticket 37 and the
+spec both refer to a "manual checklist", but no such file was ever committed.
+`MANUAL-CHECKLIST.md` was added at the repo root: a 13-section smoke and manual
+script covering authentication, the session lock, intake and identity, the ward
+board and admission, the observation chart, nursing notes, tasks, medications,
+investigations, the printable sheets, the administrator dashboard and audit log,
+study instrumentation, and the build and API suite. The README's "Run the tests"
+section and Layout inventory now point at it.

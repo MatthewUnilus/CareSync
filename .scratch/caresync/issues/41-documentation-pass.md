@@ -63,3 +63,10 @@ and `docs/agents/` needed no change beyond the pivot they already reflect.
 
 **A fresh reader can run it.** The README goes from setup to a running login
 page using only concepts that still exist.
+
+**Follow-up: the manual checklist and the medication figure's test (2026-11-23).**
+A spec audit found two gaps. First, the "manual checklist" that the spec and
+ticket 37 reference did not exist; `MANUAL-CHECKLIST.md` now covers every screen
+and the print sheets, and the README links it. Second, the medication
+timeliness figure lacked a constructed-row test; three were added. Full suite:
+488 passing.

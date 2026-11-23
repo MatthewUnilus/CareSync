@@ -58,3 +58,14 @@ enum rather than copied into the client.
 **A note on the study baseline.** The ticket asks that a before-and-after figure
 be noted if the hospital can supply one. None is recorded here: the hospital has
 not supplied a pre-system figure, so no baseline claim is made.
+
+**Follow-up: medication timeliness coverage (2026-11-23).** The ticket asks that
+"each figure counts what it says it counts on constructed rows". Four of the five
+figures had that; medication timeliness was only exercised incidentally by the
+reads-write-nothing test. Three tests were added to
+`backend/tests/test_ward_operations_reports.py`: a constructed split of two
+on-time doses, one late dose and one withheld dose asserts `on_time=2, late=1,
+not_given=1, total=4, on_time_pct=50.0`; an empty window returns all zeros
+rather than NaN; and a period test proves a dose recorded outside the window is
+excluded (1 in a 7-day window, 2 in a 30-day one). The full suite is now 488
+passing.
