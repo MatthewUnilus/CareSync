@@ -1043,7 +1043,8 @@ class StudyTaskRun(Base):
     participant_id: Mapped[str] = mapped_column(String(64), index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    # Null = completed normally; "abandoned" = participant ended early.
-    status: Mapped[str] = mapped_column(String(32), default="completed")
+    # "running" while in progress; "completed" when ended; "abandoned" when the
+    # participant ended early (e.g. interrupted) rather than running long.
+    status: Mapped[str] = mapped_column(String(32), default="running")
 
     # No relationship to Patient, User, Admission, etc. — this is deliberate.

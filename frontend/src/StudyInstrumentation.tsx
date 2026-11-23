@@ -314,7 +314,11 @@ export default function StudyInstrumentation() {
                       <span
                         className={cx(
                           "text-caption-1-medium",
-                          run.status === "completed" ? "text-status-lime-text" : "text-text-error-primary",
+                          run.status === "completed"
+                            ? "text-status-lime-text"
+                            : run.status === "abandoned"
+                              ? "text-text-error-primary"
+                              : "text-text-secondary",
                         )}
                       >
                         {run.status}

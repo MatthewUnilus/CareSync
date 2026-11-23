@@ -81,7 +81,7 @@ def test_a_run_records_a_start_and_an_end(
     run = start.json()
     assert run["task_label"] == "handover_sheet"
     assert run["participant_id"] == "P01"
-    assert run["status"] == "completed"
+    assert run["status"] == "running"
     assert run["ended_at"] is None
 
     end = instrumented_client.patch(

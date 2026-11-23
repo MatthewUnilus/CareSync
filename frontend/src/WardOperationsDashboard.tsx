@@ -13,6 +13,7 @@ import type {
   WardCensusReport,
 } from "./api";
 import {
+  cardClass,
   figureClass,
   mutedTextClass,
   noticeClass,
@@ -79,7 +80,7 @@ export default function WardOperationsDashboard() {
   return (
     <>
       <section
-        className="flex flex-col gap-5"
+        className={cx(cardClass, "gap-5")}
         id="ward-operations"
         data-reports-mount="administrator"
       >

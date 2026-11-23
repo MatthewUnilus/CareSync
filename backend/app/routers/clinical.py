@@ -543,7 +543,7 @@ def start_study_task_run(
         task_label=payload.task_label,
         participant_id=payload.participant_id,
         started_at=utc_now(),
-        status="completed",
+        status="running",
     )
     db.add(run)
     db.commit()
