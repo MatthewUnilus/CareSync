@@ -7,7 +7,9 @@ action that writes exactly one audit entry in the same transaction as the change
 request and writes nothing. Nursing Notes and the Note Template vocabulary live
 here too (ticket 32): the templates are a fixed code vocabulary (ADR 0013) and a
 note is written from one, its fields one row each, prefilled from the patient's
-latest Observation.
+latest Observation. Tasks live here too (ticket 33): a Task is raised by hand or
+from a Ward Round Entry, and the ward's cross-patient list reads the open Tasks
+across every patient.
 """
 
 from datetime import datetime
@@ -17,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import medications, notes, ward
+from app import medications, notes, tasks, ward
 from app.admissions import (
     admission_status,
     admit,
@@ -35,6 +37,7 @@ from app.models import (
     NursingNote,
     Patient,
     Role,
+    Task,
     User,
 )
 from app.observations import observation_response
@@ -44,6 +47,7 @@ from app.schemas import (
     AdmissionListResponse,
     AdmissionMoveRequest,
     AdmissionResponse,
+    AssignTaskRequest,
     DueListResponse,
     MedicationOrderCreateRequest,
     MedicationOrderListResponse,
@@ -56,8 +60,14 @@ from app.schemas import (
     NursingNoteResponse,
     PatientResponse,
     RoundTimesResponse,
+    StaffResponse,
+    TaskCreateRequest,
+    TaskListResponse,
+    TaskResponse,
     WardBoardEntryResponse,
     WardBoardResponse,
+    WardRoundTasksRequest,
+    WardRoundTasksResponse,
 )
 from app.timeutils import as_utc
 
@@ -72,6 +82,7 @@ ADMISSION_NOT_FOUND_DETAIL = "Admission not found"
 DISCHARGED_STAY_NOTE_DETAIL = (
     "A discharged Admission cannot take new Notes, except a Discharge Summary"
 )
+DISCHARGED_STAY_TASK_DETAIL = "A discharged Admission cannot take new Tasks"
 
 
 @router.post(
@@ -231,6 +242,16 @@ def _get_medication_order(db: Session, order_id: int) -> MedicationOrder:
             detail=medications.ORDER_NOT_FOUND_DETAIL,
         )
     return order
+
+
+def _get_task(db: Session, task_id: int) -> Task:
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=tasks.TASK_NOT_FOUND_DETAIL,
+        )
+    return task
 
 
 @router.get("/medications/round-times", response_model=RoundTimesResponse)
@@ -573,6 +594,245 @@ def write_nursing_note(
     )
     db.commit()
     return notes.note_response(db, note)
+
+
+@router.get("/staff", response_model=StaffResponse)
+def list_staff(db: DbSession, user: ClinicalUser) -> StaffResponse:
+    """The Clinical staff a Task may be assigned to.
+
+    A plain read of the users: only Clinical users are offered, because
+    Administration is read-only oversight and does not do clinical work. A Task's
+    assignee is optional, so this list feeds the optional-assignee picker.
+    """
+    return tasks.staff_response(db)
+
+
+@router.get("/admissions/{id}/tasks", response_model=TaskListResponse)
+def list_admission_tasks(
+    id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> TaskListResponse:
+    """One Admission's Tasks in the order they were raised, including done ones.
+
+    A done Task leaves the open list, not the history, so it still reads back here
+    with who marked it done and when. An unknown Admission is a ``404``.
+    """
+    admission = _get_admission(db, id)
+    return TaskListResponse(tasks=tasks.admission_task_responses(db, admission))
+
+
+@router.post(
+    "/admissions/{id}/tasks",
+    response_model=TaskResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def raise_task(
+    id: int,
+    payload: TaskCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> TaskResponse:
+    """Raise one Task by hand against an Admission.
+
+    The Task carries a free-text description, an optional due time and an optional
+    assignee; a named assignee must be a Clinical user (``422`` otherwise). An
+    unknown Admission is a ``404``; a discharged Admission is a ``409``, because a
+    stay that has left the ward does not take new work. The Task and its single
+    audit entry commit together, with the Admission as the entry's subject.
+    """
+    admission = _get_admission(db, id)
+    ensure_open(admission, DISCHARGED_STAY_TASK_DETAIL)
+    assignee = tasks.resolve_assignee(db, payload.assignee_user_id)
+    task = tasks.stage_task(
+        db,
+        admission=admission,
+        author=user,
+        description=payload.description,
+        due_at=as_utc(payload.due_at) if payload.due_at is not None else None,
+        assignee=assignee,
+    )
+    db.flush()
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.raise_task,
+        patient=admission.patient,
+        admission=admission,
+        detail=f"task {task.id}",
+    )
+    db.commit()
+    return tasks.task_response(task)
+
+
+@router.post(
+    "/admissions/{id}/ward-round-tasks",
+    response_model=WardRoundTasksResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def raise_ward_round_tasks(
+    id: int,
+    payload: WardRoundTasksRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> WardRoundTasksResponse:
+    """Raise several Tasks from one saved Ward Round Entry.
+
+    A round gives several instructions in one conversation, so one request raises
+    them all rather than one form submission each. The note must be a saved Ward
+    Round Entry on the same Admission: an unknown note is a ``404``, a note on
+    another stay or one that is not a round entry is a ``409``. Every assignee is
+    checked before anything is staged, and all the Tasks and their audit entries
+    land in one transaction, so the batch is atomic. An unknown Admission is a
+    ``404``; a discharged Admission is a ``409``.
+    """
+    admission = _get_admission(db, id)
+    ensure_open(admission, DISCHARGED_STAY_TASK_DETAIL)
+    note = db.get(NursingNote, payload.note_id)
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=notes.NOTE_NOT_FOUND_DETAIL,
+        )
+    if note.admission_id != admission.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=tasks.WARD_ROUND_NOTE_OTHER_ADMISSION_DETAIL,
+        )
+    if note.template_key != notes.WARD_ROUND_ENTRY_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=tasks.WARD_ROUND_NOTE_WRONG_TEMPLATE_DETAIL,
+        )
+
+    created = tasks.raise_tasks(
+        db,
+        admission=admission,
+        author=user,
+        items=payload.tasks,
+        note=note,
+    )
+    db.flush()
+    # One audit entry per Task raised, all in the same transaction as the Tasks
+    # themselves: a batch that rolls back leaves no entry behind.
+    for task in created:
+        record_audit_entry(
+            db,
+            actor=user,
+            action=AuditAction.raise_task,
+            patient=admission.patient,
+            admission=admission,
+            detail=f"task {task.id} from note {note.id}",
+        )
+    db.commit()
+    return WardRoundTasksResponse(
+        tasks=[tasks.task_response(task) for task in created]
+    )
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+def list_ward_tasks(
+    db: DbSession,
+    user: ClinicalUser,
+    mine: Annotated[
+        bool,
+        Query(description="Only the signed-in user's assigned Tasks"),
+    ] = False,
+    include_done: Annotated[
+        bool,
+        Query(description="Include done Tasks for the history"),
+    ] = False,
+) -> TaskListResponse:
+    """The ward's open Tasks across every patient, oldest due first.
+
+    One list for the ward rather than one per patient, so a nurse sees their
+    outstanding work across all their patients at once. Only open Admissions are
+    read. ``mine=true`` narrows the list to the signed-in user's assigned Tasks;
+    ``include_done=true`` adds done Tasks for the history. Reading it writes
+    nothing, and overdue is a display mark measured against the clock at the
+    moment of the read.
+    """
+    return TaskListResponse(
+        tasks=tasks.ward_task_responses(
+            db,
+            assignee_user_id=user.id if mine else None,
+            include_done=include_done,
+        )
+    )
+
+
+@router.post("/tasks/{id}/complete", response_model=TaskResponse)
+def complete_task(
+    id: int,
+    db: DbSession,
+    user: ClinicalUser,
+) -> TaskResponse:
+    """Mark a Task done, recording who and when.
+
+    The instant is the server's clock, never a value the caller supplies. Only the
+    first complete succeeds: the write is conditional on the Task still being open,
+    so a Task that is already done is refused with ``409`` rather than overwriting
+    the one recorded completion; an unknown Task is a ``404``. The completion and
+    its single audit entry commit together.
+
+    A Task on a discharged Admission may still be marked done. A discharge closes
+    the stay and takes it off the board, but the outstanding work raised while it
+    was open must still be closable, so the record ends with the work accounted
+    for rather than frozen open. The stay is not on the board, so this is history
+    rather than active work. Raising a *new* Task on a discharged stay is still
+    refused with ``409``; this route does not check the stay's state.
+    """
+    task = _get_task(db, id)
+    tasks.complete_task(db, task, actor=user)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.complete_task,
+        patient=task.admission.patient,
+        admission=task.admission,
+        detail=f"task {task.id}",
+    )
+    db.commit()
+    return tasks.task_response(task)
+
+
+@router.post("/tasks/{id}/assign", response_model=TaskResponse)
+def assign_task(
+    id: int,
+    payload: AssignTaskRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> TaskResponse:
+    """Assign a Task to a Clinical user, or leave it unassigned with null.
+
+    Assignment is the one field a Task may change after it is raised, so this both
+    assigns and returns a Task to the shared list. A named assignee must be a
+    Clinical user (``422`` otherwise); an unknown Task is a ``404``. The assignment
+    and its single audit entry commit together.
+
+    A Task on a discharged Admission may still be assigned or unassigned, for the
+    same reason it may still be completed: the stay is history and off the board,
+    but its record stays readable and correctable, so an open Task a discharge left
+    behind can be handed to someone or returned to the shared list. Raising a new
+    Task on a discharged stay is refused elsewhere.
+    """
+    task = _get_task(db, id)
+    assignee = tasks.resolve_assignee(db, payload.assignee_user_id)
+    tasks.assign_task(db, task, assignee=assignee)
+    record_audit_entry(
+        db,
+        actor=user,
+        action=AuditAction.assign_task,
+        patient=task.admission.patient,
+        admission=task.admission,
+        detail=(
+            f"task {task.id} assigned to {assignee.display_name}"
+            if assignee is not None
+            else f"task {task.id} unassigned"
+        ),
+    )
+    db.commit()
+    return tasks.task_response(task)
 
 
 def _admission_fields(admission: Admission) -> dict:

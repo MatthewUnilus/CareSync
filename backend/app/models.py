@@ -605,6 +605,136 @@ def _refuse_editing_a_medication_order(_mapper, _connection, target) -> None:
             )
 
 
+class TaskStatus(str, Enum):
+    """The only two conditions a Task can hold in this scope.
+
+    Derived from the one nullable ``completed_at`` instant, the same reduced
+    shape an Admission and a Medication Order use: open while the instant is
+    null, done once it is set. There is no second status column that could
+    contradict the instant.
+    """
+
+    open = "open"
+    done = "done"
+
+
+class Task(Base):
+    """One unit of work raised against an Admission by a Clinical user.
+
+    A Task is how an instruction becomes something to work (CONTEXT.md,
+    "Task"). It belongs to an Admission (ADR 0008 is the anchor) and carries a
+    free-text description, an optional due time and an optional assignee, so
+    both an assigned caseload and a shared ward work. Assignment is optional on
+    purpose: forcing an assignee would break the shared-list ward.
+
+    A Task is raised by hand or from a Ward Round Entry; ``note_id`` names the
+    round entry it came from, or is null when it was raised by hand. One round
+    entry may raise several Tasks.
+
+    The condition is derived, not stored: open while ``completed_at`` is null,
+    done once it is set. Marking a Task done records who did it and when, and
+    the Task stays in the record — it leaves the open list, not the history.
+
+    The raised instruction — the description, due time, admission, author and
+    source note — is frozen once written (see the guard below). The only
+    legitimate updates are setting ``assignee_user_id`` and recording the
+    completion, so a Task is never quietly rewritten after it is raised.
+
+    A Task past its due time is shown as overdue and nothing else happens: it
+    is not escalated, reassigned or closed by the system (ADR 0010's rule for a
+    second case).
+    """
+
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admission_id: Mapped[int] = mapped_column(
+        ForeignKey("admissions.id"), index=True
+    )
+    description: Mapped[str] = mapped_column(String(2000))
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # Optional on purpose, so a shared ward with no assignment still works.
+    assignee_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    # The Clinical user who raised the Task, a foreign key so a renamed account
+    # is reported consistently everywhere.
+    author_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    # The Ward Round Entry this Task came from, or null when raised by hand.
+    note_id: Mapped[int | None] = mapped_column(
+        ForeignKey("nursing_notes.id"), nullable=True, index=True
+    )
+    raised_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    # Null while open; set once when the Task is marked done. The Task's state is
+    # derived from this, never stored a second time.
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    completed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+
+    admission: Mapped[Admission] = relationship(lazy="joined")
+    author: Mapped[User] = relationship(
+        lazy="joined", foreign_keys=[author_user_id]
+    )
+    assignee: Mapped[User | None] = relationship(
+        lazy="joined", foreign_keys=[assignee_user_id]
+    )
+    completed_by: Mapped[User | None] = relationship(
+        lazy="joined", foreign_keys=[completed_by_user_id]
+    )
+    note: Mapped[NursingNote | None] = relationship()
+
+    @property
+    def status(self) -> TaskStatus:
+        return task_status(self)
+
+
+def task_status(task: Task) -> TaskStatus:
+    """The Task's condition, derived from its completion instant."""
+    return (
+        TaskStatus.open
+        if task.completed_at is None
+        else TaskStatus.done
+    )
+
+
+#: The fields a Task may legitimately change after it is raised: its assignee,
+#: and the completion the act records. Everything else is the raised instruction
+#: and is frozen.
+_TASK_MUTABLE_FIELDS = frozenset(
+    {"assignee_user_id", "completed_at", "completed_by_user_id"}
+)
+
+
+@event.listens_for(Task, "before_update")
+def _refuse_editing_a_raised_task(_mapper, _connection, target) -> None:
+    """Freeze the raised instruction; only assignment and completion may change.
+
+    Application-layer, not a database trigger (ADR 0001). A Task is raised once
+    with its description, due time, admission, author and source note; changing
+    any of those would leave the record saying the work was always something
+    else. Assignment and the recorded completion are the only acts a Task takes
+    after it is raised.
+    """
+    state = inspect(target)
+    for attribute in state.mapper.column_attrs:
+        if attribute.key in _TASK_MUTABLE_FIELDS:
+            continue
+        if state.attrs[attribute.key].history.has_changes():
+            raise ValueError(
+                "A Task's raised instruction is frozen; only its assignee and "
+                "completion may change"
+            )
+
+
 class UserSession(Base):
     """One signed-in session on one device.
 

@@ -10,8 +10,8 @@ One read captures one clock (``utc_now``) and passes it down, so every count on 
 board is measured against the same instant. The medication figures for an
 admission are read through one seam, ``medication_counts``, which derives all
 three from a single pass of that admission's schedule rather than scanning once
-per count. Tasks (ticket 33) and investigations (ticket 36) each fill in their
-own count the same way.
+per count. The open Task count (ticket 33) is read the same way; investigations
+(ticket 36) fill in their own count.
 """
 
 from __future__ import annotations
@@ -20,11 +20,11 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import medications
-from app.models import Admission, Observation
+from app.models import Admission, Observation, Task
 from app.timeutils import utc_now
 
 
@@ -63,8 +63,20 @@ def unreviewed_result_count(session: Session, admission: Admission) -> int:
 
 
 def open_task_count(session: Session, admission: Admission) -> int:
-    """Tasks not yet done. Tasks fill this in; zero until then."""
-    return 0
+    """Tasks on this Admission not yet done, counted from the record.
+
+    The figure the Ward Board shows in the open Tasks column: a Task leaves this
+    count when it is marked done, not when it is raised. A discharged Admission
+    has left the board, so its Tasks are never asked for here.
+    """
+    return session.scalar(
+        select(func.count())
+        .select_from(Task)
+        .where(
+            Task.admission_id == admission.id,
+            Task.completed_at.is_(None),
+        )
+    )
 
 
 def latest_observation(

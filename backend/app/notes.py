@@ -61,6 +61,11 @@ VITAL_SIGNS_LABEL = "Latest readings"
 #: it follows the discharge rather than being refused by it.
 DISCHARGE_SUMMARY_KEY = "discharge_summary"
 
+#: The template a Ward Round Entry is written from. A round entry is what raises
+#: Tasks, so the key is named here and the Tasks module reads it rather than
+#: repeating the string (ticket 33).
+WARD_ROUND_ENTRY_KEY = "ward_round_entry"
+
 UNKNOWN_TEMPLATE_DETAIL = "Unknown note template"
 
 #: Raised when a supplied field key is not one the named template defines, so a
@@ -125,7 +130,7 @@ TEMPLATES: tuple[NoteTemplate, ...] = (
         ),
     ),
     NoteTemplate(
-        key="ward_round_entry",
+        key=WARD_ROUND_ENTRY_KEY,
         label="Ward Round Entry",
         # The round entry is adjacent to the Intervention Record: one records what
         # was asked for, the other what was done. Its fields are kept easy to map

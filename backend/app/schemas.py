@@ -15,7 +15,7 @@ from pydantic import (
 from app.admissions import AdmissionStatus
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
-from app.models import MedicationOrderStatus, Role, Sex
+from app.models import MedicationOrderStatus, Role, Sex, TaskStatus
 from app.timeutils import as_utc
 
 _NAME = Annotated[
@@ -729,3 +729,113 @@ class DueListResponse(BaseModel):
     """Every dose due in the window across the ward, sorted by due time."""
 
     doses: list[DueDoseResponse]
+
+
+class TaskCreateRequest(BaseModel):
+    """Raise one Task by hand against an Admission.
+
+    ``description`` is the work as free text; ``due_at`` is optional, so work with
+    a deadline is distinguishable from work without one; ``assignee_user_id`` is
+    optional, so both an assigned caseload and a shared ward work. An unknown key
+    is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: _TEXT
+    due_at: datetime | None = None
+    assignee_user_id: int | None = Field(default=None, gt=0)
+
+
+class WardRoundTaskPayload(BaseModel):
+    """One Task to raise from a Ward Round Entry: the same shape as a hand-raised
+    Task, because a round instruction and a hand-raised one are the same thing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: _TEXT
+    due_at: datetime | None = None
+    assignee_user_id: int | None = Field(default=None, gt=0)
+
+
+class WardRoundTasksRequest(BaseModel):
+    """Raise several Tasks from one saved Ward Round Entry.
+
+    ``note_id`` names the round entry the Tasks came from: it must be a saved
+    Ward Round Entry on the same Admission, and a round entry may raise several
+    Tasks in one go, because a round gives several instructions in one
+    conversation. At least one Task is required, or the request is a no-op rather
+    than a round. An unknown key is refused rather than ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    note_id: int = Field(gt=0)
+    tasks: list[WardRoundTaskPayload] = Field(min_length=1)
+
+
+class AssignTaskRequest(BaseModel):
+    """Assign a Task to a Clinical user, or leave it unassigned with null.
+
+    Null clears the assignee, so a Task can go back to the shared ward; there is
+    no separate unassign route, because clearing and setting are the same act.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignee_user_id: int | None = Field(default=None, gt=0)
+
+
+class TaskResponse(BaseModel):
+    """One Task, open or done.
+
+    The Admission is named by id and its Patient is inlined exactly as anywhere
+    else, so a Task carries who it is for without a second read. ``assignee`` is
+    null when the Task is unassigned; ``status`` is derived from ``completed_at``
+    rather than stored, open while the instant is null and done once it is set,
+    and ``completed_by`` and ``completed_at`` record who marked it done and when.
+
+    ``overdue`` is a display mark only, measured against the server's clock at
+    the moment of the read: an open Task past its due time. Nothing acts on it
+    (CONTEXT.md, "Task"). ``note_id`` names the Ward Round Entry the Task came
+    from, or null when it was raised by hand.
+    """
+
+    id: int
+    admission_id: int
+    patient: PatientResponse
+    description: str
+    due_at: UtcDatetime | None = None
+    assignee: ActorResponse | None = None
+    author: ActorResponse
+    status: TaskStatus
+    completed_by: ActorResponse | None = None
+    completed_at: UtcDatetime | None = None
+    overdue: bool
+    note_id: int | None = None
+
+
+class TaskListResponse(BaseModel):
+    """One Admission's Tasks, or the ward's open Tasks across patients."""
+
+    tasks: list[TaskResponse]
+
+
+class WardRoundTasksResponse(BaseModel):
+    """The Tasks one Ward Round Entry raised, in the order they were given."""
+
+    tasks: list[TaskResponse]
+
+
+class StaffMemberResponse(BaseModel):
+    """One Clinical user, as the optional-assignee list shows them."""
+
+    id: int
+    display_name: str
+
+
+class StaffResponse(BaseModel):
+    """The Clinical staff a Task may be assigned to. Administrators are not
+    clinical, so they are not offered as an assignee."""
+
+    users: list[StaffMemberResponse]

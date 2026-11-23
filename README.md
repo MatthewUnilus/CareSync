@@ -692,6 +692,23 @@ failure described above.
 - **Postgres demo** — `nursing_notes` and `nursing_note_fields` may be created in
   place, but `audit_log` needs the same hand migration or a database rebuild.
 
+### Ticket 33 — tasks
+
+Ticket 33 adds the `tasks` table and three more audit actions (`raise_task`,
+`complete_task`, `assign_task`). As before, `create_all` builds the new table but
+cannot widen the SQLite `audit_log` action `CHECK`, so a database created before
+this change rejects the new writes with the same failure described above.
+
+- **Local SQLite** — back up `caresync.db`, then recreate and reseed
+  (`npm run seed`, or just `npm run dev`), or widen the check with an explicit
+  migration, before the API uses it.
+- **Postgres demo** — `tasks` may be created in place, but `audit_log` needs the
+  same hand migration or a database rebuild.
+
+Marking a Task overdue is display-only: a Task past its due time is shown as
+overdue and nothing else happens — it is not escalated, reassigned or closed by
+the system, so this is not migration work.
+
 ### Ticket 34 — medication orders
 
 Ticket 34 adds the `medication_orders` table and two more audit actions

@@ -202,6 +202,65 @@ export interface WardBoard {
 }
 
 /**
+ * A person a Task can be assigned to (or who raised one), as the ward's staff
+ * list returns them: an id and the name to show.
+ */
+export interface TaskPerson {
+  id: number;
+  display_name: string;
+}
+
+/**
+ * A Task: a unit of work raised against an Admission by a Clinical user, either
+ * by hand from a patient's page or from a saved Ward Round Entry note
+ * (CONTEXT.md, ticket 33).
+ *
+ * It is neither the instruction nor a Nursing Note. The description is free text
+ * as given; the due time is optional, so work with a deadline is distinguishable
+ * from work without one; and the assignee is optional, so both an assigned
+ * caseload and a shared ward work. Marking it done records who and when, in the
+ * same transaction as the change. `overdue` is the server's mark at the moment of
+ * the read — the client shows the word and never re-derives the boundary, and
+ * nothing acts on an overdue Task: it is not escalated, reassigned or closed.
+ */
+export interface Task {
+  id: number;
+  admission_id: number;
+  patient: Patient;
+  description: string;
+  due_at: string | null;
+  assignee: TaskPerson | null;
+  author: TaskPerson;
+  status: "open" | "done";
+  completed_by: TaskPerson | null;
+  completed_at: string | null;
+  overdue: boolean;
+  /** The Ward Round Entry note this Task was raised from, or null for a hand-raised Task. */
+  note_id: number | null;
+}
+
+/** The ward's staff, the people a Task can be assigned to. */
+export interface WardStaff {
+  users: TaskPerson[];
+}
+
+/** Tasks as the server returns them. */
+export interface WardTasks {
+  tasks: Task[];
+}
+
+/**
+ * The fields of a new Task, as sent to raise one. `due_at` is an ISO 8601 instant
+ * or null for work with no deadline; `assignee_user_id` is a staff id or null to
+ * leave the Task unassigned.
+ */
+export interface NewTaskPayload {
+  description: string;
+  due_at: string | null;
+  assignee_user_id: number | null;
+}
+
+/**
  * One frequency's round times: the clock times of day the frequency maps to, as
  * the ward's convention holds them (ADR 0011). The policy is served from one
  * module so a hospital's own set replaces the default in one place, and it is
@@ -687,6 +746,49 @@ export const api = {
     request<MedicationDueList>(
       `/api/ward/medications/due?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     ),
+  /*
+   * Tasks and the ward round (ticket 33).
+   *
+   * A Task is a unit of work raised against an Admission, by hand from a
+   * patient's page or from a saved Ward Round Entry note, and several Tasks can
+   * be raised from one entry in a single call because a round gives several
+   * instructions in one conversation. It carries an optional due time and an
+   * optional assignee, and a Clinical user marks it done, which records who and
+   * when. Overdue is the server's mark on read: the client shows the word and
+   * nothing acts on it — a Task is never escalated, reassigned or closed by the
+   * system. Raising, completing and assigning each write one Audit Entry in the
+   * same transaction as the change (the server's job, not the client's). The
+   * cross-patient list is filtered to one assignee by `mine`; that is assignment
+   * only, not a notion of whose patients these are.
+   */
+  wardStaff: () => request<WardStaff>("/api/ward/staff"),
+  createAdmissionTask: (admissionId: number, payload: NewTaskPayload) =>
+    request<Task>(`/api/ward/admissions/${admissionId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createWardRoundTasks: (
+    admissionId: number,
+    noteId: number,
+    tasks: NewTaskPayload[],
+  ) =>
+    request<WardTasks>(`/api/ward/admissions/${admissionId}/ward-round-tasks`, {
+      method: "POST",
+      body: JSON.stringify({ note_id: noteId, tasks }),
+    }),
+  admissionTasks: (admissionId: number) =>
+    request<WardTasks>(`/api/ward/admissions/${admissionId}/tasks`),
+  wardTasks: (mine: boolean, includeDone: boolean) =>
+    request<WardTasks>(
+      `/api/ward/tasks?mine=${mine ? "true" : "false"}&include_done=${includeDone ? "true" : "false"}`,
+    ),
+  completeTask: (taskId: number) =>
+    request<Task>(`/api/ward/tasks/${taskId}/complete`, { method: "POST" }),
+  assignTask: (taskId: number, assigneeUserId: number | null) =>
+    request<Task>(`/api/ward/tasks/${taskId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ assignee_user_id: assigneeUserId }),
+    }),
   /*
    * Nursing notes and their templates.
    *

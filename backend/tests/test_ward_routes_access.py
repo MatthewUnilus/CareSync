@@ -42,7 +42,7 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     },
 }
 
-_PATH_PARAMS = {"admission_id": "1", "order_id": "1"}
+_PATH_PARAMS = {"admission_id": "1", "order_id": "1", "id": "1"}
 
 #: Required query strings per route template, so a route whose only missing piece
 #: is a query parameter still reaches the role guard rather than a 422.

@@ -24,6 +24,7 @@ import {
   sectionLabelClass,
 } from "./design";
 import { formatInstant } from "./queueDisplay";
+import { WardRoundTasks } from "./TaskList";
 
 /**
  * Nursing notes for one Admission: a nurse writes a note from a template rather
@@ -45,9 +46,12 @@ import { formatInstant } from "./queueDisplay";
 export default function NursingNotes({
   admissionId,
   title = "Nursing notes",
+  onTasksRaised,
 }: {
   admissionId: number;
   title?: string;
+  /** Called after Tasks are raised from a round entry, so the board's counts refresh. */
+  onTasksRaised?: () => Promise<void> | void;
 }) {
   const [templates, setTemplates] = useState<NoteTemplate[] | null>(null);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -529,6 +533,22 @@ export default function NursingNotes({
                       </small>
                     ) : null}
                   </footer>
+                ) : null}
+
+                {note.template_key === "ward_round_entry" ? (
+                  <WardRoundTasks
+                    admissionId={note.admission_id}
+                    noteId={note.id}
+                    seedDescription={
+                      note.fields.find((field) => field.key === "plan")?.value ??
+                      ""
+                    }
+                    dueHint={
+                      note.fields.find((field) => field.key === "review_due")
+                        ?.value ?? ""
+                    }
+                    onTasksRaised={onTasksRaised}
+                  />
                 ) : null}
               </li>
             ))}

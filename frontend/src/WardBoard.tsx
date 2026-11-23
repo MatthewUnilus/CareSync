@@ -26,6 +26,7 @@ import {
 } from "./design";
 import ObservationChart from "./ObservationChart";
 import NursingNotes from "./NursingNotes";
+import TaskList, { AdmissionTasks } from "./TaskList";
 import {
   MedicationDueList,
   MedicationOrders,
@@ -221,6 +222,8 @@ export default function WardBoard() {
         revision={medicationRevision}
       />
 
+      <TaskList admissions={board ?? []} onTasksChanged={load} />
+
       <section className={cardClass}>
         <h2 className="text-title-3-medium text-text-primary">
           Admit a patient
@@ -265,6 +268,9 @@ function BoardAdmissionRow({
   // The medication orders are a third disclosure beside the chart and the
   // notes, opened from the row and kept local so the board stays a list.
   const [medicationOpen, setMedicationOpen] = useState(false);
+  // The patient's Tasks are a fourth disclosure: raised by hand from their own
+  // page, and read back as the record of open and done work.
+  const [tasksOpen, setTasksOpen] = useState(false);
 
   // The server's counts, shown as given, in the board's own order: overdue
   // doses, then doses due now, then results awaiting review, then open tasks.
@@ -400,6 +406,13 @@ function BoardAdmissionRow({
         >
           {medicationOpen ? "Hide medication orders" : "Medication orders"}
         </Button>
+        <Button
+          variant={tasksOpen ? "primary" : "secondary"}
+          className="min-h-11"
+          onClick={() => setTasksOpen((current) => !current)}
+        >
+          {tasksOpen ? "Hide tasks" : "Tasks"}
+        </Button>
         <MoveAction admission={admission} onMoved={onChanged} />
         <DischargeAction admission={admission} onDischarged={onChanged} />
       </footer>
@@ -412,7 +425,13 @@ function BoardAdmissionRow({
         />
       ) : null}
 
-      {notesOpen ? <NursingNotes admissionId={admission.id} /> : null}
+      {notesOpen ? (
+        <NursingNotes admissionId={admission.id} onTasksRaised={onChanged} />
+      ) : null}
+
+      {tasksOpen ? (
+        <AdmissionTasks admissionId={admission.id} onTasksChanged={onChanged} />
+      ) : null}
 
       {medicationOpen ? (
         <MedicationOrders

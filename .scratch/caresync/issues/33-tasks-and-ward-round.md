@@ -4,20 +4,20 @@
 
 **Blocked by:** 32 (a ward round entry is a Nursing Note, and it is what raises the Tasks).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `tasks` table records the Admission, a description, an optional due time, an optional assignee, a state and the author.
-- [ ] A Task can be raised by hand from a patient's page.
-- [ ] A Task can be raised from a Ward Round Entry, and a Task raised that way belongs to the patient on that note.
-- [ ] A round entry can raise several Tasks in one go, because a round gives several instructions in one conversation.
-- [ ] A Task is open or done, and marking it done records who and when.
-- [ ] A Task can carry an optional due time, and work with a deadline is distinguishable in the list from work without one.
-- [ ] A Task can be assigned or left unassigned, so both an assigned caseload and a shared ward work.
-- [ ] A cross-patient task list shows open Tasks across all the patients on the ward, filterable to the ones assigned to the signed-in user.
-- [ ] Overdue Tasks are marked in the list. Nothing acts on them.
-- [ ] The ward board's open Task count starts returning a real figure, replacing the zero that ticket 31 stubbed.
-- [ ] Raising a Task, marking one done and assigning one each write exactly one Audit Entry in the same transaction as the change.
-- [ ] Tests: a round entry raises Tasks on the right patient; the cross-patient list covers several patients and filters to one assignee; marking done removes it from the open list and keeps it in the record; an overdue Task is marked; the list writes nothing.
+- [x] A new `tasks` table records the Admission, a description, an optional due time, an optional assignee, a state and the author.
+- [x] A Task can be raised by hand from a patient's page.
+- [x] A Task can be raised from a Ward Round Entry, and a Task raised that way belongs to the patient on that note.
+- [x] A round entry can raise several Tasks in one go, because a round gives several instructions in one conversation.
+- [x] A Task is open or done, and marking it done records who and when.
+- [x] A Task can carry an optional due time, and work with a deadline is distinguishable in the list from work without one.
+- [x] A Task can be assigned or left unassigned, so both an assigned caseload and a shared ward work.
+- [x] A cross-patient task list shows open Tasks across all the patients on the ward, filterable to the ones assigned to the signed-in user.
+- [x] Overdue Tasks are marked in the list. Nothing acts on them.
+- [x] The ward board's open Task count starts returning a real figure, replacing the zero that ticket 31 stubbed.
+- [x] Raising a Task, marking one done and assigning one each write exactly one Audit Entry in the same transaction as the change.
+- [x] Tests: a round entry raises Tasks on the right patient; the cross-patient list covers several patients and filters to one assignee; marking done removes it from the open list and keeps it in the record; an overdue Task is marked; the list writes nothing.
 
 ## Notes
 
