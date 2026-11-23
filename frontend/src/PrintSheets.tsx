@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
@@ -117,6 +119,31 @@ function latestObservationForHandover(observation: Observation | null): string {
   return `${parts}${abnormal} \u2014 charted ${formatInstant(observation.taken_at)} by ${observation.actor.display_name}`;
 }
 
+/**
+ * Print sheets mount into a portal at the end of <body>, so the print
+ * stylesheet can hide the app root and print the sheet alone. On screen the
+ * portal is presented as a full-page preview; the sheet's own controls are
+ * marked `no-print`, and every other top-level node is hidden on paper.
+ */
+function SheetPortal({ children }: { children: ReactNode }) {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = document.createElement("div");
+    element.className = "print-sheet-portal";
+    document.body.appendChild(element);
+    setContainer(element);
+    return () => {
+      document.body.removeChild(element);
+    };
+  }, []);
+
+  if (container === null) {
+    return null;
+  }
+  return createPortal(children, container);
+}
+
 /* ==========================================================================
  * Handover Sheet
  * ========================================================================== */
@@ -185,7 +212,7 @@ export function HandoverSheet({
   }
 
   return (
-    <div className="print-sheet no-print" data-no-print>
+    <div className="print-sheet" data-print-sheet>
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Ward Handover Sheet</h1>
         <p className="print-sheet-meta">
@@ -386,7 +413,7 @@ export function MedicationRoundSheet({
   );
 
   return (
-    <div className="print-sheet no-print" data-no-print>
+    <div className="print-sheet" data-print-sheet>
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Medication Round Sheet</h1>
         <p className="print-sheet-meta">
@@ -543,7 +570,7 @@ export function WardWorklistSheet({
   );
 
   return (
-    <div className="print-sheet no-print" data-no-print>
+    <div className="print-sheet" data-print-sheet>
       <header className="print-sheet-header">
         <h1 className="print-sheet-title">Ward Worklist</h1>
         <p className="print-sheet-meta">
@@ -688,30 +715,36 @@ export function PrintSheetLauncher({
 
   if (openSheet === "handover") {
     return (
-      <HandoverSheet
-        admissions={admissions}
-        allInvestigations={allInvestigations}
-        allTasks={allTasks}
-        onClose={() => setOpenSheet(null)}
-      />
+      <SheetPortal>
+        <HandoverSheet
+          admissions={admissions}
+          allInvestigations={allInvestigations}
+          allTasks={allTasks}
+          onClose={() => setOpenSheet(null)}
+        />
+      </SheetPortal>
     );
   }
   if (openSheet === "medication") {
     return (
-      <MedicationRoundSheet
-        admissions={admissions}
-        onClose={() => setOpenSheet(null)}
-      />
+      <SheetPortal>
+        <MedicationRoundSheet
+          admissions={admissions}
+          onClose={() => setOpenSheet(null)}
+        />
+      </SheetPortal>
     );
   }
   if (openSheet === "worklist") {
     return (
-      <WardWorklistSheet
-        admissions={admissions}
-        allTasks={allTasks}
-        allInvestigations={allInvestigations}
-        onClose={() => setOpenSheet(null)}
-      />
+      <SheetPortal>
+        <WardWorklistSheet
+          admissions={admissions}
+          allTasks={allTasks}
+          allInvestigations={allInvestigations}
+          onClose={() => setOpenSheet(null)}
+        />
+      </SheetPortal>
     );
   }
 

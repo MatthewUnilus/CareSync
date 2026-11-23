@@ -20,17 +20,26 @@
 
 @media print {
   /* -------------------------------------------------------------------------
-   * Hide everything that is not the sheet itself
+   * Print the sheet alone.
+   *
+   * A sheet mounts into `.print-sheet-portal` at the end of <body> (see
+   * SheetPortal), so the app root is hidden and the portal shown. The sheet's
+   * own interactive chrome carries `no-print`; the sheet's semantic
+   * <header>/<footer> are the sheet's title and layout and must survive.
    * ------------------------------------------------------------------------- */
-  header,
-  footer,
-  nav,
-  .no-print,
-  [data-no-print],
+  #root {
+    display: none !important;
+  }
+  .print-sheet-portal {
+    display: block !important;
+  }
+
   button,
   select,
   input,
   textarea,
+  .no-print,
+  [data-no-print],
   details,
   summary,
   .segmented-control,
