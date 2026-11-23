@@ -339,7 +339,7 @@ export default function ObservationChart({
   );
 }
 
-interface ReadingRow {
+export interface ReadingRow {
   key: string;
   label: string;
   value: string;
@@ -350,11 +350,11 @@ interface ReadingRow {
 // The names the server uses to mark a reading abnormal. A blood pressure is
 // marked whole or per figure depending on where the server draws the line, so
 // the mark is read from any of the three names rather than assuming one.
-function isMarked(fields: string[], ...names: string[]): boolean {
+export function isMarked(fields: string[], ...names: string[]): boolean {
   return names.some((name) => fields.includes(name));
 }
 
-function readingValue(reading: ObservationReading) {
+export function readingValue(reading: ObservationReading) {
   return {
     pain: `${reading.pain_level} / 10`,
     duration: `${reading.illness_duration_hours} h`,
@@ -371,7 +371,7 @@ function readingValue(reading: ObservationReading) {
  * abnormal mark is read from the server's `abnormal_fields`; the client never
  * decides what is abnormal.
  */
-function readingsFor(observation: Observation): ReadingRow[] {
+export function readingsFor(observation: Observation): ReadingRow[] {
   const fields = observation.abnormal_fields;
   const current = readingValue(observation);
   const previous = observation.previous

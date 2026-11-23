@@ -79,3 +79,8 @@ export function formatArrivalFull(value: string): string {
     minute: "2-digit",
   });
 }
+
+/** A count with its noun, so "1 dose" never reads as "1 doses". */
+export function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
