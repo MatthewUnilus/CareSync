@@ -199,7 +199,7 @@ class MedicationTimelinessReport:
 
 def medication_timeliness(session: Session, days: int = 7) -> MedicationTimelinessReport:
     """Doses recorded on time vs late vs not given over a period."""
-    from app.models import MedicationAdministration, MedicationOrder
+    from app.models import MedicationAdministration
     from app.timeutils import utc_now
 
     now = utc_now()
