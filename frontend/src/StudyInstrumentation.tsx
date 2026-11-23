@@ -33,7 +33,9 @@ import { formatInstant } from "./queueDisplay";
  * Measures the system, not the nurse.
  */
 export default function StudyInstrumentation() {
-  const [enabled, setEnabled] = useState(false);
+  // null until the first read resolves, so an enabled deployment does not
+  // flash the "disabled" panel before the list request returns.
+  const [enabled, setEnabled] = useState<boolean | null>(null);
   const [runs, setRuns] = useState<StudyTaskRunResponse[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -46,33 +48,24 @@ export default function StudyInstrumentation() {
   const [ending, setEnding] = useState(false);
   const [abandoning, setAbandoning] = useState(false);
 
-  // Check if instrumentation is enabled
+  // Read the runs once on mount: a 403 means the instrumentation is off, any
+  // other failure is shown as a load error.
   useEffect(() => {
-    checkEnabled();
+    void loadRuns();
   }, []);
 
-  async function checkEnabled() {
+  async function loadRuns() {
     try {
-      // Try to list runs; 403 means disabled
-      await api.listStudyTaskRuns();
+      const { runs: loaded } = await api.listStudyTaskRuns();
+      setRuns(loaded);
       setEnabled(true);
-      await loadRuns();
+      setLoadError(null);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 403) {
         setEnabled(false);
       } else {
         setLoadError(errorText(caught));
       }
-    }
-  }
-
-  async function loadRuns() {
-    try {
-      const { runs: loaded } = await api.listStudyTaskRuns();
-      setRuns(loaded);
-      setLoadError(null);
-    } catch (caught) {
-      setLoadError(errorText(caught));
     }
   }
 
@@ -139,6 +132,15 @@ export default function StudyInstrumentation() {
     } finally {
       setAbandoning(false);
     }
+  }
+
+  if (enabled === null) {
+    return (
+      <section className={cardClass}>
+        <h3 className="text-title-3-medium text-text-primary">Study Instrumentation</h3>
+        <p className={mutedTextClass}>Loading…</p>
+      </section>
+    );
   }
 
   if (!enabled) {
