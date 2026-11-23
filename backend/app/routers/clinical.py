@@ -7,10 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.audit import record_audit_entry
 from app.audit_actions import AuditAction
+from app.config import get_settings
 from app.departures import encounter_status, end_encounter, ensure_open
 from app.deps import DbSession, require_role
 from app.intake import apply_visit_reason
-from app.models import Admission, Encounter, Observation, Patient, Role, User
+from app.models import (
+    Admission,
+    Encounter,
+    Observation,
+    Patient,
+    Role,
+    StudyTaskRun,
+    User,
+)
 from app.observations import (
     observation_response,
     observation_response_for,
@@ -34,8 +43,14 @@ from app.schemas import (
     PatientRegistrationRequest,
     PatientResponse,
     PatientSearchResponse,
+    StudyTaskRunAbandonRequest,
+    StudyTaskRunCreateRequest,
+    StudyTaskRunEndRequest,
+    StudyTaskRunListResponse,
+    StudyTaskRunResponse,
     VisitReasonPayload,
 )
+from app.timeutils import utc_now
 
 router = APIRouter(prefix="/api/clinical", tags=["clinical"])
 
@@ -504,16 +519,6 @@ def _encounter_response(encounter: Encounter) -> EncounterResponse:
 # =============================================================================
 # Study Instrumentation (ticket 40)
 # =============================================================================
-
-from app.models import StudyTaskRun
-from app.schemas import (
-    StudyTaskRunCreateRequest,
-    StudyTaskRunEndRequest,
-    StudyTaskRunAbandonRequest,
-    StudyTaskRunResponse,
-    StudyTaskRunListResponse,
-)
-from app.config import get_settings
 
 
 @router.post(
