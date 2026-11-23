@@ -447,6 +447,32 @@ export interface TaskCompletionReport {
   completion_pct: number;
 }
 
+export interface StudyTaskRunCreateRequest {
+  task_label: string;
+  participant_id: string;
+}
+
+export interface StudyTaskRunEndRequest {
+  participant_id: string;
+}
+
+export interface StudyTaskRunAbandonRequest {
+  participant_id: string;
+}
+
+export interface StudyTaskRunResponse {
+  id: number;
+  task_label: string;
+  participant_id: string;
+  started_at: string;
+  ended_at: string | null;
+  status: string;
+}
+
+export interface StudyTaskRunListResponse {
+  runs: StudyTaskRunResponse[];
+}
+
 interface ApiResult<T> {
   body: T;
   status: number;
@@ -751,4 +777,23 @@ export const api = {
     request<AuditLog>(
       `/api/administrator/audit-log${encounterId ? `?encounter_id=${encounterId}` : ""}`,
     ),
+
+  // Study Instrumentation (ticket 40)
+  startStudyTaskRun: (payload: StudyTaskRunCreateRequest) =>
+    request<StudyTaskRunResponse>("/api/clinical/study-task-runs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  endStudyTaskRun: (runId: number, payload: StudyTaskRunEndRequest) =>
+    request<StudyTaskRunResponse>(`/api/clinical/study-task-runs/${runId}/end`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  abandonStudyTaskRun: (runId: number, payload: StudyTaskRunAbandonRequest) =>
+    request<StudyTaskRunResponse>(`/api/clinical/study-task-runs/${runId}/abandon`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  listStudyTaskRuns: () =>
+    request<StudyTaskRunListResponse>("/api/clinical/study-task-runs"),
 };
