@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # on, not what local development runs with. See the README's "Security
     # behaviour".
     session_cookie_secure: bool = False
+
+    # When the API and the web client are on different origins (e.g. two
+    # Railway services), cookies must be sent cross-origin. Setting this to
+    # "none" (along with session_cookie_secure=True) enables that. Use "lax"
+    # for same-origin deployments and local development.
+    session_cookie_samesite: str = "lax"
+
     seed_demo_users: bool = False
 
     # Study instrumentation (ticket 40). Off by default; normal ward use
