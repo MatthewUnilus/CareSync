@@ -40,6 +40,12 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "start_at": "2026-11-20T08:00:00+00:00",
         "instructed_by": "Dr Okafor",
     },
+    ("POST", "/api/ward/medication-orders/{order_id}/administrations"): {
+        "due_at": "2026-11-20T08:00:00+00:00",
+        "outcome": "given",
+        "reason_key": None,
+        "reason_text": None,
+    },
 }
 
 _PATH_PARAMS = {"admission_id": "1", "order_id": "1", "id": "1"}
@@ -49,6 +55,12 @@ _PATH_PARAMS = {"admission_id": "1", "order_id": "1", "id": "1"}
 _QUERY = {
     "/api/ward/admissions": "patient_id=1",
     "/api/ward/medications/due": (
+        "from=2026-11-19T00:00:00%2B00:00&to=2026-11-20T00:00:00%2B00:00"
+    ),
+    "/api/ward/medication-orders/{order_id}/administration-grid": (
+        "from=2026-11-19T00:00:00%2B00:00&to=2026-11-20T00:00:00%2B00:00"
+    ),
+    "/api/ward/admissions/{admission_id}/medication-administrations": (
         "from=2026-11-19T00:00:00%2B00:00&to=2026-11-20T00:00:00%2B00:00"
     ),
 }

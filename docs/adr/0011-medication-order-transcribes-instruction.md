@@ -50,3 +50,18 @@ record and the change is visible.
 - A stopped order stops producing due doses. What is due is computed at read time
   from the open orders and the round times, so there is no stored schedule to
   bring back into line.
+
+## Amendment (2026-11-22)
+
+A Medication Administration records what a nurse attests to. There is no barcode
+scanning and no wristband verification, and none is in scope. The system does not
+verify the patient, the drug or the dose against any device or record.
+
+This is a limitation on the record, not a safety control. The record says a nurse
+stated the dose was given; it does not claim the system confirmed it. Nothing
+here checks that the right drug reached the right patient at the right dose, and
+nothing should be read as if it did.
+
+An overdue dose is displayed and nothing more. No escalation, cancellation or
+order change follows from it, which is ADR 0010's rule applied to medication: the
+system does not act on a timer, and it does not decide.

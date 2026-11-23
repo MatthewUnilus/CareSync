@@ -37,7 +37,12 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Admission, MedicationOrder, User
+from app.models import (
+    Admission,
+    MedicationAdministration,
+    MedicationOrder,
+    User,
+)
 from app.schemas import (
     DueDoseResponse,
     MedicationFrequencyResponse,
@@ -290,6 +295,44 @@ def validate_due_window(start: datetime, end: datetime) -> None:
         )
 
 
+def order_slots(
+    order: MedicationOrder, start: datetime, end: datetime
+) -> list[datetime]:
+    """One order's round-time slots within ``[start, end)``, sorted.
+
+    The public read of the derivation the grid and the admission history need:
+    the same instants the due list would produce for one order, in the order they
+    fall.
+    """
+    return sorted(_order_slots(order, as_utc(start), as_utc(end)))
+
+
+def is_order_slot(order: MedicationOrder, due_at: datetime) -> bool:
+    """Whether ``due_at`` is one of the order's round-time slots.
+
+    A slot's identity is a round time of the order's frequency on or after the
+    order's start, and before its stop when it is stopped. A value that is not
+    such an instant is a made-up slot: an administration must answer a dose the
+    schedule actually placed, so a made-up one is refused (``422``) rather than
+    recorded.
+    """
+    due_at = as_utc(due_at)
+    if due_at.second or due_at.microsecond:
+        return False
+    order_start = as_utc(order.start_at)
+    if due_at < order_start:
+        return False
+    if order.stopped_at is not None and due_at >= as_utc(order.stopped_at):
+        return False
+    for hour, minute in _parsed_times(order.frequency):
+        first = _first_slot_at_or_after(order_start, hour, minute)
+        if due_at < first:
+            continue
+        if (due_at - first) % _DAY == timedelta(0):
+            return True
+    return False
+
+
 def due_doses(
     session: Session,
     *,
@@ -303,12 +346,14 @@ def due_doses(
     order produces doses through the window, and a stopped order still produces
     the doses scheduled *before* it was stopped, so the record shows what was due
     at the time rather than rewriting it. A discharged Admission has left the
-    ward and produces nothing. The window is inclusive of ``start`` and exclusive
-    of ``end``, so two adjacent windows share no boundary dose, and a stopped
-    order's slots are additionally exclusive of its stop instant. ``overdue`` is
-    measured against the server's clock (``now``, defaulting to ``utc_now``). The
-    result is sorted by due time, breaking ties on the order id, so the list
-    reads in the order the doses fall.
+    ward and produces nothing. A dose slot that has been recorded is no longer
+    *due* — it has been dealt with — so a recorded slot leaves this list and the
+    record stays readable through the administration read instead. The window is
+    inclusive of ``start`` and exclusive of ``end``, so two adjacent windows share
+    no boundary dose, and a stopped order's slots are additionally exclusive of
+    its stop instant. ``overdue`` is measured against the server's clock (``now``,
+    defaulting to ``utc_now``). The result is sorted by due time, breaking ties on
+    the order id, so the list reads in the order the doses fall.
     """
     now = now or utc_now()
     start = as_utc(start)
@@ -319,13 +364,33 @@ def due_doses(
         .where(Admission.discharged_at.is_(None))
         .order_by(MedicationOrder.id)
     ).all()
+    recorded = _recorded_slot_keys(session, start=start, end=end)
     doses = [
         DueDose(order=order, due_at=due_at, overdue=due_at < now)
         for order in orders
         for due_at in _order_slots(order, start, end)
+        if (order.id, due_at) not in recorded
     ]
     doses.sort(key=lambda dose: (dose.due_at, dose.order.id))
     return doses
+
+
+def _recorded_slot_keys(
+    session: Session, *, start: datetime, end: datetime
+) -> set[tuple[int, datetime]]:
+    """The ``(order_id, due_at)`` slots already recorded within ``[start, end)``.
+
+    Read once per due-list derivation so a recorded slot is subtracted without a
+    query per slot. ``due_at`` is normalised to UTC, matching the instants the
+    derivation produces, because SQLite round-trips aware timestamps as naive.
+    """
+    rows = session.scalars(
+        select(MedicationAdministration).where(
+            MedicationAdministration.due_at >= start,
+            MedicationAdministration.due_at < end,
+        )
+    ).all()
+    return {(row.order_id, as_utc(row.due_at)) for row in rows}
 
 
 def dose_response(dose: DueDose) -> DueDoseResponse:
@@ -354,14 +419,19 @@ def medication_counts(
     ``overdue`` counts doses whose round time has passed and nothing recorded
     them; ``due`` counts doses in the window just after their round time; and
     ``outstanding`` is the two together, the doses not yet given that the record
-    shows. All three are read against one clock. A discharged Admission has
-    nothing outstanding. A stopped order still contributes the doses scheduled
-    before it was stopped, so a dose that went unrecorded while the order was
-    live stays counted rather than quietly disappearing.
+    shows. A recorded dose slot is no longer outstanding, so the recorded slots in
+    each window are subtracted; the record stays readable through the
+    administration read instead of the count. All three are read against one
+    clock. A discharged Admission has nothing outstanding. A stopped order still
+    contributes the doses scheduled before it was stopped, so a dose that went
+    unrecorded while the order was live stays counted rather than quietly
+    disappearing.
 
     The count is worked out per fixed round time by arithmetic over the span from
     the order's start to the clock, not by walking every day in between, so a long
-    running order costs the same to count as a new one.
+    running order costs the same to count as a new one; the recorded slots are
+    read per order and subtracted from that arithmetic, so the count stays bounded
+    by the record rather than by the days since the order started.
     """
     now = now or utc_now()
     if admission.discharged_at is not None:
@@ -374,8 +444,11 @@ def medication_counts(
     due = 0
     for order in orders:
         order_overdue, order_due = _order_slot_counts(order, now=now, end=end)
-        overdue += order_overdue
-        due += order_due
+        recorded_overdue, recorded_due = _recorded_slot_counts(
+            session, order, now=now, end=end
+        )
+        overdue += max(order_overdue - recorded_overdue, 0)
+        due += max(order_due - recorded_due, 0)
     return MedicationCounts(
         overdue=overdue, due=due, outstanding=overdue + due
     )
@@ -405,6 +478,45 @@ def _order_slot_counts(
         due += _slot_count_before(first, upper) - _slot_count_before(
             first, ceiling
         )
+    return overdue, due
+
+
+def _recorded_slot_counts(
+    session: Session,
+    order: MedicationOrder,
+    *,
+    now: datetime,
+    end: datetime,
+) -> tuple[int, int]:
+    """``(overdue, due)`` recorded slots for one order, to subtract from the count.
+
+    A recorded slot has been dealt with, so it is no longer outstanding. The
+    slots are classified against the same boundaries the arithmetic count uses:
+    before ``ceiling`` (the clock, capped by the order's end) is overdue, and from
+    ``ceiling`` up to the window end is due. A slot past the order's end is not
+    counted, matching the schedule. The rows are read per order, so the count
+    stays bounded by the record rather than the days since the order started.
+    """
+    order_start = as_utc(order.start_at)
+    upper = _order_end(order, end)
+    if upper <= order_start:
+        return 0, 0
+    ceiling = min(now, upper)
+    overdue = 0
+    due = 0
+    rows = session.scalars(
+        select(MedicationAdministration.due_at).where(
+            MedicationAdministration.order_id == order.id
+        )
+    ).all()
+    for raw in rows:
+        due_at = as_utc(raw)
+        if due_at < order_start:
+            continue
+        if due_at < ceiling:
+            overdue += 1
+        elif due_at < upper:
+            due += 1
     return overdue, due
 
 

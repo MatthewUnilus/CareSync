@@ -17,9 +17,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import medications, notes, tasks, ward
+from app import administrations, medications, notes, tasks, ward
 from app.admissions import (
     admission_status,
     admit,
@@ -43,12 +44,17 @@ from app.models import (
 from app.observations import observation_response
 from app.schemas import (
     ActorResponse,
+    AdmissionAdministrationHistoryResponse,
     AdmissionCreateRequest,
     AdmissionListResponse,
     AdmissionMoveRequest,
     AdmissionResponse,
     AssignTaskRequest,
     DueListResponse,
+    MedicationAdministrationCreateRequest,
+    MedicationAdministrationGridResponse,
+    MedicationAdministrationReasonsResponse,
+    MedicationAdministrationResponse,
     MedicationOrderCreateRequest,
     MedicationOrderListResponse,
     MedicationOrderResponse,
@@ -265,6 +271,22 @@ def get_round_times(user: ClinicalUser) -> RoundTimesResponse:
     return medications.round_times_response()
 
 
+@router.get(
+    "/medication-administration-reasons",
+    response_model=MedicationAdministrationReasonsResponse,
+)
+def get_administration_reasons(
+    user: ClinicalUser,
+) -> MedicationAdministrationReasonsResponse:
+    """The fixed administration-reason vocabulary, so the interface can show it.
+
+    A plain read of the vocabulary in ``app.administrations``. Each key says
+    whether its free text is required; it is true for ``other`` alone, so the
+    reason set stays reportable (ticket 35).
+    """
+    return administrations.reasons_response()
+
+
 @router.get("/medications/due", response_model=DueListResponse)
 def get_due_list(
     db: DbSession,
@@ -399,6 +421,134 @@ def stop_medication_order(
     )
     db.commit()
     return medications.order_response(order)
+
+
+@router.post(
+    "/medication-orders/{order_id}/administrations",
+    response_model=MedicationAdministrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_medication_administration(
+    order_id: int,
+    payload: MedicationAdministrationCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> MedicationAdministrationResponse:
+    """Record one dose slot of an order as given, or not given.
+
+    The due time must be a round time of the order, and a slot can be recorded
+    once: a made-up due time or a bad reason is a ``422``, and a slot already
+    recorded is a ``409``, refused rather than merged. A dose with a past due time
+    can still be recorded and is marked late rather than refused. An unknown order
+    is a ``404``. The administration and its single audit entry commit together,
+    with the Admission as the entry's subject.
+    """
+    order = _get_medication_order(db, order_id)
+    administration = administrations.record_administration(
+        db,
+        order=order,
+        actor=user,
+        due_at=payload.due_at,
+        outcome=payload.outcome,
+        reason_key=payload.reason_key,
+        reason_text=payload.reason_text,
+    )
+    try:
+        db.flush()
+        record_audit_entry(
+            db,
+            actor=user,
+            action=AuditAction.record_medication_administration,
+            patient=order.admission.patient,
+            admission=order.admission,
+            detail=(
+                f"order {order.id} {administration.outcome} due "
+                f"{administration.due_at.isoformat()}"
+            ),
+        )
+        db.commit()
+    except IntegrityError:
+        # The unique constraint over (order_id, due_at) backs the pre-check: a
+        # second attempt is refused, not merged.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=administrations.DUPLICATE_SLOT_DETAIL,
+        ) from None
+    return administrations.administration_response(administration)
+
+
+@router.get(
+    "/medication-orders/{order_id}/administration-grid",
+    response_model=MedicationAdministrationGridResponse,
+)
+def get_administration_grid(
+    order_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+    from_at: Annotated[
+        datetime,
+        Query(
+            alias="from",
+            description="Start of the window, inclusive (ISO 8601)",
+        ),
+    ],
+    to: Annotated[
+        datetime,
+        Query(description="End of the window, exclusive (ISO 8601)"),
+    ],
+) -> MedicationAdministrationGridResponse:
+    """One order's doses over a window, as the paper chart reads.
+
+    Every slot the order's schedule places in the window, each with its recorded
+    outcome where a dose was recorded or its relation to the clock where it was
+    not, sorted by due time. The window is required and may not exceed 31 days. An
+    unknown order is a ``404``; reading it writes nothing.
+    """
+    order = _get_medication_order(db, order_id)
+    start = as_utc(from_at)
+    end = as_utc(to)
+    administrations.validate_admin_window(start, end)
+    return administrations.administration_grid(
+        db, order, start=start, end=end
+    )
+
+
+@router.get(
+    "/admissions/{admission_id}/medication-administrations",
+    response_model=AdmissionAdministrationHistoryResponse,
+)
+def list_admission_administrations(
+    admission_id: int,
+    db: DbSession,
+    user: ClinicalUser,
+    from_at: Annotated[
+        datetime,
+        Query(
+            alias="from",
+            description="Start of the window, inclusive (ISO 8601)",
+        ),
+    ],
+    to: Annotated[
+        datetime,
+        Query(description="End of the window, exclusive (ISO 8601)"),
+    ],
+) -> AdmissionAdministrationHistoryResponse:
+    """One Admission's doses over a window: what was due, what happened, when, by whom.
+
+    Every slot the Admission's orders place in the window, across its orders, each
+    with its recorded outcome where a dose was recorded or its relation to the
+    clock where it was not, sorted by due time. A stopped order still contributes
+    the doses it placed before it was stopped. The window is required and may not
+    exceed 31 days. An unknown Admission is a ``404``; reading it writes nothing.
+    """
+    admission = _get_admission(db, admission_id)
+    start = as_utc(from_at)
+    end = as_utc(to)
+    administrations.validate_admin_window(start, end)
+    return administrations.admission_administration_history(
+        db, admission, start=start, end=end
+    )
 
 
 @router.get("/admissions", response_model=AdmissionListResponse)

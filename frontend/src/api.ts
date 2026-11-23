@@ -354,6 +354,140 @@ export interface MedicationDueList {
 }
 
 /**
+ * One reason a dose was not given, as the server fixes the set (ticket 35).
+ *
+ * The set is the server's one definition, offered to the client rather than
+ * hard-coded, so a ward's own words replace it in one place. `requires_text`
+ * marks the reason that must carry free text (the "other" case); free text is
+ * permitted only for that reason, so the reason set stays reportable.
+ */
+export interface MedicationAdministrationReason {
+  key: string;
+  label: string;
+  requires_text: boolean;
+}
+
+/** The fixed reason set a not-given dose is answered with. */
+export interface MedicationAdministrationReasons {
+  reasons: MedicationAdministrationReason[];
+}
+
+/**
+ * The fixed outcome set for a recorded dose: given, withheld, refused or
+ * unavailable. Not giving a dose is as recordable as giving it.
+ */
+export type MedicationAdministrationOutcome =
+  | "given"
+  | "withheld"
+  | "refused"
+  | "unavailable";
+
+/** The reason held on a recorded dose, with its free text where one was given. */
+export interface MedicationAdministrationReasonRef {
+  key: string;
+  label: string;
+  text: string | null;
+}
+
+/**
+ * One Medication Administration: a dose recorded against a due slot of an order
+ * (ticket 35, CONTEXT.md — Medication Administration).
+ *
+ * It is append-only and records what a nurse attests to. There is no barcode or
+ * wristband verification and the record does not claim any. `late` is the
+ * server's mark that the record's `recorded_at` followed the slot's `due_at`: the
+ * client shows the word and never re-derives it. Nothing is escalated and no
+ * order changes on an administration.
+ */
+export interface MedicationAdministration {
+  id: number;
+  order_id: number;
+  admission_id: number;
+  drug: string;
+  dose: string;
+  route: string;
+  /** The due slot this record answers, an ISO 8601 instant on the UTC clock. */
+  due_at: string;
+  outcome: MedicationAdministrationOutcome;
+  /** The reason, present only where the outcome is not given. */
+  reason: MedicationAdministrationReasonRef | null;
+  recorded_at: string;
+  actor: { id: number; display_name: string };
+  /** The server's mark that the record came after the due time; shown, not derived. */
+  late: boolean;
+}
+
+/**
+ * The fields of a new administration, as sent to record a dose. `due_at` is the
+ * slot's identity, so the (order, due time) pair can be recorded once. The reason
+ * is present only where the outcome is not given, and `reason_text` only where
+ * the chosen reason requires it.
+ */
+export interface MedicationAdministrationPayload {
+  due_at: string;
+  outcome: MedicationAdministrationOutcome;
+  reason_key: string | null;
+  reason_text: string | null;
+}
+
+/**
+ * One slot of an order's administration grid: what was due and what happened to
+ * it. `state` and any times are the server's; the client shows them and derives
+ * no clinical judgement of its own.
+ */
+export interface MedicationAdministrationGridSlot {
+  due_at: string;
+  state: string;
+  administration: MedicationAdministration | null;
+}
+
+/**
+ * The order a grid is charted for: the clinical fields and derived condition, so
+ * the chart reads as the paper chart it replaces. It omits `instructed_by`, which
+ * belongs to the transcription, not the doses.
+ */
+export interface MedicationAdministrationGridOrder {
+  id: number;
+  admission_id: number;
+  drug: string;
+  dose: string;
+  route: string;
+  frequency: string;
+  start_at: string;
+  status: "active" | "stopped";
+  stopped_at: string | null;
+}
+
+/**
+ * A week of one order's doses as a grid — the shape a medication chart takes on
+ * paper and what ticket 37 prints. `order` is the order the slots belong to.
+ */
+export interface MedicationAdministrationGrid {
+  order: MedicationAdministrationGridOrder;
+  slots: MedicationAdministrationGridSlot[];
+}
+
+/**
+ * One slot of an admission's administration history: a dose that was due from
+ * one of its orders and what happened to it, so the record reads as what was due,
+ * what happened, when and by whom.
+ */
+export interface MedicationAdministrationHistorySlot {
+  order_id: number;
+  drug: string;
+  dose: string;
+  route: string;
+  due_at: string;
+  state: string;
+  administration: MedicationAdministration | null;
+}
+
+/** An admission's administrations in a window, already ordered by due time. */
+export interface MedicationAdministrationHistory {
+  slots: MedicationAdministrationHistorySlot[];
+}
+
+/**
  * One field of a Note Template, as the server defines it. The client renders the
  * fields a template carries and never hard-codes what a template holds, so a
  * change to a template's fields is a server change with no client change.
@@ -745,6 +879,54 @@ export const api = {
   medicationDue: (from: string, to: string) =>
     request<MedicationDueList>(
       `/api/ward/medications/due?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+  /*
+   * Medication administrations (ticket 35, CONTEXT.md — Medication
+   * Administration).
+   *
+   * A dose is recorded as given, withheld, refused or unavailable against one due
+   * slot; not giving a dose is as recordable as giving it. The reason set is the
+   * server's and is read, not hard-coded, and a reason is required when the dose
+   * was not given, with free text only where the chosen reason requires it. A
+   * recorded slot leaves the due list and the record stays readable. A dose given
+   * after its due time can still be recorded and comes back marked `late`; the
+   * server sends the states and times and the client derives none of them, and
+   * nothing is escalated and no order changes. The record says what a nurse
+   * attests to: there is no barcode or wristband verification and none is
+   * claimed. The grid is a week of one order's doses, the shape of a paper chart.
+   */
+  medicationAdministrationReasons: () =>
+    request<MedicationAdministrationReasons>(
+      "/api/ward/medication-administration-reasons",
+    ),
+  recordMedicationAdministration: (
+    orderId: number,
+    payload: MedicationAdministrationPayload,
+  ) =>
+    request<MedicationAdministration>(
+      `/api/ward/medication-orders/${orderId}/administrations`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  /*
+   * A week of one order's doses as a grid, `[from, to)`, as ISO 8601 instants.
+   * The round times are provisional UTC clock times, so a caller asks for UTC
+   * calendar days (`Date.UTC` bounds) to match the schedule.
+   */
+  medicationAdministrationGrid: (orderId: number, from: string, to: string) =>
+    request<MedicationAdministrationGrid>(
+      `/api/ward/medication-orders/${orderId}/administration-grid?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+  /*
+   * An admission's administration history in a window, `[from, to)`. As with the
+   * due list and the grid, the calendar window is a UTC day to match the schedule.
+   */
+  admissionMedicationAdministrations: (
+    admissionId: number,
+    from: string,
+    to: string,
+  ) =>
+    request<MedicationAdministrationHistory>(
+      `/api/ward/admissions/${admissionId}/medication-administrations?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     ),
   /*
    * Tasks and the ward round (ticket 33).

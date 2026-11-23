@@ -15,7 +15,13 @@ from pydantic import (
 from app.admissions import AdmissionStatus
 from app.audit_actions import AuditAction
 from app.departures import EncounterStatus
-from app.models import MedicationOrderStatus, Role, Sex, TaskStatus
+from app.models import (
+    AdministrationOutcome,
+    MedicationOrderStatus,
+    Role,
+    Sex,
+    TaskStatus,
+)
 from app.timeutils import as_utc
 
 _NAME = Annotated[
@@ -729,6 +735,154 @@ class DueListResponse(BaseModel):
     """Every dose due in the window across the ward, sorted by due time."""
 
     doses: list[DueDoseResponse]
+
+
+#: A Medication Administration's outcome and reason keys: short snake_case
+#: identifiers matching the fixed vocabularies in ``app.administrations``. The
+#: schema carries the shape (a non-blank key); the vocabulary decides which keys
+#: exist and the route refuses an unknown one with a ``422``, the same discipline
+#: the round-frequency key follows.
+_OUTCOME_KEY = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
+]
+_REASON_KEY = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+]
+
+
+class MedicationAdministrationReasonResponse(BaseModel):
+    """One key of the fixed administration-reason vocabulary.
+
+    ``requires_text`` tells the client whether the free text is required for this
+    key; it is true for ``other`` alone, so the reason set stays reportable rather
+    than becoming free commentary (the pattern the deleted Override Reason used).
+    """
+
+    key: str
+    label: str
+    requires_text: bool
+
+
+class MedicationAdministrationReasonsResponse(BaseModel):
+    """The fixed administration-reason vocabulary, so a client can show it."""
+
+    reasons: list[MedicationAdministrationReasonResponse]
+
+
+class MedicationAdministrationCreateRequest(BaseModel):
+    """Record one dose from a Medication Order as given, or not given.
+
+    ``due_at`` names the round-time slot this answers; ``outcome`` is one of the
+    fixed outcomes and ``reason_key`` and ``reason_text`` explain a dose that was
+    not given. An unknown key is refused rather than ignored. The record is a
+    nurse's attestation: no dose is calculated and no value is interpreted (ADR
+    0011's position, restated for the administration).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    due_at: datetime
+    outcome: _OUTCOME_KEY
+    reason_key: _REASON_KEY | None = None
+    reason_text: _OPTIONAL_TEXT | None = None
+
+
+class AdministrationReasonResponse(BaseModel):
+    """The reason on a recorded administration: its key, its human label and any
+    free text. ``text`` is present only for the ``other`` key."""
+
+    key: str
+    label: str
+    text: str | None = None
+
+
+class MedicationAdministrationResponse(BaseModel):
+    """One recorded administration: what was due, what happened, when and by whom.
+
+    ``due_at`` is the slot this row answers and ``outcome`` is what the nurse
+    recorded; ``reason`` is null when the dose was given and otherwise names the
+    reason. ``late`` is a display mark, true when it was recorded after the due
+    instant: a dose given after its round time is marked late rather than refused.
+    ``recorded_at`` is when it was recorded and ``actor`` is the Clinical user who
+    did so.
+    """
+
+    id: int
+    order_id: int
+    admission_id: int
+    drug: str
+    dose: str
+    route: str
+    due_at: UtcDatetime
+    outcome: AdministrationOutcome
+    reason: AdministrationReasonResponse | None = None
+    recorded_at: UtcDatetime
+    actor: ActorResponse
+    late: bool
+
+
+class AdministrationGridOrderResponse(BaseModel):
+    """The order a grid is charted for, without the transcription's actor.
+
+    The clinical fields and the derived condition are shown so the grid reads like
+    the paper chart it replaces; ``instructed_by`` is omitted because the grid is
+    about the doses, not the instruction's author.
+    """
+
+    id: int
+    admission_id: int
+    drug: str
+    dose: str
+    route: str
+    frequency: str
+    start_at: UtcDatetime
+    status: MedicationOrderStatus
+    stopped_at: UtcDatetime | None = None
+
+
+class AdministrationGridSlotResponse(BaseModel):
+    """One due slot on the grid.
+
+    ``state`` is a recorded outcome (given, withheld, refused or unavailable) or,
+    where nothing is recorded, the slot's relation to the clock at read time:
+    ``overdue`` past its round time, ``due`` within the window just after it, or
+    ``pending`` further ahead. ``administration`` is the record where one exists,
+    so the grid carries both what was due and what happened.
+    """
+
+    due_at: UtcDatetime
+    state: str
+    administration: MedicationAdministrationResponse | None = None
+
+
+class MedicationAdministrationGridResponse(BaseModel):
+    """One order's doses over a window, as the paper chart reads."""
+
+    order: AdministrationGridOrderResponse
+    slots: list[AdministrationGridSlotResponse]
+
+
+class AdmissionAdministrationSlotResponse(BaseModel):
+    """One due slot in an Admission's administration history.
+
+    Across an Admission's orders the history reads what was due, what happened,
+    when and by whom: ``state`` is the recorded outcome or the slot's relation to
+    the clock, and ``administration`` carries who recorded it and when.
+    """
+
+    order_id: int
+    drug: str
+    dose: str
+    route: str
+    due_at: UtcDatetime
+    state: str
+    administration: MedicationAdministrationResponse | None = None
+
+
+class AdmissionAdministrationHistoryResponse(BaseModel):
+    """One Admission's doses over a window, across its orders, sorted by due time."""
+
+    slots: list[AdmissionAdministrationSlotResponse]
 
 
 class TaskCreateRequest(BaseModel):

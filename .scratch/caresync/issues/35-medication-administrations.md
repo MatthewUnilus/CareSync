@@ -4,19 +4,19 @@
 
 **Blocked by:** 34 (an administration belongs to an order and a due slot).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new `medication_administrations` table records the order, the due time it answers, the outcome, the reason where the outcome is not given, the actor and the time recorded.
-- [ ] The outcome set is fixed: given, withheld, refused, unavailable.
-- [ ] A reason is required when the outcome is not given, from a fixed set with free text for the "other" case, following the pattern the deleted Override Reason used. The free text is permitted only for "other".
-- [ ] A unique constraint over the order and the due time means a slot cannot be recorded twice. A second attempt is refused, not merged.
-- [ ] The table is append-only, enforced by a `before_update` guard in the application layer (ADR 0001).
-- [ ] An administered dose removes its slot from the due list, and the record stays readable.
-- [ ] An overdue dose stays visible as overdue until it is recorded, and the system does nothing about it: no escalation, no cancellation, no change to the order. This rests on ADR 0010's rule.
-- [ ] The administration record for a patient reads as a history: what was due, what happened, when, and by whom.
-- [ ] A test asserts a slot cannot be recorded twice, and that a slot with a past due time can still be recorded late and is marked as late rather than refused.
-- [ ] Recording an administration writes exactly one Audit Entry in the same transaction as the change.
-- [ ] A week of doses for one order can be read as a grid, which is the shape a medication chart takes on paper and is what ticket 37 prints.
+- [x] A new `medication_administrations` table records the order, the due time it answers, the outcome, the reason where the outcome is not given, the actor and the time recorded.
+- [x] The outcome set is fixed: given, withheld, refused, unavailable.
+- [x] A reason is required when the outcome is not given, from a fixed set with free text for the "other" case, following the pattern the deleted Override Reason used. The free text is permitted only for "other".
+- [x] A unique constraint over the order and the due time means a slot cannot be recorded twice. A second attempt is refused, not merged.
+- [x] The table is append-only, enforced by a `before_update` guard in the application layer (ADR 0001).
+- [x] An administered dose removes its slot from the due list, and the record stays readable.
+- [x] An overdue dose stays visible as overdue until it is recorded, and the system does nothing about it: no escalation, no cancellation, no change to the order. This rests on ADR 0010's rule.
+- [x] The administration record for a patient reads as a history: what was due, what happened, when, and by whom.
+- [x] A test asserts a slot cannot be recorded twice, and that a slot with a past due time can still be recorded late and is marked as late rather than refused.
+- [x] Recording an administration writes exactly one Audit Entry in the same transaction as the change.
+- [x] A week of doses for one order can be read as a grid, which is the shape a medication chart takes on paper and is what ticket 37 prints.
 
 ## Notes
 

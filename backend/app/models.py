@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     event,
     inspect,
     text,
@@ -78,6 +79,28 @@ class MedicationOrderStatus(str, Enum):
 
     active = "active"
     stopped = "stopped"
+
+
+class AdministrationOutcome(str, Enum):
+    """The fixed outcomes a Medication Administration can record.
+
+    Four values: the dose was given, or it was not given for one of three
+    reasons — withheld, refused or unavailable. The set comes from the nurse's own
+    description of the work and is stored as a validated string (ADR 0001: no
+    database enums), constrained by a check on exactly these values. Not giving a
+    dose is as recordable as giving it, which is what keeps the medication record
+    honest (CONTEXT.md, "Medication Administration").
+    """
+
+    given = "given"
+    withheld = "withheld"
+    refused = "refused"
+    unavailable = "unavailable"
+
+
+_OUTCOME_VALUES = ", ".join(
+    f"'{outcome.value}'" for outcome in AdministrationOutcome
+)
 
 
 class Patient(Base):
@@ -603,6 +626,86 @@ def _refuse_editing_a_medication_order(_mapper, _connection, target) -> None:
             raise ValueError(
                 "A stopped Medication Order cannot be stopped again"
             )
+
+
+class MedicationAdministration(Base):
+    """The record that one dose from a Medication Order was dealt with.
+
+    One row answers one due slot: the order, the due time it answers, the outcome,
+    the reason where the outcome is not given, the actor and the time recorded
+    (CONTEXT.md, "Medication Administration"). A dose is recorded as given,
+    withheld, refused or unavailable; not giving a dose is as recordable as giving
+    it, which is what keeps the record honest.
+
+    ``due_at`` is the slot's identity, and a unique constraint over
+    ``(order_id, due_at)`` means a slot cannot be recorded twice: two attempts at
+    one round time are one slot, and a second attempt is refused rather than
+    merged (ticket 35). The due time is a round time of the order's frequency, so
+    the row answers a dose the schedule actually placed and not a made-up instant.
+
+    The record says what a nurse attests to. There is no barcode or wristband
+    verification and this table adds none: no dose is calculated and no value is
+    interpreted here.
+
+    ``late`` is derived at read time (recorded after the due instant) and never
+    stored: it is a display mark that documents a dose given after its round time,
+    not a second status that could contradict the instants. Rows are append-only,
+    enforced in the application layer (see the guard below), because ADR 0001
+    forbids database triggers.
+    """
+
+    __tablename__ = "medication_administrations"
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id",
+            "due_at",
+            name="uq_medication_administrations_order_due",
+        ),
+        CheckConstraint(
+            f"outcome IN ({_OUTCOME_VALUES})",
+            name="ck_medication_administrations_outcome",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("medication_orders.id"), index=True
+    )
+    # The slot's identity: the round time this row answers.
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    outcome: Mapped[str] = mapped_column(String(32))
+    # The reason where the outcome is not given; null when it was given. The key
+    # names a member of the fixed set in ``app.administrations``; the free text is
+    # permitted only for the ``other`` key.
+    reason_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reason_text: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # The Clinical user who recorded it, so the act is attributable.
+    actor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+
+    order: Mapped[MedicationOrder] = relationship(lazy="joined")
+    actor: Mapped[User] = relationship(lazy="joined")
+
+
+@event.listens_for(MedicationAdministration, "before_update")
+def _refuse_editing_a_medication_administration(
+    _mapper, _connection, _target
+) -> None:
+    """Application-layer append-only guarantee (ADR 0001, no DB triggers).
+
+    The guard refuses *any* in-place change: an administration has no field that
+    is ever legitimately updated. A dose slot recorded once cannot be rewritten,
+    which is what keeps the record an account of what happened rather than one
+    that can be quietly corrected after the fact.
+    """
+    raise ValueError(
+        "A Medication Administration is append-only; it cannot be edited after "
+        "it is written"
+    )
 
 
 class TaskStatus(str, Enum):

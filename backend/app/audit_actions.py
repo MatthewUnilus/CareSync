@@ -34,6 +34,7 @@ class AuditAction(str, Enum):
     correct_nursing_note = "correct_nursing_note"
     record_medication_order = "record_medication_order"
     stop_medication_order = "stop_medication_order"
+    record_medication_administration = "record_medication_administration"
     raise_task = "raise_task"
     complete_task = "complete_task"
     assign_task = "assign_task"
@@ -65,6 +66,9 @@ AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.correct_nursing_note: "Nursing note corrected",
     AuditAction.record_medication_order: "Medication order recorded",
     AuditAction.stop_medication_order: "Medication order stopped",
+    AuditAction.record_medication_administration: (
+        "Medication administration recorded"
+    ),
     AuditAction.raise_task: "Task raised",
     AuditAction.complete_task: "Task completed",
     AuditAction.assign_task: "Task assigned",

@@ -220,6 +220,7 @@ export default function WardBoard() {
       <MedicationDueList
         admissions={board ?? []}
         revision={medicationRevision}
+        onRecorded={handleMedicationChanged}
       />
 
       <TaskList admissions={board ?? []} onTasksChanged={load} />
