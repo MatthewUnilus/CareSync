@@ -499,3 +499,171 @@ def _encounter_response(encounter: Encounter) -> EncounterResponse:
         patient=PatientResponse.model_validate(encounter.patient),
         reason_for_visit=encounter.reason_for_visit,
     )
+
+
+# =============================================================================
+# Study Instrumentation (ticket 40)
+# =============================================================================
+
+from app.models import StudyTaskRun
+from app.schemas import (
+    StudyTaskRunCreateRequest,
+    StudyTaskRunEndRequest,
+    StudyTaskRunAbandonRequest,
+    StudyTaskRunResponse,
+    StudyTaskRunListResponse,
+)
+from app.config import get_settings
+
+
+@router.post(
+    "/study-task-runs",
+    response_model=StudyTaskRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def start_study_task_run(
+    payload: StudyTaskRunCreateRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """Begin a timed study task run.
+
+    Only available when study instrumentation is enabled. Records the task
+    label, anonymised participant id, and start instant. The participant id
+    is a study identifier (e.g. "P01"), not the nurse's name or user id.
+    """
+    settings = get_settings()
+    if not settings.study_instrumentation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Study instrumentation is not enabled",
+        )
+
+    run = StudyTaskRun(
+        task_label=payload.task_label,
+        participant_id=payload.participant_id,
+        started_at=utc_now(),
+        status="completed",
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.patch(
+    "/study-task-runs/{run_id}/end",
+    response_model=StudyTaskRunResponse,
+)
+def end_study_task_run(
+    run_id: int,
+    payload: StudyTaskRunEndRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """End a timed study task run.
+
+    Records the end instant. The participant id is verified to ensure the
+    same participant ends the run they started.
+    """
+    settings = get_settings()
+    if not settings.study_instrumentation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Study instrumentation is not enabled",
+        )
+
+    run = db.get(StudyTaskRun, run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study task run not found",
+        )
+    if run.participant_id != payload.participant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Participant id does not match the run",
+        )
+    if run.ended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Run already ended",
+        )
+
+    run.ended_at = utc_now()
+    run.status = "completed"
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.patch(
+    "/study-task-runs/{run_id}/abandon",
+    response_model=StudyTaskRunResponse,
+)
+def abandon_study_task_run(
+    run_id: int,
+    payload: StudyTaskRunAbandonRequest,
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunResponse:
+    """Abandon a timed study task run.
+
+    Marks the run as abandoned rather than recording a very long duration.
+    The participant id is verified to ensure the same participant abandons
+    the run they started.
+    """
+    settings = get_settings()
+    if not settings.study_instrumentation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Study instrumentation is not enabled",
+        )
+
+    run = db.get(StudyTaskRun, run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study task run not found",
+        )
+    if run.participant_id != payload.participant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Participant id does not match the run",
+        )
+    if run.ended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Run already ended",
+        )
+
+    run.ended_at = utc_now()
+    run.status = "abandoned"
+    db.commit()
+    db.refresh(run)
+    return StudyTaskRunResponse.model_validate(run)
+
+
+@router.get(
+    "/study-task-runs",
+    response_model=StudyTaskRunListResponse,
+)
+def list_study_task_runs(
+    db: DbSession,
+    user: ClinicalUser,
+) -> StudyTaskRunListResponse:
+    """List all study task runs (for export).
+
+    Returns all runs regardless of status. The export format states its
+    own limitations: measures the system, not the nurse; interruption not
+    accounted for; no participant identity recorded.
+    """
+    settings = get_settings()
+    if not settings.study_instrumentation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Study instrumentation is not enabled",
+        )
+
+    runs = db.scalars(select(StudyTaskRun).order_by(StudyTaskRun.started_at)).all()
+    return StudyTaskRunListResponse(runs=[StudyTaskRunResponse.model_validate(r) for r in runs])

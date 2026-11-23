@@ -1122,3 +1122,62 @@ class TaskCompletionReportResponse(BaseModel):
     raised: int
     completed: int
     completion_pct: float
+
+
+# Study Instrumentation (ticket 40)
+
+
+class StudyTaskRunCreateRequest(BaseModel):
+    """Start a timed study task run.
+
+    ``task_label`` names the task being timed (e.g. "handover_sheet",
+    "medication_round", "ward_worklist"). ``participant_id`` is the
+    anonymised study identifier (e.g. "P01", "P02") — never the nurse's
+    name or user id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_label: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+    participant_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+
+
+class StudyTaskRunEndRequest(BaseModel):
+    """End a timed study task run.
+
+    ``participant_id`` must match the run being ended.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+
+
+class StudyTaskRunAbandonRequest(BaseModel):
+    """Abandon a timed study task run.
+
+    ``participant_id`` must match the run being abandoned.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+
+
+class StudyTaskRunResponse(BaseModel):
+    """One study task run, as read back for export."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_label: str
+    participant_id: str
+    started_at: UtcDatetime
+    ended_at: UtcDatetime | None = None
+    status: str
+
+
+class StudyTaskRunListResponse(BaseModel):
+    """All study task runs for export."""
+
+    runs: list[StudyTaskRunResponse]
