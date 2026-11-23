@@ -1070,3 +1070,55 @@ class InvestigationListResponse(BaseModel):
     """One Admission's Investigations, or one of the ward's two worklists."""
 
     investigations: list[InvestigationResponse]
+
+
+# Ward Operations Dashboard Reports
+
+
+class WardCensusReportResponse(BaseModel):
+    """Current ward census by location."""
+
+    total_patients: int
+    by_ward: dict[str, int]
+    by_bed: dict[str, int]
+
+
+class LengthOfStayDistributionItem(BaseModel):
+    admission_id: int
+    patient: str
+    ward: str
+    bed: str
+    seconds: float
+    days: float
+
+
+class LengthOfStayReportResponse(BaseModel):
+    """Length of stay for current inpatients."""
+
+    average_seconds: float
+    distribution: list[LengthOfStayDistributionItem]
+
+
+class MedicationTimelinessReportResponse(BaseModel):
+    """Doses recorded on time, late, and not given over a period."""
+
+    on_time: int
+    late: int
+    not_given: int
+    total: int
+    on_time_pct: float
+
+
+class InvestigationReviewReportResponse(BaseModel):
+    """Results awaiting review and oldest wait time."""
+
+    awaiting_review_count: int
+    oldest_wait_seconds: int | None
+
+
+class TaskCompletionReportResponse(BaseModel):
+    """Tasks completed vs raised over a period."""
+
+    raised: int
+    completed: int
+    completion_pct: float
