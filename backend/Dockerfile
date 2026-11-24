@@ -20,5 +20,7 @@ RUN mkdir -p /data
 # Expose the API port
 EXPOSE 8000
 
-# Run with uvicorn
-CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Upgrade a persistent Railway database before the new application imports it.
+# The command is idempotent and is a no-op for a fresh database, whose tables
+# are then created by the application lifespan.
+CMD ["sh", "-c", "uv run --no-dev python -m app.upgrade_laboratory && exec uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port 8000"]

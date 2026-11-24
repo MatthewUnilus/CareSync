@@ -1066,6 +1066,40 @@ class InvestigationResponse(BaseModel):
     reviewed_by: ActorResponse | None = None
 
 
+    lab_sent_at: UtcDatetime | None
+    lab_sent_by: ActorResponse | None
+    lab_received_at: UtcDatetime | None
+    lab_received_by: ActorResponse | None
+    result_published_by: ActorResponse | None
+
+
+class LaboratoryPatientResponse(BaseModel):
+    full_name: str
+    hospital_number: str | None
+
+
+class LaboratoryInvestigationResponse(BaseModel):
+    id: int
+    admission_id: int
+    patient: LaboratoryPatientResponse
+    ward: str
+    test_name: str
+    sample_taken_at: UtcDatetime
+    lab_sent_at: UtcDatetime
+    lab_sent_by: ActorResponse
+    lab_received_at: UtcDatetime | None
+    lab_received_by: ActorResponse | None
+    result_available_at: UtcDatetime | None
+    result_published_by: ActorResponse | None
+    result_note: str | None
+
+
+class LaboratoryWorklistResponse(BaseModel):
+    incoming: list[LaboratoryInvestigationResponse]
+    acknowledged: list[LaboratoryInvestigationResponse]
+    published: list[LaboratoryInvestigationResponse]
+
+
 class InvestigationListResponse(BaseModel):
     """One Admission's Investigations, or one of the ward's two worklists."""
 

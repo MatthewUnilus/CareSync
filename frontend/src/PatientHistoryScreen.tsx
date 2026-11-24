@@ -7,6 +7,7 @@ import { Input } from "@/components/base/input/input";
 import { toast } from "@/components/base/toast/toast";
 import { cx } from "@/utils/cx";
 
+import { AdmissionInvestigations } from "./Investigations";
 import { api, errorText } from "./api";
 import type { Encounter, Patient, WardAdmission } from "./api";
 import { cardClass, figureClass, mutedTextClass } from "./design";
@@ -46,6 +47,7 @@ export default function PatientHistoryScreen() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [admissions, setAdmissions] = useState<WardAdmission[]>([]);
   const [loadingAdmissions, setLoadingAdmissions] = useState(false);
+  const [investigationsAdmissionId, setInvestigationsAdmissionId] = useState<number | null>(null);
   // The open Encounter the chart writes against, chosen explicitly from the
   // Patient's visits. Null means the chart is read-only: nothing is charted
   // until the reader names a visit, so an ambiguous history never silently
@@ -83,6 +85,7 @@ export default function PatientHistoryScreen() {
       setSelected(null);
       setHistory([]);
       setAdmissions([]);
+      setInvestigationsAdmissionId(null);
       setChartingEncounterId(null);
     } catch (caught) {
       toast.error(errorText(caught));
@@ -483,6 +486,20 @@ export default function PatientHistoryScreen() {
                         </>
                       ) : null}
                     </p>
+                    {admission.status === "discharged" && <footer>
+                      <Button variant="secondary"
+                        aria-expanded={investigationsAdmissionId === admission.id}
+                        onClick={() => setInvestigationsAdmissionId((id) => id === admission.id ? null : admission.id)}>
+                        {investigationsAdmissionId === admission.id ? "Hide investigations" : "View investigations"}
+                      </Button>
+                    </footer>}
+                    {admission.status === "discharged" && investigationsAdmissionId === admission.id && (
+                      <AdmissionInvestigations
+                        key={admission.id}
+                        admissionId={admission.id}
+                        discharged
+                      />
+                    )}
                   </li>
                 ))}
             </ul>

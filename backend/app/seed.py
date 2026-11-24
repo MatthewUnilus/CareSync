@@ -24,6 +24,12 @@ DEMO_USERS: tuple[DemoUser, ...] = (
         password="clinical-password",
     ),
     DemoUser(
+        email="laboratory@example.com",
+        display_name="Laboratory Demo User",
+        role=Role.laboratory,
+        password="laboratory-password",
+    ),
+    DemoUser(
         email="administrator@example.com",
         display_name="Administrator Demo User",
         role=Role.administrator,
@@ -33,7 +39,7 @@ DEMO_USERS: tuple[DemoUser, ...] = (
 
 
 def seed_demo_users(session: Session) -> list[DemoUser]:
-    """Create the demo Clinical and Administrator accounts if they do not exist."""
+    """Create the demo accounts if they do not exist."""
     created: list[DemoUser] = []
     for spec in DEMO_USERS:
         exists = session.scalar(select(User).where(User.email == spec.email))

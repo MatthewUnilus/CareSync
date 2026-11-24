@@ -37,6 +37,8 @@ The clock time a frequency maps to, held in one place as a documented convention
 ### Investigation
 A test or procedure a doctor has requested, recorded against an Admission by a Clinical user. Its progress has four states: requested, sample taken, result available, reviewed. It carries a free-text result note, recorded as the laboratory gave it, and records who marked it reviewed and when. Marking a result reviewed is the accountable act. The system tracks that a result arrived and that somebody read it; it never reads or interprets a result value and never flags an abnormal result. An Investigation is not a diagnosis and not a treatment.
 
+A Clinical user can send an Investigation to the laboratory after recording sample collection. A Laboratory user acknowledges the request and publishes a free-text result on the same Investigation. A published result for a discharged Admission stays in its history and can be reviewed from the late results list.
+
 ### Task
 A unit of work raised against an Admission by a Clinical user, either by hand or from a ward round entry. It has an optional due time, so work with a deadline is distinguishable from work without one, and an optional assignee, so both an assigned caseload and a shared ward work. A Clinical user marks it done, and tasks past their due time are shown as overdue. A Task is how an instruction becomes something to work; it is not the instruction itself, and the system never reassigns a Task on its own.
 
@@ -44,9 +46,10 @@ A unit of work raised against an Admission by a Clinical user, either by hand or
 A view of the ward's open Admissions, ordered by outstanding work counted from the record: overdue medication doses, then doses due now, then results awaiting review, then open Tasks, with bed order breaking ties. It is recalculated on every read and stores nothing. It is a count of what the record shows is outstanding, not a score and not a clinical judgement, and it does not decide who is treated first.
 
 ### Roles
-Two roles, and only two:
+Three roles:
 
 - **Clinical** — register Patients, admit and discharge them, chart Observations, write Nursing Notes, record Medication Orders and Medication Administrations, track Investigations and manage Tasks.
+- **Laboratory** — see sent Investigations, acknowledge receipt, and publish results.
 - **Administrator** — read-only oversight: the operations dashboard and the Audit Log. No clinical actions.
 
 ### Report

@@ -36,7 +36,7 @@ development and tests, Postgres for the demonstration deployment.
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) — installs and pins Python 3.12 itself
-- Node.js 20 or newer with npm
+- Node.js 22.13 or newer with npm
 - Docker, only if you want to run the Postgres demo path
 
 ## Setup (once per checkout)
@@ -56,7 +56,7 @@ workspace.
 npm run dev
 ```
 
-That single command seeds the two demo users and starts:
+That single command seeds the demo users and starts:
 
 - API: <http://127.0.0.1:8000> (interactive docs at `/docs`)
 - Client: <http://127.0.0.1:5173>
@@ -70,6 +70,7 @@ the browser.
 | ------------- | -------------------------- | ------------------------ |
 | Clinical      | `clinical@example.com`     | `clinical-password`      |
 | Administrator | `administrator@example.com` | `administrator-password` |
+| Laboratory    | `laboratory@example.com`    | `laboratory-password`    |
 
 Seeding is idempotent and does not reset a password that has already been
 changed. To seed manually (for example after deleting the database):
@@ -77,6 +78,27 @@ changed. To seed manually (for example after deleting the database):
 ```powershell
 npm run seed
 ```
+
+## Laboratory dashboard
+
+From an Admission, record an Investigation and mark the sample taken. Select
+**Send to laboratory**. In a separate browser profile, sign in as the Laboratory
+demo user, acknowledge the request, and publish a free-text result. The result
+appears in **Results awaiting review** on the ward. After discharge, an
+unreviewed laboratory result appears in **Late results after discharge** and
+in the original Admission history.
+
+For an existing database on the schema that already supports Investigations,
+back it up and stop the API before running the upgrade. Run these commands from
+the repository root with the database settings the API uses.
+
+```powershell
+uv run --directory backend python -m app.upgrade_laboratory
+npm run seed
+```
+
+The upgrade preserves existing users, audit entries and Investigations on SQLite
+and Postgres. A new database gets the latest schema when the stack starts.
 
 ## Patient matching
 

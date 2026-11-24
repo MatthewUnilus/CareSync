@@ -2,6 +2,12 @@
 
 **Status:** Accepted (2026-11-22)
 
+## Laboratory workflow amendment
+
+A Clinical user can send an Investigation to the internal laboratory after recording sample collection. A Laboratory user acknowledges the digital request and publishes a free-text result on the same Investigation. These acts are attributed and audited. The four Investigation states and the boundary around result interpretation still apply.
+
+For work already sent, receipt, publication and review remain possible after Discharge. The original Admission retains the result, and the ward has a separate late results list. Clinical users can transcribe results outside this workflow. The handoff takes place inside CareSync.
+
 ## Context
 
 A doctor requests a test or a procedure, and it is easy to lose between the

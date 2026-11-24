@@ -61,6 +61,11 @@ INVESTIGATION_KEYS = {
     "result_note",
     "reviewed_at",
     "reviewed_by",
+    "lab_sent_at",
+    "lab_sent_by",
+    "lab_received_at",
+    "lab_received_by",
+    "result_published_by",
 }
 
 #: A free-text result note carrying a numeric value and an assay word, so the

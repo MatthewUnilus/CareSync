@@ -19,13 +19,13 @@ ROLE_CASES = [
 ]
 
 
-def test_exactly_two_roles_exist(client: TestClient) -> None:
+def test_supported_roles(client: TestClient) -> None:
     response = client.get("/api/roles")
 
     assert response.status_code == 200
     roles = response.json()["roles"]
-    assert [role["value"] for role in roles] == ["clinical", "administrator"]
-    assert [role["label"] for role in roles] == ["Clinical", "Administrator"]
+    assert [role["value"] for role in roles] == ["clinical", "administrator", "laboratory"]
+    assert [role["label"] for role in roles] == ["Clinical", "Administrator", "Laboratory"]
 
 
 @pytest.mark.parametrize(

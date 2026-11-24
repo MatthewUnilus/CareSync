@@ -13,7 +13,7 @@ import { Textarea } from "@/components/base/textarea/textarea";
 import { toast } from "@/components/base/toast/toast";
 import { cx } from "@/utils/cx";
 
-import { api, errorText } from "./api";
+import { api, ApiError, errorText } from "./api";
 import type {
   BoardAdmission,
   Investigation,
@@ -100,10 +100,11 @@ export default function InvestigationWorklists({
   /** Called after a write, so the board's results-awaiting-review count refreshes. */
   onChanged: () => Promise<void> | void;
 }) {
-  const [view, setView] = useState<"review" | "result">("review");
+  const [view, setView] = useState<"review" | "result" | "late">("review");
   const [awaitingReview, setAwaitingReview] = useState<Investigation[] | null>(
     null,
   );
+  const [lateResults, setLateResults] = useState<Investigation[] | null>(null);
   const [awaitingResult, setAwaitingResult] = useState<Investigation[] | null>(
     null,
   );
@@ -116,15 +117,17 @@ export default function InvestigationWorklists({
   const load = useCallback(async () => {
     const requestId = ++requestRef.current;
     try {
-      const [review, result] = await Promise.all([
+      const [review, result, late] = await Promise.all([
         api.investigationsAwaitingReview(),
         api.investigationsAwaitingResult(),
+        api.lateInvestigationResults(),
       ]);
       if (requestRef.current !== requestId) {
         return;
       }
       setAwaitingReview(review.investigations);
       setAwaitingResult(result.investigations);
+      setLateResults(late.investigations);
       setLoadError(null);
     } catch (caught) {
       if (requestRef.current !== requestId) {
@@ -150,7 +153,7 @@ export default function InvestigationWorklists({
     await onChanged();
   }, [load, onChanged]);
 
-  const shown = view === "review" ? awaitingReview : awaitingResult;
+  const shown = { review: awaitingReview, result: awaitingResult, late: lateResults }[view];
   const isReview = view === "review";
 
   return (
@@ -159,10 +162,8 @@ export default function InvestigationWorklists({
         Investigations to chase
       </h3>
       <p className={mutedTextClass}>
-        Two lists over one record, so nothing a patient is waiting on goes
-        unseen. <b>Results awaiting review</b> holds every available result nobody
-        has read yet; <b>tests awaiting a result</b> holds every test still without
-        one. Both are re-read every few seconds so they follow the ward.
+        Track outstanding tests, results awaiting review, and laboratory results
+        that still need review after discharge.
       </p>
       <p className="text-body-2-regular text-text-secondary">
         This tracks progress and the review act only. It is not a results viewer:
@@ -180,6 +181,8 @@ export default function InvestigationWorklists({
               setView("review");
             } else if (keys.has("result")) {
               setView("result");
+            } else if (keys.has("late")) {
+              setView("late");
             }
           }}
         >
@@ -192,6 +195,9 @@ export default function InvestigationWorklists({
             {`Tests awaiting a result${
               awaitingResult !== null ? ` (${awaitingResult.length})` : ""
             }`}
+          </SegmentedControlItem>
+          <SegmentedControlItem id="late">
+            Late results after discharge{lateResults ? ` (${lateResults.length})` : ""}
           </SegmentedControlItem>
         </SegmentedControl>
         <Button
@@ -222,7 +228,7 @@ export default function InvestigationWorklists({
         <p className={mutedTextClass}>Loading investigations…</p>
       ) : shown.length === 0 ? (
         <p className={mutedTextClass}>
-          {isReview
+          {view === "late" ? "No late results are awaiting review." : isReview
             ? "No results are awaiting review. A result appears here as soon as it is recorded, and leaves once it is marked reviewed."
             : "No tests are awaiting a result. A test appears here when it is requested, and leaves once a result is recorded."}
         </p>
@@ -232,7 +238,10 @@ export default function InvestigationWorklists({
             <InvestigationItem
               key={investigation.id}
               investigation={investigation}
-              location={locations.get(investigation.admission_id) ?? "Not on the board"}
+              location={view === "late"
+                ? `Discharged · Admission #${investigation.admission_id}`
+                : locations.get(investigation.admission_id)}
+              discharged={view === "late"}
               onChanged={handleChanged}
             />
           ))}
@@ -251,10 +260,12 @@ export default function InvestigationWorklists({
 export function AdmissionInvestigations({
   admissionId,
   onInvestigationsChanged,
+  discharged = false,
 }: {
   admissionId: number;
   /** Called after a write, so the board's counts and the worklists refresh. */
-  onInvestigationsChanged: () => Promise<void> | void;
+  onInvestigationsChanged?: () => Promise<void> | void;
+  discharged?: boolean;
 }) {
   const [investigations, setInvestigations] = useState<Investigation[] | null>(
     null,
@@ -270,13 +281,13 @@ export function AdmissionInvestigations({
 
   const load = useCallback(async (id: number) => {
     const requestId = ++requestRef.current;
-    setLoadError(null);
     try {
       const { investigations: loaded } = await api.admissionInvestigations(id);
       if (requestRef.current !== requestId) {
         return;
       }
       setInvestigations(loaded);
+      setLoadError(null);
     } catch (caught) {
       if (requestRef.current !== requestId) {
         return;
@@ -292,11 +303,13 @@ export function AdmissionInvestigations({
     setTestName("");
     setInstructedBy("");
     setSaveError(null);
-    void load(admissionId);
+    setInvestigations(null);
     return () => {
       requestRef.current += 1;
     };
-  }, [admissionId, load]);
+  }, [admissionId]);
+  const loadCurrent = useCallback(() => load(admissionId), [load, admissionId]);
+  usePolling(loadCurrent, INVESTIGATION_POLL_INTERVAL_MS);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -319,7 +332,7 @@ export function AdmissionInvestigations({
       setInstructedBy("");
       await load(admissionId);
       // A new request changes the board's counts and the chase lists.
-      await onInvestigationsChanged();
+      await onInvestigationsChanged?.();
     } catch (caught) {
       setSaveError(errorText(caught));
     } finally {
@@ -330,15 +343,15 @@ export function AdmissionInvestigations({
   return (
     <section className={cardClass}>
       <h4 className="text-title-3-medium text-text-primary">Investigations</h4>
-      <p className={mutedTextClass}>
+      {!discharged && <p className={mutedTextClass}>
         Record a test requested for this patient and follow it to its result. The
         test name is the request in the words it was given; there is no fixed list.
         This tracks progress and the review act only — it is not a results viewer,
         so a result note is the laboratory&rsquo;s words as given and is never
         read, parsed, flagged or interpreted, and nothing is suggested.
-      </p>
+      </p>}
 
-      <form className="flex flex-col gap-4" onSubmit={save}>
+      {!discharged && <form className="flex flex-col gap-4" onSubmit={save}>
         <fieldset className="grid min-w-0 gap-4 sm:grid-cols-2">
           <legend className={sectionLabelClass}>Request a test</legend>
           <Input
@@ -370,7 +383,7 @@ export function AdmissionInvestigations({
             {saving ? "Saving…" : "Request test"}
           </Button>
         </footer>
-      </form>
+      </form>}
 
       <section className="flex flex-col gap-3">
         <h4 className={sectionLabelClass}>Recorded investigations</h4>
@@ -401,9 +414,10 @@ export function AdmissionInvestigations({
                 key={investigation.id}
                 investigation={investigation}
                 showPatient={false}
+                discharged={discharged}
                 onChanged={async () => {
                   await load(admissionId);
-                  await onInvestigationsChanged();
+                  await onInvestigationsChanged?.();
                 }}
               />
             ))}
@@ -415,7 +429,7 @@ export function AdmissionInvestigations({
 }
 
 /** The action a row is currently writing, so only its own button reads as busy. */
-type InvestigationAction = "sample" | "result" | "review";
+type InvestigationAction = "send" | "sample" | "result" | "review";
 
 /**
  * One Investigation in a list: who it is for and where, the test name as
@@ -432,6 +446,7 @@ function InvestigationItem({
   investigation,
   location,
   showPatient = true,
+  discharged = false,
   onChanged,
 }: {
   investigation: Investigation;
@@ -439,6 +454,7 @@ function InvestigationItem({
   location?: string;
   /** Show the patient's name; off inside a single patient's own record. */
   showPatient?: boolean;
+  discharged?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
   const [pending, setPending] = useState<InvestigationAction | null>(null);
@@ -448,7 +464,22 @@ function InvestigationItem({
 
   const { state } = investigation;
   const busy = pending !== null;
-  const canReview = state === "result_available";
+  const canReview = state === "result_available" && (!discharged || investigation.result_published_by !== null);
+
+  async function sendToLaboratory() {
+    setPending("send");
+    setError(null);
+    try {
+      await api.sendInvestigationToLab(investigation.id);
+      toast.success("Investigation sent to the laboratory.");
+      await onChanged();
+    } catch (caught) {
+      setError(errorText(caught));
+      if (caught instanceof ApiError && caught.status === 409) await onChanged();
+    } finally {
+      setPending(null);
+    }
+  }
 
   async function takeSample() {
     setPending("sample");
@@ -495,6 +526,7 @@ function InvestigationItem({
       await onChanged();
     } catch (caught) {
       setError(errorText(caught));
+      if (caught instanceof ApiError && caught.status === 409) await onChanged();
     } finally {
       setPending(null);
     }
@@ -558,10 +590,23 @@ function InvestigationItem({
         </p>
       ) : null}
 
+      {investigation.lab_sent_at && (
+        <p className={mutedTextClass}>
+          Sent to laboratory {formatInstant(investigation.lab_sent_at)} by {investigation.lab_sent_by?.display_name}.
+          {investigation.lab_received_at
+            ? ` Acknowledged ${formatInstant(investigation.lab_received_at)} by ${investigation.lab_received_by?.display_name}.`
+            : " Awaiting acknowledgement."}
+        </p>
+      )}
+      {investigation.result_published_by && (
+        <p className={mutedTextClass}>
+          Published by {investigation.result_published_by.display_name}.
+        </p>
+      )}
       {investigation.result_note !== null ? (
         <section className="flex flex-col gap-1">
           <h6 className={sectionLabelClass}>Result, as recorded</h6>
-          <p className="text-body-regular text-text-primary wrap-anywhere">
+          <p className="text-body-regular text-text-primary wrap-anywhere whitespace-pre-wrap">
             {investigation.result_note}
           </p>
         </section>
@@ -586,7 +631,7 @@ function InvestigationItem({
           ) : null}
           .
         </p>
-      ) : (
+      ) : (!discharged || canReview) && (
         <footer className="flex flex-wrap items-end gap-2">
           {state === "requested" ? (
             <Button
@@ -598,7 +643,13 @@ function InvestigationItem({
               {pending === "sample" ? "Working…" : "Mark sample taken"}
             </Button>
           ) : null}
-          {state === "sample_taken" ? (
+          {state === "sample_taken" && !investigation.lab_sent_at && (
+            <Button variant="secondary" className="min-h-11" disabled={busy}
+              onClick={() => void sendToLaboratory()}>
+              {pending === "send" ? "Sending…" : "Send to laboratory"}
+            </Button>
+          )}
+          {state === "sample_taken" && !investigation.lab_sent_at ? (
             <Button
               variant={recording ? "primary" : "secondary"}
               className="min-h-11"

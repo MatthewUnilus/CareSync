@@ -1118,6 +1118,26 @@ def list_investigations_awaiting_result(
     )
 
 
+@router.get("/investigations/late-results", response_model=InvestigationListResponse)
+def list_late_investigation_results(db: DbSession, user: ClinicalUser) -> InvestigationListResponse:
+    return InvestigationListResponse(
+        investigations=investigations.investigation_responses(investigations.late_results(db)),
+    )
+
+
+@router.post("/investigations/{id}/send", response_model=InvestigationResponse)
+def send_investigation(id: int, db: DbSession, user: ClinicalUser) -> InvestigationResponse:
+    investigation = _get_investigation(db, id)
+    investigations.send_to_laboratory(db, investigation, user)
+    record_audit_entry(
+        db, actor=user, action=AuditAction.send_investigation_to_lab,
+        patient=investigation.admission.patient, admission=investigation.admission,
+        detail=f"investigation {id}",
+    )
+    db.commit()
+    return investigations.investigation_response(investigation)
+
+
 @router.post(
     "/investigations/{id}/sample-taken",
     response_model=InvestigationResponse,
@@ -1172,6 +1192,8 @@ def record_investigation_result(
     """
     investigation = _get_investigation(db, id)
     ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
+    if investigation.lab_sent_at is not None:
+        raise HTTPException(409, "The laboratory publishes results for sent Investigations")
     investigations.record_result(db, investigation, result_note=payload.result_note)
     record_audit_entry(
         db,
@@ -1200,12 +1222,13 @@ def review_investigation_result(
     The accountable act: it records who reviewed it and when, so "nothing goes
     unread" is checkable rather than asserted. A result cannot be reviewed before
     it is available, and it is reviewed once, so any other current state is a
-    ``409`` with nothing written; an unknown Investigation is a ``404``. An
-    Investigation on a discharged Admission is a ``409``. The review and its
-    single audit entry commit together.
+    ``409`` with nothing written; an unknown Investigation is a ``404``.
+    A laboratory-published result can also be reviewed after discharge. The
+    review and its audit entry commit together.
     """
     investigation = _get_investigation(db, id)
-    ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
+    if investigation.result_published_by_user_id is None:
+        ensure_open(investigation.admission, DISCHARGED_STAY_INVESTIGATION_MOVE_DETAIL)
     investigations.review_result(db, investigation, reviewer=user)
     record_audit_entry(
         db,

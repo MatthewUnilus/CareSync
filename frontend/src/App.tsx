@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
 import { api, ApiError, SESSION_LOCKED_EVENT } from "./api";
 import type { CurrentUser } from "./api";
@@ -8,6 +8,8 @@ import LockScreen from "./LockScreen";
 import LoginScreen from "./LoginScreen";
 import Shell from "./Shell";
 import { homePathForRole, usePathname } from "./routing";
+
+const LaboratoryDashboard = lazy(() => import("./LaboratoryDashboard"));
 
 export default function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -106,6 +108,10 @@ export default function App() {
     <Shell user={user} onLogout={handleLogout} onLock={handleLock}>
       {user.role === "clinical" ? (
         <ClinicalWorkspace />
+      ) : user.role === "laboratory" ? (
+        <Suspense fallback={<p role="status">Opening laboratory worklist…</p>}>
+          <LaboratoryDashboard />
+        </Suspense>
       ) : (
         <AdministratorDashboard />
       )}

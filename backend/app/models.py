@@ -29,11 +29,13 @@ _AUDIT_ACTION_VALUES = ", ".join(
 class Role(str, Enum):
     clinical = "clinical"
     administrator = "administrator"
+    laboratory = "laboratory"
 
 
 ROLE_LABELS: dict[Role, str] = {
     Role.clinical: "Clinical",
     Role.administrator: "Administrator",
+    Role.laboratory: "Laboratory",
 }
 
 
@@ -41,7 +43,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('clinical', 'administrator')",
+            "role IN (" + ", ".join(f"'{role.value}'" for role in Role) + ")",
             name="ck_users_role",
         ),
     )
@@ -900,6 +902,17 @@ class Investigation(Base):
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True
     )
+    lab_origin_ward: Mapped[str | None] = mapped_column(String(120))
+    lab_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lab_sent_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    lab_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lab_received_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    result_published_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    lab_sent_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[lab_sent_by_user_id])
+    lab_received_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[lab_received_by_user_id])
+    result_published_by: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[result_published_by_user_id])
+
     # The instants of the three moves; the state is derived from these.
     sample_taken_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

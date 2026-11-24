@@ -1,7 +1,7 @@
 import { detectPlatform } from "./runtime";
 import { apiUrl, readApiBaseUrlOverride } from "./runtimeConfig";
 
-export type Role = "clinical" | "administrator";
+export type Role = "clinical" | "administrator" | "laboratory";
 
 export type Sex = "female" | "male" | "other" | "unspecified";
 
@@ -294,6 +294,11 @@ export interface Investigation {
   requested_at: string;
   requested_by: { id: number; display_name: string };
   state: InvestigationState;
+  lab_sent_at: string | null;
+  lab_sent_by: Actor | null;
+  lab_received_at: string | null;
+  lab_received_by: Actor | null;
+  result_published_by: Actor | null;
   sample_taken_at: string | null;
   result_available_at: string | null;
   /**
@@ -314,6 +319,30 @@ export interface Investigation {
  * Investigations as the server returns them: one worklist, or one Admission's
  * own history.
  */
+type Actor = { id: number; display_name: string };
+
+export interface LaboratoryInvestigation {
+  id: number;
+  admission_id: number;
+  patient: { full_name: string; hospital_number: string | null };
+  ward: string;
+  test_name: string;
+  sample_taken_at: string;
+  lab_sent_at: string;
+  lab_sent_by: Actor;
+  lab_received_at: string | null;
+  lab_received_by: Actor | null;
+  result_available_at: string | null;
+  result_published_by: Actor | null;
+  result_note: string | null;
+}
+
+export interface LaboratoryWorklist {
+  incoming: LaboratoryInvestigation[];
+  acknowledged: LaboratoryInvestigation[];
+  published: LaboratoryInvestigation[];
+}
+
 export interface Investigations {
   investigations: Investigation[];
 }
@@ -1181,6 +1210,21 @@ export const api = {
   reviewInvestigation: (investigationId: number) =>
     request<Investigation>(`/api/ward/investigations/${investigationId}/review`, {
       method: "POST",
+    }),
+  sendInvestigationToLab: (id: number) =>
+    request<Investigation>(`/api/ward/investigations/${id}/send`, { method: "POST" }),
+  lateInvestigationResults: () =>
+    request<Investigations>("/api/ward/investigations/late-results"),
+  laboratoryWorklist: () =>
+    request<LaboratoryWorklist>("/api/laboratory/investigations"),
+  acknowledgeLaboratoryInvestigation: (id: number) =>
+    request<LaboratoryInvestigation>(`/api/laboratory/investigations/${id}/receive`, {
+      method: "POST",
+    }),
+  publishLaboratoryResult: (id: number, resultNote: string) =>
+    request<LaboratoryInvestigation>(`/api/laboratory/investigations/${id}/result`, {
+      method: "POST",
+      body: JSON.stringify({ result_note: resultNote }),
     }),
   investigationsAwaitingReview: () =>
     request<Investigations>("/api/ward/investigations/awaiting-review"),

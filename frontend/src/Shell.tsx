@@ -25,7 +25,7 @@ interface Notice {
 }
 
 function roleLabel(role: Role): string {
-  return role === "clinical" ? "Clinical" : "Administrator";
+  return { clinical: "Clinical", administrator: "Administrator", laboratory: "Laboratory" }[role];
 }
 
 const summaryClass =

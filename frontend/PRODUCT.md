@@ -9,6 +9,7 @@ web
 ## Users
 
 - **Ward nurses** (Clinical staff) — register Patients, admit and discharge them, chart Observations, write Nursing Notes, record Medication Orders and Medication Administrations, track Investigations, manage Tasks, and print the handover. They work at a desktop on the ward and, more often, on a shared tablet at the bedside. **Primary user.**
+- **Laboratory staff** — acknowledge Investigation requests sent by the ward and publish free-text results.
 - **Administrators** — read-only oversight: the operations dashboard and the Audit Log. The API refuses them every clinical action; the role exists so oversight stays separate from care.
 - **The dissertation examiner** — confirmed 2026-11-18 as the first audience design must win. Requirements traceability and honest evidence matter more to them than feature count; they read the spec against what runs, and surfaces that pull in different directions resolve in their favour.
 - **The researcher** (the project owner) — runs the usability study with ward nurses and reads the time-on-task figures. Works through the study materials and the repo, not the ward surface.
@@ -36,7 +37,7 @@ The line is drawn where it can be defended, and the mechanism a neighbouring pro
 
 ## Capabilities and Constraints
 
-- Two roles only: Clinical and Administrator (`CONTEXT.md` "Roles"). The API guards every surface's data; the route a client takes is convenience, not the security boundary.
+- Three roles: Clinical, Laboratory and Administrator (`CONTEXT.md` "Roles"). The API guards every surface's data; the route a client takes is convenience, not the security boundary.
 - A Patient carries an optional **hospital number**, captured at registration and indexed. Identity is decided in order: equal numbers are the same Patient, different numbers are different Patients, and only with neither number present does the older rule apply — the normalised name together with the normalised contact phone. A family phone number never merges two people who each have a hospital number.
 - **Admission** is separate from **Encounter**: an Encounter is a visit with a reason and an end; an Admission is an inpatient stay on a ward with a bed or location, linked to the Encounter it came from when the patient was seen first (ADR 0008). A discharge closes the Admission, removes it from the Ward Board, and keeps its history.
 - **Observations** hold every set of vital signs: one row per set, against an Encounter or an Admission, never both and never neither. They are the Patient's single time series — one place holds the current picture. Each reading is stamped with its time and attributed to the nurse who took it, and a set is unchangeable once saved. A reading outside its published adult reference range is marked for display only; the system never alters a value, reorders anything on the strength of one, or raises an alert (ADR 0010). There is no early-warning score and no escalation.
@@ -65,7 +66,7 @@ The line is drawn where it can be defended, and the mechanism a neighbouring pro
 
 - Spec: `.scratch/caresync/spec.md` — 59 user stories (64–122), implementation and testing decisions; the authoritative product contract, superseding the triage scope.
 - Domain glossary: `CONTEXT.md`. Decision records: `docs/adr/0001`–`0014`. ADRs 0002–0006 are **Superseded** by 0014; 0008–0014 record the ward work; 0001 (data layer) and 0007 (audit log) are kept and amended. The removed subsystem documents (`prioritisation-in-context.md`, `red-flag-safety-layer.md`, `cached-fallback.md`, `accuracy-evaluation-report.md`) sit in `docs/archive/` behind a header saying they describe a system that no longer ships.
-- A working frontend and backend: authentication and the shared-device session lock, the two Roles, Patient registration and matching, the visit record, Admissions and the Ward Board, the Observation chart, Nursing Notes, Medication Orders and administrations, Investigations, Tasks, printable sheets, the operations dashboard, the Audit Log and the study instrumentation all run end to end locally and in the native shell. The ward capabilities above are shipped; future work must not describe them as remaining scope.
+- A working frontend and backend: authentication and the shared-device session lock, the three Roles, Patient registration and matching, the visit record, Admissions and the Ward Board, the Observation chart, Nursing Notes, Medication Orders and administrations, Investigations, the Laboratory dashboard, Tasks, printable sheets, the operations dashboard, the Audit Log and the study instrumentation all run end to end locally and in the native shell. The ward capabilities above are shipped; future work must not describe them as remaining scope.
 - The native Capacitor shell (iOS and Android) already ships the same client; it is no longer a plan.
 - Absences future work must not fabricate: no real patient data, no testimonials, no deployment claims, no dose or interaction or allergy checking, no interpretation of a result value, and no performance benchmarks.
 

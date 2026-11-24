@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Role } from "./api";
 
 export function homePathForRole(role: Role): string {
-  return role === "clinical" ? "/clinical" : "/administrator";
+  return `/${role}`;
 }
 
 /**

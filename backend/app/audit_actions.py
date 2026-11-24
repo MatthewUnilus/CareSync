@@ -41,6 +41,9 @@ class AuditAction(str, Enum):
     record_investigation = "record_investigation"
     record_investigation_sample = "record_investigation_sample"
     record_investigation_result = "record_investigation_result"
+    send_investigation_to_lab = "send_investigation_to_lab"
+    acknowledge_lab_investigation = "acknowledge_lab_investigation"
+    publish_lab_result = "publish_lab_result"
     review_investigation = "review_investigation"
 
 
@@ -79,6 +82,9 @@ AUDIT_ACTION_LABELS: dict[AuditAction, str] = {
     AuditAction.record_investigation: "Investigation recorded",
     AuditAction.record_investigation_sample: "Investigation sample taken",
     AuditAction.record_investigation_result: "Investigation result recorded",
+    AuditAction.send_investigation_to_lab: "Investigation sent to laboratory",
+    AuditAction.acknowledge_lab_investigation: "Laboratory request acknowledged",
+    AuditAction.publish_lab_result: "Laboratory result published",
     AuditAction.review_investigation: "Investigation reviewed",
 }
 

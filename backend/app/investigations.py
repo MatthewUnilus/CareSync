@@ -149,6 +149,7 @@ def record_result(
                 Investigation.sample_taken_at.is_not(None),
                 Investigation.result_available_at.is_(None),
             )
+            .where(Investigation.lab_sent_at.is_(None))
             .values(result_note=result_note, result_available_at=utc_now())
         ),
     )
@@ -229,6 +230,37 @@ def awaiting_review(session: Session) -> list[Investigation]:
     )
 
 
+def send_to_laboratory(session: Session, investigation: Investigation, user: User) -> None:
+    result = cast(CursorResult, session.execute(
+        update(Investigation).where(
+            Investigation.id == investigation.id,
+            Investigation.lab_sent_at.is_(None),
+            Investigation.sample_taken_at.is_not(None),
+            Investigation.result_available_at.is_(None),
+            _open_admissions(),
+        ).values(
+            lab_sent_at=utc_now(),
+            lab_sent_by_user_id=user.id,
+            lab_origin_ward=select(Admission.ward)
+            .where(Admission.id == Investigation.admission_id)
+            .scalar_subquery(),
+        ),
+    ))
+    if result.rowcount != 1:
+        raise _refuse("Only an unsent Investigation with a sample and no result can be sent")
+    session.refresh(investigation)
+
+
+def late_results(session: Session) -> list[Investigation]:
+    return list(session.scalars(
+        select(Investigation).where(
+            ~_open_admissions(),
+            Investigation.result_published_by_user_id.is_not(None),
+            Investigation.reviewed_at.is_(None),
+        ).order_by(Investigation.result_available_at, Investigation.id),
+    ))
+
+
 def awaiting_result(session: Session) -> list[Investigation]:
     """Every test still awaiting a result across the open ward: the chase list.
 
@@ -268,7 +300,12 @@ def investigation_response(investigation: Investigation) -> InvestigationRespons
         result_available_at=investigation.result_available_at,
         result_note=investigation.result_note,
         reviewed_at=investigation.reviewed_at,
-        reviewed_by=_actor(investigation.reviewed_by),
+        reviewed_by=investigation_actor(investigation.reviewed_by),
+        lab_sent_at=investigation.lab_sent_at,
+        lab_sent_by=investigation_actor(investigation.lab_sent_by),
+        lab_received_at=investigation.lab_received_at,
+        lab_received_by=investigation_actor(investigation.lab_received_by),
+        result_published_by=investigation_actor(investigation.result_published_by),
     )
 
 
@@ -279,7 +316,7 @@ def investigation_responses(
     return [investigation_response(item) for item in investigations]
 
 
-def _actor(user: User | None) -> ActorResponse | None:
+def investigation_actor(user: User | None) -> ActorResponse | None:
     """A User as the shared actor shape, or None when there is no such user."""
     if user is None:
         return None

@@ -93,11 +93,17 @@ Railway auto-deploys on push to `main`. Or trigger manually:
 railway up
 ```
 
+The API container runs the idempotent laboratory schema upgrade before
+starting Uvicorn. This preserves the SQLite database on the `/data` volume and
+adds the Laboratory Role and Investigation handoff fields during deployment.
+
 ## Verify
 
 1. Visit `https://<API_DOMAIN>/docs` — FastAPI Swagger UI
 2. Visit `https://<WEB_DOMAIN>` — CareSync login page
 3. Sign in with `clinical@example.com` / `clinical-password`
+4. Sign in with `laboratory@example.com` / `laboratory-password` and confirm
+   the Laboratory worklist opens
 
 ## Environment variable reference
 
