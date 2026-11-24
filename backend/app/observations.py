@@ -115,8 +115,11 @@ ADULT_REFERENCE_RANGES: tuple[ReadingRange, ...] = (
         normal="12-18 per minute",
         citation=_MEDLINEPLUS,
         is_abnormal=lambda observation: (
-            observation.respiratory_rate_bpm < 12
-            or observation.respiratory_rate_bpm > 18
+            observation.respiratory_rate_bpm is not None
+            and (
+                observation.respiratory_rate_bpm < 12
+                or observation.respiratory_rate_bpm > 18
+            )
         ),
     ),
     ReadingRange(
@@ -124,10 +127,14 @@ ADULT_REFERENCE_RANGES: tuple[ReadingRange, ...] = (
         normal="systolic 90-120 and diastolic 60-80 mmHg",
         citation=_MEDLINEPLUS,
         is_abnormal=lambda observation: (
-            observation.systolic < 90
-            or observation.systolic > 120
-            or observation.diastolic < 60
-            or observation.diastolic > 80
+            observation.systolic is not None
+            and observation.diastolic is not None
+            and (
+                observation.systolic < 90
+                or observation.systolic > 120
+                or observation.diastolic < 60
+                or observation.diastolic > 80
+            )
         ),
     ),
     ReadingRange(
@@ -139,8 +146,11 @@ ADULT_REFERENCE_RANGES: tuple[ReadingRange, ...] = (
             "saturation 95-100 percent)"
         ),
         is_abnormal=lambda observation: (
-            observation.oxygen_saturation_percent < 95
-            or observation.oxygen_saturation_percent > 100
+            observation.oxygen_saturation_percent is not None
+            and (
+                observation.oxygen_saturation_percent < 95
+                or observation.oxygen_saturation_percent > 100
+            )
         ),
     ),
 )
@@ -198,8 +208,8 @@ def stage_observation(
         temperature_c=payload.temperature_c,
         heart_rate_bpm=payload.heart_rate_bpm,
         respiratory_rate_bpm=payload.respiratory_rate_bpm,
-        systolic=payload.blood_pressure.systolic,
-        diastolic=payload.blood_pressure.diastolic,
+        systolic=None if payload.blood_pressure is None else payload.blood_pressure.systolic,
+        diastolic=None if payload.blood_pressure is None else payload.blood_pressure.diastolic,
         oxygen_saturation_percent=payload.oxygen_saturation_percent,
         notes=payload.notes,
     )
@@ -271,7 +281,7 @@ def observation_response_for(
         temperature_c=observation.temperature_c,
         heart_rate_bpm=observation.heart_rate_bpm,
         respiratory_rate_bpm=observation.respiratory_rate_bpm,
-        blood_pressure=BloodPressure(
+        blood_pressure=None if observation.systolic is None or observation.diastolic is None else BloodPressure(
             systolic=observation.systolic,
             diastolic=observation.diastolic,
         ),
@@ -293,7 +303,7 @@ def observation_readings(observation: Observation) -> ObservationReadings:
         temperature_c=observation.temperature_c,
         heart_rate_bpm=observation.heart_rate_bpm,
         respiratory_rate_bpm=observation.respiratory_rate_bpm,
-        blood_pressure=BloodPressure(
+        blood_pressure=None if observation.systolic is None or observation.diastolic is None else BloodPressure(
             systolic=observation.systolic,
             diastolic=observation.diastolic,
         ),

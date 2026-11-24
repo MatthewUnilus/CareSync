@@ -251,18 +251,18 @@ def render_vital_signs(observation: Observation) -> str:
     once it is saved, not only in the response that offered the prefill
     (CONTEXT.md, "Observation"; ADR 0010: the values are never altered).
     """
-    readings = (
+    readings = [
         ("Temperature", f"{observation.temperature_c} C"),
         ("Heart rate", f"{observation.heart_rate_bpm} bpm"),
-        ("Respiratory rate", f"{observation.respiratory_rate_bpm} /min"),
-        (
-            "Blood pressure",
-            f"{observation.systolic}/{observation.diastolic} mmHg",
-        ),
-        ("Oxygen saturation", f"{observation.oxygen_saturation_percent} %"),
         ("Pain", f"{observation.pain_level}/10"),
         ("Illness duration", f"{observation.illness_duration_hours} h"),
-    )
+    ]
+    if observation.respiratory_rate_bpm is not None:
+        readings.append(("Respiratory rate", f"{observation.respiratory_rate_bpm} /min"))
+    if observation.systolic is not None and observation.diastolic is not None:
+        readings.append(("Blood pressure", f"{observation.systolic}/{observation.diastolic} mmHg"))
+    if observation.oxygen_saturation_percent is not None:
+        readings.append(("Oxygen saturation", f"{observation.oxygen_saturation_percent} %"))
     body = ", ".join(f"{label} {value}" for label, value in readings)
     taken_at = as_utc(observation.taken_at).isoformat()
     return f"{body} (recorded {taken_at} by {observation.actor.display_name})"

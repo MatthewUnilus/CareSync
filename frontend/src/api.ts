@@ -49,7 +49,8 @@ export interface BloodPressure {
 }
 
 /**
- * The eight readings of one set of vital signs.
+ * The four readings captured in a new observation. Historic observations can
+ * additionally carry respiratory rate, blood pressure and oxygen saturation.
  *
  * Every value is a plain number. The server owns the reference range that marks
  * a reading abnormal (ADR 0010), so the client sends values and never judges
@@ -60,15 +61,15 @@ export interface ObservationReading {
   illness_duration_hours: number;
   temperature_c: number;
   heart_rate_bpm: number;
-  respiratory_rate_bpm: number;
-  blood_pressure: BloodPressure;
-  oxygen_saturation_percent: number;
+  respiratory_rate_bpm: number | null;
+  blood_pressure: BloodPressure | null;
+  oxygen_saturation_percent: number | null;
 }
 
 /**
  * A set of vitals as charted against an Encounter or an Admission, as sent to
- * the chart's write routes. Matching the server's `ObservationPayload`: every
- * reading is required and only the notes are optional.
+ * the chart's write routes. Temperature, heart rate, pain and illness duration
+ * are required; historic extra readings are optional.
  */
 export interface ObservationPayload extends ObservationReading {
   notes: string | null;

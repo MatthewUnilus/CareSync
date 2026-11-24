@@ -14,10 +14,6 @@ export interface IntakeFormValues {
   durationHours: string;
   temperatureC: string;
   heartRate: string;
-  respiratoryRate: string;
-  systolic: string;
-  diastolic: string;
-  oxygenSaturation: string;
   notes: string;
 }
 
@@ -30,10 +26,6 @@ export interface ObservationFieldErrors {
   durationHours?: string;
   temperatureC?: string;
   heartRate?: string;
-  respiratoryRate?: string;
-  systolic?: string;
-  diastolic?: string;
-  oxygenSaturation?: string;
   notes?: string;
 }
 
@@ -45,10 +37,6 @@ export function emptyIntakeFormValues(): IntakeFormValues {
     durationHours: "",
     temperatureC: "",
     heartRate: "",
-    respiratoryRate: "",
-    systolic: "",
-    diastolic: "",
-    oxygenSaturation: "",
     notes: "",
   };
 }
@@ -67,12 +55,9 @@ export function buildObservationPayload(
     illness_duration_hours: Number(form.durationHours),
     temperature_c: Number(form.temperatureC),
     heart_rate_bpm: Number(form.heartRate),
-    respiratory_rate_bpm: Number(form.respiratoryRate),
-    blood_pressure: {
-      systolic: Number(form.systolic),
-      diastolic: Number(form.diastolic),
-    },
-    oxygen_saturation_percent: Number(form.oxygenSaturation),
+    respiratory_rate_bpm: null,
+    blood_pressure: null,
+    oxygen_saturation_percent: null,
     notes: form.notes.trim() ? form.notes.trim() : null,
   };
 }
@@ -115,10 +100,6 @@ const READING_BOUNDS: {
   { key: "durationHours", label: "Illness duration", min: 0, max: 8760 },
   { key: "temperatureC", label: "Temperature", min: 30, max: 45 },
   { key: "heartRate", label: "Heart rate", min: 20, max: 300 },
-  { key: "respiratoryRate", label: "Respiratory rate", min: 0, max: 80 },
-  { key: "systolic", label: "Systolic pressure", min: 50, max: 300 },
-  { key: "diastolic", label: "Diastolic pressure", min: 20, max: 200 },
-  { key: "oxygenSaturation", label: "Oxygen saturation", min: 50, max: 100 },
 ];
 
 /**
@@ -149,18 +130,6 @@ export function validateObservationForm(
     if (!Number.isFinite(value) || value < min || value > max) {
       errors[key] = `Enter between ${min} and ${max}`;
     }
-  }
-
-  const systolic = Number(form.systolic);
-  const diastolic = Number(form.diastolic);
-  if (
-    !errors.systolic &&
-    !errors.diastolic &&
-    Number.isFinite(systolic) &&
-    Number.isFinite(diastolic) &&
-    systolic <= diastolic
-  ) {
-    errors.systolic = "Systolic must be greater than diastolic";
   }
 
   if (form.notes.trim().length > NOTES_MAX_LENGTH) {

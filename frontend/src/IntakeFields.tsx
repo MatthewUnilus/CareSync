@@ -71,7 +71,7 @@ const legendClass = "pb-1 text-caption-1-medium text-text-secondary";
 const gridClass = "grid gap-x-4 gap-y-4 sm:grid-cols-2";
 
 /**
- * The six instrument readings that form the core of a set of vitals.
+ * The two instrument readings captured in the short observation.
  *
  * Reused as they stand by both the intake form and the Observation chart, so a
  * reading can never be charted with one bound at intake and another on the
@@ -87,10 +87,6 @@ export function VitalsFields({
     IntakeFormValues,
     | "temperatureC"
     | "heartRate"
-    | "respiratoryRate"
-    | "systolic"
-    | "diastolic"
-    | "oxygenSaturation"
   >;
   onChange: (next: Partial<IntakeFormValues>) => void;
   errors?: ObservationFieldErrors;
@@ -127,50 +123,6 @@ export function VitalsFields({
           onChange={(value) => update("heartRate", value)}
           error={!!errors?.heartRate}
           errorMessage={errors?.heartRate}
-        />
-        <NumberField
-          label="Respiratory rate (bpm)"
-          min={0}
-          max={80}
-          step={1}
-          inputMode="numeric"
-          value={form.respiratoryRate}
-          onChange={(value) => update("respiratoryRate", value)}
-          error={!!errors?.respiratoryRate}
-          errorMessage={errors?.respiratoryRate}
-        />
-        <NumberField
-          label="Blood pressure systolic"
-          min={50}
-          max={300}
-          step={1}
-          inputMode="numeric"
-          value={form.systolic}
-          onChange={(value) => update("systolic", value)}
-          error={!!errors?.systolic}
-          errorMessage={errors?.systolic}
-        />
-        <NumberField
-          label="Blood pressure diastolic"
-          min={20}
-          max={200}
-          step={1}
-          inputMode="numeric"
-          value={form.diastolic}
-          onChange={(value) => update("diastolic", value)}
-          error={!!errors?.diastolic}
-          errorMessage={errors?.diastolic}
-        />
-        <NumberField
-          label="Oxygen saturation (%)"
-          min={50}
-          max={100}
-          step={1}
-          inputMode="numeric"
-          value={form.oxygenSaturation}
-          onChange={(value) => update("oxygenSaturation", value)}
-          error={!!errors?.oxygenSaturation}
-          errorMessage={errors?.oxygenSaturation}
         />
       </div>
     </fieldset>

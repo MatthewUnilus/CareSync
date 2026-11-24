@@ -309,10 +309,10 @@ class Observation(Base):
     illness_duration_hours: Mapped[float] = mapped_column(Float)
     temperature_c: Mapped[float] = mapped_column(Float)
     heart_rate_bpm: Mapped[int] = mapped_column(Integer)
-    respiratory_rate_bpm: Mapped[int] = mapped_column(Integer)
-    systolic: Mapped[int] = mapped_column(Integer)
-    diastolic: Mapped[int] = mapped_column(Integer)
-    oxygen_saturation_percent: Mapped[int] = mapped_column(Integer)
+    respiratory_rate_bpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    systolic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    diastolic: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    oxygen_saturation_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     taken_at: Mapped[datetime] = mapped_column(

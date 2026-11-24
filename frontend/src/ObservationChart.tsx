@@ -360,9 +360,6 @@ export function readingValue(reading: ObservationReading) {
     duration: `${reading.illness_duration_hours} h`,
     temperature: `${reading.temperature_c} °C`,
     heartRate: `${reading.heart_rate_bpm} bpm`,
-    respiratoryRate: `${reading.respiratory_rate_bpm} bpm`,
-    bloodPressure: `${reading.blood_pressure.systolic} / ${reading.blood_pressure.diastolic} mmHg`,
-    oxygenSaturation: `${reading.oxygen_saturation_percent}%`,
   };
 }
 
@@ -406,27 +403,6 @@ export function readingsFor(observation: Observation): ReadingRow[] {
       value: current.heartRate,
       previous: previous?.heartRate ?? null,
       abnormal: isMarked(fields, "heart_rate_bpm"),
-    },
-    {
-      key: "respiratory-rate",
-      label: "Respiratory rate",
-      value: current.respiratoryRate,
-      previous: previous?.respiratoryRate ?? null,
-      abnormal: isMarked(fields, "respiratory_rate_bpm"),
-    },
-    {
-      key: "blood-pressure",
-      label: "Blood pressure",
-      value: current.bloodPressure,
-      previous: previous?.bloodPressure ?? null,
-      abnormal: isMarked(fields, "blood_pressure", "systolic", "diastolic"),
-    },
-    {
-      key: "oxygen-saturation",
-      label: "Oxygen saturation",
-      value: current.oxygenSaturation,
-      previous: previous?.oxygenSaturation ?? null,
-      abnormal: isMarked(fields, "oxygen_saturation_percent"),
     },
   ];
 }

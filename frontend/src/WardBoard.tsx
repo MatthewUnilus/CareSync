@@ -1073,18 +1073,6 @@ function readingsFor(observation: Observation): VitalRow[] {
     },
     { label: "Temperature", value: `${observation.temperature_c} °C` },
     { label: "Heart rate", value: `${observation.heart_rate_bpm} bpm` },
-    {
-      label: "Respiratory rate",
-      value: `${observation.respiratory_rate_bpm} bpm`,
-    },
-    {
-      label: "Blood pressure",
-      value: `${observation.blood_pressure.systolic} / ${observation.blood_pressure.diastolic} mmHg`,
-    },
-    {
-      label: "Oxygen saturation",
-      value: `${observation.oxygen_saturation_percent}%`,
-    },
   ];
 }
 

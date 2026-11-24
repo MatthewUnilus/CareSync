@@ -214,12 +214,10 @@ class BloodPressure(BaseModel):
 class ObservationPayload(BaseModel):
     """One set of vital signs, as charted against a visit or a stay.
 
-    The bounds are the intake bounds, unchanged: pain 1-10, illness duration
-    0-8760 hours, temperature 30-45, heart rate 20-300, respiratory rate 0-80,
-    systolic 50-300, diastolic 20-200 with systolic greater than diastolic, and
-    saturation 50-100. ``IntakePayload`` extends this with the reason for the
-    visit, so there is one definition of the bounds rather than two that could
-    drift.
+    The required short observation is pain 1-10, illness duration 0-8760 hours,
+    temperature 30-45 and heart rate 20-300. Respiratory rate, blood pressure
+    and oxygen saturation remain readable from historic rows but are optional
+    for a new Observation.
 
     An unknown key is refused rather than ignored: a misspelled reading would
     otherwise be silently dropped and the client left believing it was charted.
@@ -232,9 +230,9 @@ class ObservationPayload(BaseModel):
     illness_duration_hours: float = Field(ge=0, le=8760)
     temperature_c: float = Field(ge=30, le=45)
     heart_rate_bpm: int = Field(ge=20, le=300)
-    respiratory_rate_bpm: int = Field(ge=0, le=80)
-    blood_pressure: BloodPressure
-    oxygen_saturation_percent: int = Field(ge=50, le=100)
+    respiratory_rate_bpm: int | None = Field(default=None, ge=0, le=80)
+    blood_pressure: BloodPressure | None = None
+    oxygen_saturation_percent: int | None = Field(default=None, ge=50, le=100)
     notes: _OPTIONAL_TEXT | None = None
 
     @field_validator("notes")
@@ -517,9 +515,9 @@ class ObservationReadings(BaseModel):
     illness_duration_hours: float
     temperature_c: float
     heart_rate_bpm: int
-    respiratory_rate_bpm: int
-    blood_pressure: BloodPressure
-    oxygen_saturation_percent: int
+    respiratory_rate_bpm: int | None
+    blood_pressure: BloodPressure | None
+    oxygen_saturation_percent: int | None
     notes: str | None
 
 
@@ -546,9 +544,9 @@ class ObservationResponse(BaseModel):
     illness_duration_hours: float
     temperature_c: float
     heart_rate_bpm: int
-    respiratory_rate_bpm: int
-    blood_pressure: BloodPressure
-    oxygen_saturation_percent: int
+    respiratory_rate_bpm: int | None
+    blood_pressure: BloodPressure | None
+    oxygen_saturation_percent: int | None
     notes: str | None
     abnormal_fields: list[str]
     reference_range_applies: bool

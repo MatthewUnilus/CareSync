@@ -165,6 +165,30 @@ def test_charting_an_observation_against_an_encounter(
     assert body["previous"] is None
 
 
+def test_short_observation_records_only_the_four_required_readings(
+    clinical_client: TestClient,
+) -> None:
+    patient_id = register_patient(clinical_client)
+    encounter_id = open_encounter(clinical_client, patient_id)
+
+    response = clinical_client.post(
+        f"/api/clinical/encounters/{encounter_id}/observations",
+        json={
+            "pain_level": 4,
+            "illness_duration_hours": 12,
+            "temperature_c": 37.0,
+            "heart_rate_bpm": 80,
+            "notes": None,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["respiratory_rate_bpm"] is None
+    assert body["blood_pressure"] is None
+    assert body["oxygen_saturation_percent"] is None
+
+
 def test_charting_an_observation_against_an_admission(
     clinical_client: TestClient,
 ) -> None:
