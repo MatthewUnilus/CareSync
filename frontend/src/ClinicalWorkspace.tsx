@@ -27,7 +27,7 @@ export default function ClinicalWorkspace() {
        * use; the installed control's own py-1 yields a 28px target.
        */}
       <SegmentedControl
-        aria-label="Clinical views"
+        aria-label="Clinical workspace"
         className="w-fit justify-self-start"
         selectedKeys={new Set([view])}
         onSelectionChange={(keys: Selection) => {
@@ -38,13 +38,13 @@ export default function ClinicalWorkspace() {
         }}
       >
         <SegmentedControlItem id="board" className="min-h-11 px-4">
-          Ward board
+          Today’s ward
         </SegmentedControlItem>
         <SegmentedControlItem id="intake" className="min-h-11 px-4">
-          Intake
+          New patient
         </SegmentedControlItem>
         <SegmentedControlItem id="history" className="min-h-11 px-4">
-          Patient history
+          Find a patient
         </SegmentedControlItem>
         <SegmentedControlItem id="study" className="min-h-11 px-4">
           Study timing

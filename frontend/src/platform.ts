@@ -16,14 +16,12 @@ export function isNativePlatform(platform: ClientPlatform): boolean {
 }
 
 /**
- * The view the clinical workspace opens on. Intake is the entry point on every
- * surface: registration is the first thing a nurse does whether they hold the
- * bedside tablet or a browser, and history is one tap away on the view switch.
- * The parameter is kept so callers still pass the detected platform, but it no
- * longer selects the view.
+ * The clinical workspace starts with the ward's current work. Registration and
+ * record lookup remain one clear choice away, but neither should displace the
+ * patients a nurse is already caring for when the shared device is opened.
  */
-export type ClinicalView = "intake";
+export type ClinicalView = "board";
 
 export function defaultClinicalView(_platform: ClientPlatform): ClinicalView {
-  return "intake";
+  return "board";
 }

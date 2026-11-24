@@ -27,8 +27,8 @@ test("an unknown platform falls back to the web build", () => {
   assert.equal(readPlatform(""), "web");
 });
 
-test("the workspace opens on intake on every platform", () => {
-  assert.equal(defaultClinicalView("android"), "intake");
-  assert.equal(defaultClinicalView("ios"), "intake");
-  assert.equal(defaultClinicalView("web"), "intake");
+test("the workspace opens on today's ward on every platform", () => {
+  assert.equal(defaultClinicalView("android"), "board");
+  assert.equal(defaultClinicalView("ios"), "board");
+  assert.equal(defaultClinicalView("web"), "board");
 });

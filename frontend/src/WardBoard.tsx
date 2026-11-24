@@ -210,13 +210,10 @@ export default function WardBoard() {
   return (
     <>
       <section className={cardClass}>
-        <h2 className="text-title-3-medium text-text-primary">Ward board</h2>
+        <h2 className="text-title-3-medium text-text-primary">Today’s ward</h2>
         <p className={mutedTextClass}>
-          Every open Admission on the ward, ordered by outstanding work: overdue
-          doses first, then doses due now, then results awaiting review, then
-          open tasks, with bed order breaking ties. The order and the counts are
-          counted from the record each time this board is read and stored
-          nowhere. The board does not score or rank patients clinically.
+          Choose a patient, then record the next piece of care. The work shown
+          here comes from the ward record; it does not rank patients clinically.
         </p>
 
         {board === null ? (
@@ -245,8 +242,8 @@ export default function WardBoard() {
             ) : null}
             {board.length === 0 ? (
               <p className={mutedTextClass}>
-                No patients are on the ward board. Admit a patient below to start
-                a stay.
+                No patients are on the ward yet. Add an admission from the
+                ward tools below.
               </p>
             ) : (
               <ul className="flex flex-col gap-4">
@@ -277,42 +274,50 @@ export default function WardBoard() {
         )}
       </section>
 
-      <MedicationRoundTimesReference
-        roundTimes={roundTimes}
-        roundTimesError={roundTimesError}
-        onReloadRoundTimes={loadRoundTimes}
-      />
-
       <MedicationDueList
         admissions={board ?? []}
         revision={medicationRevision}
         onRecorded={handleMedicationChanged}
       />
 
-      <InvestigationWorklists admissions={board ?? []} onChanged={load} />
-
-      <TaskList admissions={board ?? []} onTasksChanged={load} />
-
-      {board !== null && allInvestigations !== null && allTasks !== null && (
-        <PrintSheetLauncher
-          admissions={board}
-          allInvestigations={allInvestigations}
-          allTasks={allTasks}
-        />
-      )}
-
-      <section className={cardClass}>
-        <h2 className="text-title-3-medium text-text-primary">
-          Admit a patient
-        </h2>
-        <p className={mutedTextClass}>
-          A patient is registered at intake and admitted here. Admitting records
-          where they are; linking the visit they were seen in first keeps the
-          visit and the stay one history. Leaving the visit unlinked admits them
-          directly.
+      <details className={cardClass}>
+        <summary className="cursor-pointer text-title-3-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+          Other ward work
+        </summary>
+        <p className={cx(mutedTextClass, "pt-2")}>
+          Use these when you need to review outstanding work, admit someone, or
+          prepare a handover.
         </p>
-        <AdmitSection onAdmitted={load} />
-      </section>
+        <section className="flex flex-col gap-6 pt-4">
+          <InvestigationWorklists admissions={board ?? []} onChanged={load} />
+
+          <TaskList admissions={board ?? []} onTasksChanged={load} />
+
+          <MedicationRoundTimesReference
+            roundTimes={roundTimes}
+            roundTimesError={roundTimesError}
+            onReloadRoundTimes={loadRoundTimes}
+          />
+
+          {board !== null && allInvestigations !== null && allTasks !== null && (
+            <PrintSheetLauncher
+              admissions={board}
+              allInvestigations={allInvestigations}
+              allTasks={allTasks}
+            />
+          )}
+
+          <section>
+            <h3 className="text-title-3-medium text-text-primary">
+              Add a patient to the ward
+            </h3>
+            <p className={mutedTextClass}>
+              Choose a registered patient, then record their ward and bed.
+            </p>
+            <AdmitSection onAdmitted={load} />
+          </section>
+        </section>
+      </details>
     </>
   );
 }
@@ -470,38 +475,45 @@ function BoardAdmissionRow({
           className="min-h-11"
           onClick={onToggleChart}
         >
-          {chartOpen ? "Hide chart" : "View chart"}
+          {chartOpen ? "Close observations" : "Record observations"}
         </Button>
-        <Button
-          variant={notesOpen ? "primary" : "secondary"}
-          className="min-h-11"
-          onClick={onToggleNotes}
-        >
-          {notesOpen ? "Hide notes" : "Nursing notes"}
-        </Button>
-        <Button
-          variant={medicationOpen ? "primary" : "secondary"}
-          className="min-h-11"
-          onClick={() => setMedicationOpen((current) => !current)}
-        >
-          {medicationOpen ? "Hide medication orders" : "Medication orders"}
-        </Button>
-        <Button
-          variant={tasksOpen ? "primary" : "secondary"}
-          className="min-h-11"
-          onClick={() => setTasksOpen((current) => !current)}
-        >
-          {tasksOpen ? "Hide tasks" : "Tasks"}
-        </Button>
-        <Button
-          variant={investigationsOpen ? "primary" : "secondary"}
-          className="min-h-11"
-          onClick={() => setInvestigationsOpen((current) => !current)}
-        >
-          {investigationsOpen ? "Hide investigations" : "Investigations"}
-        </Button>
-        <MoveAction admission={admission} onMoved={onChanged} />
-        <DischargeAction admission={admission} onDischarged={onChanged} />
+        <details className="min-h-11">
+          <summary className="cursor-pointer rounded-lg border border-border-button-default px-4 py-2 text-body-medium text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+            More for this patient
+          </summary>
+          <section className="flex flex-wrap gap-2 pt-2">
+            <Button
+              variant={notesOpen ? "primary" : "secondary"}
+              className="min-h-11"
+              onClick={onToggleNotes}
+            >
+              {notesOpen ? "Close notes" : "Nursing notes"}
+            </Button>
+            <Button
+              variant={medicationOpen ? "primary" : "secondary"}
+              className="min-h-11"
+              onClick={() => setMedicationOpen((current) => !current)}
+            >
+              {medicationOpen ? "Close medication orders" : "Medication orders"}
+            </Button>
+            <Button
+              variant={tasksOpen ? "primary" : "secondary"}
+              className="min-h-11"
+              onClick={() => setTasksOpen((current) => !current)}
+            >
+              {tasksOpen ? "Close tasks" : "Tasks"}
+            </Button>
+            <Button
+              variant={investigationsOpen ? "primary" : "secondary"}
+              className="min-h-11"
+              onClick={() => setInvestigationsOpen((current) => !current)}
+            >
+              {investigationsOpen ? "Close investigations" : "Investigations"}
+            </Button>
+            <MoveAction admission={admission} onMoved={onChanged} />
+            <DischargeAction admission={admission} onDischarged={onChanged} />
+          </section>
+        </details>
       </footer>
 
       {chartOpen ? (

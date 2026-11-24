@@ -394,18 +394,10 @@ export function MedicationDueList({
         Doses due across the ward
       </h3>
       <p className={mutedTextClass}>
-        Every dose due across the ward in the chosen UTC day, derived from the
-        open orders and the round times each time it is read and stored nowhere.
-        It is ordered by due time by the server, and times are shown on the UTC
-        clock the round times are held on. An overdue dose is marked and nothing
-        else happens: nothing is escalated and no order changes. This list covers
-        scheduled orders only — continuous infusions, variable doses and
-        as-required medication are not shown here rather than approximated.
+        Record scheduled doses for the selected day. Times are shown in UTC.
       </p>
       <p className="text-body-2-regular text-text-secondary">
-        Recording a dose here says what you attest to. There is no barcode or
-        wristband verification. A dose given after its due time can still be
-        recorded, and the server marks it late; it is never refused.
+        If a dose is overdue or given late, record what happened.
       </p>
 
       <Input
