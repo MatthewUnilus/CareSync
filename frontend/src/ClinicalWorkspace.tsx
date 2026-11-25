@@ -1,10 +1,19 @@
 import { useState } from "react";
-import type { Selection } from "react-aria-components";
+import type { ReactNode } from "react";
 
 import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from "@/components/base/segmented-control/segmented-control";
+  RiBuilding2Line,
+  RiFileSearchLine,
+  RiPulseLine,
+  RiUserAddLine,
+} from "@remixicon/react";
+import { Badge } from "@astryxdesign/core/Badge";
+import { ClickableCard } from "@astryxdesign/core/ClickableCard";
+import { Grid } from "@astryxdesign/core/Grid";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 
 import { detectPlatform } from "./runtime";
 import { defaultClinicalView } from "./platform";
@@ -15,6 +24,43 @@ import StudyInstrumentation from "./StudyInstrumentation";
 
 type ClinicalView = "board" | "intake" | "history" | "study";
 
+const clinicalViews: Array<{
+  id: ClinicalView;
+  title: string;
+  description: string;
+  icon: ReactNode;
+  variant: "blue" | "green" | "purple" | "yellow";
+}> = [
+  {
+    id: "board",
+    title: "Today’s ward",
+    description: "Beds, tasks, observations, and investigations",
+    icon: <RiBuilding2Line aria-hidden="true" />,
+    variant: "blue",
+  },
+  {
+    id: "intake",
+    title: "New patient",
+    description: "Start an encounter and record intake details",
+    icon: <RiUserAddLine aria-hidden="true" />,
+    variant: "green",
+  },
+  {
+    id: "history",
+    title: "Find a patient",
+    description: "Search records and review patient history",
+    icon: <RiFileSearchLine aria-hidden="true" />,
+    variant: "purple",
+  },
+  {
+    id: "study",
+    title: "Study timing",
+    description: "Review workflow timing instrumentation",
+    icon: <RiPulseLine aria-hidden="true" />,
+    variant: "yellow",
+  },
+];
+
 export default function ClinicalWorkspace() {
   const [view, setView] = useState<ClinicalView>(() =>
     defaultClinicalView(detectPlatform()),
@@ -22,34 +68,44 @@ export default function ClinicalWorkspace() {
 
   return (
     <>
-      {/*
-       * min-h-11 keeps the view switch on the 44px touch minimum for bedside
-       * use; the installed control's own py-1 yields a 28px target.
-       */}
-      <SegmentedControl
-        aria-label="Clinical workspace"
-        className="w-fit justify-self-start"
-        selectedKeys={new Set([view])}
-        onSelectionChange={(keys: Selection) => {
-          const next = [...keys][0];
-          if (next === "board" || next === "intake" || next === "history" || next === "study") {
-            setView(next);
-          }
-        }}
-      >
-        <SegmentedControlItem id="board" className="min-h-11 px-4">
-          Today’s ward
-        </SegmentedControlItem>
-        <SegmentedControlItem id="intake" className="min-h-11 px-4">
-          New patient
-        </SegmentedControlItem>
-        <SegmentedControlItem id="history" className="min-h-11 px-4">
-          Find a patient
-        </SegmentedControlItem>
-        <SegmentedControlItem id="study" className="min-h-11 px-4">
-          Study timing
-        </SegmentedControlItem>
-      </SegmentedControl>
+      <section aria-labelledby="clinical-workspace-heading">
+        <VStack gap={4}>
+          <VStack gap={1}>
+            <Heading level={1} id="clinical-workspace-heading">Clinical workspace</Heading>
+            <Text as="p" type="supporting" color="secondary">
+              Choose the area you need. Your current workspace is highlighted.
+            </Text>
+          </VStack>
+          <Grid columns={{ minWidth: 220, max: 4, repeat: "fit" }} gap={4}>
+            {clinicalViews.map((item) => {
+              const active = view === item.id;
+              return (
+                <ClickableCard
+                  key={item.id}
+                  label={`${item.title}${active ? ", current workspace" : ""}`}
+                  onClick={() => setView(item.id)}
+                  variant={item.variant}
+                  elevation={active ? "med" : "low"}
+                  height="100%"
+                >
+                  <VStack gap={4} vAlign="between" minHeight={132}>
+                    <HStack hAlign="between" vAlign="center" gap={2}>
+                      {item.icon}
+                      {active ? <Badge variant="blue" label="Open" /> : null}
+                    </HStack>
+                    <VStack gap={1}>
+                      <Heading level={2} accessibilityLevel={2}>{item.title}</Heading>
+                      <Text as="p" type="supporting" color="secondary" textWrap="pretty">
+                        {item.description}
+                      </Text>
+                    </VStack>
+                  </VStack>
+                </ClickableCard>
+              );
+            })}
+          </Grid>
+        </VStack>
+      </section>
 
       {view === "board" ? (
         <WardBoard />

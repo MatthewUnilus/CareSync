@@ -116,8 +116,7 @@ export default function Shell({
 
       <main
         className={cx(
-          "mx-auto grid w-full gap-5 px-6 pt-8 pb-12",
-          user.role === "administrator" ? "max-w-7xl" : "max-w-6xl",
+          "mx-auto grid w-full max-w-7xl gap-6 px-4 pt-6 pb-12 sm:px-6 sm:pt-8",
         )}
       >
         {children}
